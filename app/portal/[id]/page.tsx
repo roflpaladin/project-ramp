@@ -1,6 +1,49 @@
 import { cookies } from "next/headers";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { groupByCategory } from "@/lib/links";
 import { portalCookieName, verifyPortalSessionValue } from "@/lib/portal-session";
 import { requestAccess, verifyAccess } from "./gate-actions";
+
+async function GrantedPortal({ workspaceId }: { workspaceId: string }) {
+  const supabase = createAdminClient();
+
+  const [{ data: workspace }, { data: links }] = await Promise.all([
+    supabase.from("workspaces").select("target_company_name").eq("id", workspaceId).single(),
+    supabase
+      .from("links")
+      .select("id, category_header, link_label, url_string, display_order")
+      .eq("workspace_id", workspaceId)
+      .order("category_header", { ascending: true })
+      .order("display_order", { ascending: true }),
+  ]);
+
+  const grouped = groupByCategory(links ?? []);
+
+  return (
+    <main>
+      {/* Header title/favicon personalization is the Instant Branding Engine ticket. */}
+      <h1>{workspace?.target_company_name ?? "Deal Room"}</h1>
+      {grouped.size === 0 ? (
+        <p>No resources have been shared yet.</p>
+      ) : (
+        [...grouped.entries()].map(([category, categoryLinks]) => (
+          <section key={category}>
+            <h2>{category}</h2>
+            <ul>
+              {categoryLinks.map((link) => (
+                <li key={link.id}>
+                  <a href={link.url_string} target="_blank" rel="noopener noreferrer">
+                    {link.link_label}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))
+      )}
+    </main>
+  );
+}
 
 export default async function PortalPage({
   params,
@@ -16,14 +59,7 @@ export default async function PortalPage({
   const hasAccess = verifyPortalSessionValue(id, cookieStore.get(portalCookieName(id))?.value);
 
   if (hasAccess) {
-    // Curated links rendering is the Buyer Portal Layout ticket — this proves
-    // the gate actually grants/withholds access before that ticket lands.
-    return (
-      <main>
-        <h1>Deal Room</h1>
-        <p>Access granted. The links view lands in the next ticket.</p>
-      </main>
-    );
+    return <GrantedPortal workspaceId={id} />;
   }
 
   const requestAccessForWorkspace = requestAccess.bind(null, id);
