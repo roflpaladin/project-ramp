@@ -1,14 +1,40 @@
+import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { buildPortalHeaderTitle, getFaviconUrl } from "@/lib/branding";
 import { groupByCategory } from "@/lib/links";
 import { portalCookieName, verifyPortalSessionValue } from "@/lib/portal-session";
+import { FaviconImage } from "./favicon-image";
 import { requestAccess, verifyAccess } from "./gate-actions";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}): Promise<Metadata> {
+  const { id } = await params;
+  const supabase = createAdminClient();
+  const { data: workspace } = await supabase
+    .from("workspaces")
+    .select("target_company_name, target_domain")
+    .eq("id", id)
+    .single();
+
+  if (!workspace) {
+    return {};
+  }
+
+  return {
+    title: buildPortalHeaderTitle(workspace.target_company_name),
+    icons: { icon: getFaviconUrl(workspace.target_domain) },
+  };
+}
 
 async function GrantedPortal({ workspaceId }: { workspaceId: string }) {
   const supabase = createAdminClient();
 
   const [{ data: workspace }, { data: links }] = await Promise.all([
-    supabase.from("workspaces").select("target_company_name").eq("id", workspaceId).single(),
+    supabase.from("workspaces").select("target_company_name, target_domain").eq("id", workspaceId).single(),
     supabase
       .from("links")
       .select("id, category_header, link_label, url_string, display_order")
@@ -18,11 +44,14 @@ async function GrantedPortal({ workspaceId }: { workspaceId: string }) {
   ]);
 
   const grouped = groupByCategory(links ?? []);
+  const headerTitle = workspace ? buildPortalHeaderTitle(workspace.target_company_name) : "Deal Room";
 
   return (
     <main>
-      {/* Header title/favicon personalization is the Instant Branding Engine ticket. */}
-      <h1>{workspace?.target_company_name ?? "Deal Room"}</h1>
+      <header style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+        {workspace ? <FaviconImage src={getFaviconUrl(workspace.target_domain)} alt="" /> : null}
+        <h1>{headerTitle}</h1>
+      </header>
       {grouped.size === 0 ? (
         <p>No resources have been shared yet.</p>
       ) : (
