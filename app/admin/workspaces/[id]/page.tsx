@@ -1,24 +1,7 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { groupByCategory } from "@/lib/links";
 import { addLink, deleteLink } from "./links-actions";
-
-type Link = {
-  id: string;
-  category_header: string;
-  link_label: string;
-  url_string: string;
-  display_order: number;
-};
-
-function groupByCategory(links: Link[]): Map<string, Link[]> {
-  const grouped = new Map<string, Link[]>();
-  for (const link of links) {
-    const bucket = grouped.get(link.category_header) ?? [];
-    bucket.push(link);
-    grouped.set(link.category_header, bucket);
-  }
-  return grouped;
-}
 
 export default async function WorkspaceDetailPage({
   params,
