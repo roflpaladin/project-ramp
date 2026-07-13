@@ -53,29 +53,4 @@ never get a Supabase Auth session — they authenticate via the magic-code
 flow above, and portal/API routes read through the service-role client
 after verifying that token/session.
 
-## Getting started
 
-```bash
-npm install
-cp .env.example .env.local   # fill in real values, see below
-npm run dev
-```
-
-### Environment variables (`.env.local`)
-
-| Variable | Where to find it |
-|---|---|
-| `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | Supabase project → Settings → API |
-| `PORTAL_SESSION_SECRET` | Any long random string, e.g. `openssl rand -hex 32` |
-| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | Supabase project → Settings → Auth → SMTP Settings, or any SMTP provider |
-
-### Database migrations
-
-There's no Supabase CLI project link checked in — migrations under
-`supabase/migrations/` are applied by pasting each numbered file into the
-Supabase Dashboard's **SQL Editor**, in order.
-
-## Conventions
-
-- One branch per roadmap ticket (`ticket-N/kebab-case-title`), merged to `main` with `Merge ticket-N: Title`.
-- Full ticket specs, acceptance criteria, and engineering logs live in Notion (Project Ramp → Roadmap).
