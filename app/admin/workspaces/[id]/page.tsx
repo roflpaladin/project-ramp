@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { groupByCategory } from "@/lib/links";
 import { addLink, deleteLink } from "./links-actions";
+import { LinkUrlField } from "./link-url-field";
 
 export default async function WorkspaceDetailPage({
   params,
@@ -61,14 +62,7 @@ export default async function WorkspaceDetailPage({
           Category
           <input type="text" name="category_header" placeholder="Legal Docs" required />
         </label>
-        <label>
-          Label
-          <input type="text" name="link_label" placeholder="MNDA Draft" required />
-        </label>
-        <label>
-          URL
-          <input type="url" name="url_string" placeholder="https://…" required />
-        </label>
+        <LinkUrlField />
         <button type="submit">Add link</button>
       </form>
     </main>
