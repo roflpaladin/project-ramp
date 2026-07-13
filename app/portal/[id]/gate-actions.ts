@@ -65,7 +65,7 @@ export async function verifyAccess(workspaceId: string, formData: FormData) {
     .update({ consumed_at: new Date().toISOString() })
     .eq("id", candidate.id);
 
-  const { value, expiresAt } = createPortalSessionValue(workspaceId);
+  const { value, expiresAt } = createPortalSessionValue(workspaceId, email);
   const cookieStore = await cookies();
   cookieStore.set(portalCookieName(workspaceId), value, {
     httpOnly: true,

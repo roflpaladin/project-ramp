@@ -30,7 +30,7 @@ export async function generateMetadata({
   };
 }
 
-async function GrantedPortal({ workspaceId }: { workspaceId: string }) {
+async function GrantedPortal({ workspaceId, buyerEmail }: { workspaceId: string; buyerEmail: string }) {
   const supabase = createAdminClient();
 
   const [{ data: workspace }, { data: links }] = await Promise.all([
@@ -42,6 +42,16 @@ async function GrantedPortal({ workspaceId }: { workspaceId: string }) {
       .order("category_header", { ascending: true })
       .order("display_order", { ascending: true }),
   ]);
+
+  // Best-effort engagement signal for the seller dashboard -- Supabase
+  // resolves with { error } rather than throwing, and a failed insert here
+  // shouldn't break the buyer's page render either way.
+  const { error: viewError } = await supabase
+    .from("workspace_analytics")
+    .insert({ workspace_id: workspaceId, buyer_email: buyerEmail, action_type: "portal_view" });
+  if (viewError) {
+    console.error("[portal_view] analytics insert failed:", viewError);
+  }
 
   const grouped = groupByCategory(links ?? []);
   const headerTitle = workspace ? buildPortalHeaderTitle(workspace.target_company_name) : "Deal Room";
@@ -61,7 +71,11 @@ async function GrantedPortal({ workspaceId }: { workspaceId: string }) {
             <ul>
               {categoryLinks.map((link) => (
                 <li key={link.id}>
-                  <a href={link.url_string} target="_blank" rel="noopener noreferrer">
+                  <a
+                    href={`/api/track?linkId=${link.id}&wsId=${workspaceId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
                     {link.link_label}
                   </a>
                 </li>
@@ -85,10 +99,10 @@ export default async function PortalPage({
   const { stage, email, error } = await searchParams;
 
   const cookieStore = await cookies();
-  const hasAccess = verifyPortalSessionValue(id, cookieStore.get(portalCookieName(id))?.value);
+  const session = verifyPortalSessionValue(id, cookieStore.get(portalCookieName(id))?.value);
 
-  if (hasAccess) {
-    return <GrantedPortal workspaceId={id} />;
+  if (session) {
+    return <GrantedPortal workspaceId={id} buyerEmail={session.email} />;
   }
 
   const requestAccessForWorkspace = requestAccess.bind(null, id);
