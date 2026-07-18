@@ -1,0 +1,10 @@
+/* Tailwind for the /settings surface (Sprint 3, Ticket 16). Theme variables
+   are layered, but utilities are imported UNLAYERED on purpose: the Sprint 1/2
+   surfaces are styled by unlayered element selectors in globals.css (form,
+   label, button...), and unlayered rules always beat @layer rules — importing
+   utilities without a layer lets class specificity win instead, so Tailwind
+   classes reliably override the global element styles on this page without
+   touching the existing admin/portal look. Preflight is deliberately omitted
+   for the same reason. */
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css";

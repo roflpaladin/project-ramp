@@ -5,8 +5,8 @@ export function middleware(request: NextRequest) {
   return updateSession(request);
 }
 
-// Only /admin is gated here — /portal has its own access model (magic-link
-// token, not Supabase Auth) built in the Security Gate ticket.
+// /admin and /settings are gated here — /portal has its own access model
+// (magic-link token, not Supabase Auth) built in the Security Gate ticket.
 export const config = {
-  matcher: ["/admin/:path*"],
+  matcher: ["/admin/:path*", "/settings/:path*"],
 };
