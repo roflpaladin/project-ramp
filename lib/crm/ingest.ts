@@ -56,6 +56,6 @@ export async function ingestCrmWebhook(request: Request, parse: (body: unknown) 
     );
   }
 
-  const result = await provisionWorkspaceFromCrm(event, owner);
+  const result = await provisionWorkspaceFromCrm(event, owner, triggerStage);
   return NextResponse.json(result.body, { status: result.status });
 }
