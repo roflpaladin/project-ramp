@@ -1,0 +1,37 @@
+/* Tailwind for the /demo-sandbox surface (Sprint 4, Ticket 18). Same layering
+   choice as the /settings surface: theme is layered, utilities are imported
+   UNLAYERED so class specificity beats the unlayered element selectors in
+   globals.css (input, button…) without disturbing the admin/portal look.
+
+   Brand tokens from ramp-brand-guideline.html. Rule honored here: Signal
+   (#4B37FF) is the ACTION colour and only the action colour — it marks the one
+   primary trigger and the live moment, never headings, backgrounds or decor. */
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css";
+
+[data-surface="demo"] {
+  --paper: #fcfbf8; /* primary light surface */
+  --ink: #17181c; /* primary text */
+  --slate: #6b6e76; /* muted text */
+  --line: #e2e1db; /* hairlines */
+  --signal: #4b37ff; /* action only */
+  --signal-press: #3a29d6;
+  --pos: #17936b; /* confirmed / live / moving */
+  --seller-tint: #eceef9; /* cool seller-side tint */
+  --seller-mark: #41477f;
+
+  min-height: 100dvh;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+@media (prefers-color-scheme: dark) {
+  [data-surface="demo"] {
+    --paper: #17181c;
+    --ink: #fcfbf8;
+    --slate: #9a9da6;
+    --line: #33353b;
+    --seller-tint: #1e2033;
+    --seller-mark: #8c91ce;
+  }
+}
