@@ -1,0 +1,36 @@
+/* Tailwind for the /view buyer surface (Sprint 4, Ticket 19). Same layering
+   choice as /settings and /demo-sandbox: theme layered, utilities unlayered so
+   class specificity beats globals.css element selectors.
+
+   Brand: this is the BUYER side, so it uses the warm buyer-side tint from
+   ramp-brand-guideline.html (the seller sandbox uses the cool tint). Signal
+   (#4B37FF) stays reserved for the single action — the "Enter" button. */
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css";
+
+[data-surface="view"] {
+  --paper: #fcfbf8;
+  --ink: #17181c;
+  --slate: #6b6e76;
+  --line: #e2e1db;
+  --signal: #4b37ff; /* action only */
+  --signal-press: #3a29d6;
+  --pos: #17936b;
+  --buyer-tint: #f5ede3; /* warm buyer-side tint */
+  --buyer-mark: #8c5c36;
+
+  min-height: 100dvh;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+@media (prefers-color-scheme: dark) {
+  [data-surface="view"] {
+    --paper: #17181c;
+    --ink: #fcfbf8;
+    --slate: #9a9da6;
+    --line: #33353b;
+    --buyer-tint: #2a2320;
+    --buyer-mark: #c89a6c;
+  }
+}

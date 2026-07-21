@@ -14,8 +14,18 @@ export async function GET(request: Request) {
   const linkId = url.searchParams.get("linkId");
   const wsId = url.searchParams.get("wsId");
 
-  if (!linkId || !wsId) {
-    return new NextResponse("Missing linkId or wsId", { status: 400 });
+  if (!wsId) {
+    return new NextResponse("Missing wsId", { status: 400 });
+  }
+
+  // Portal-entry (magic-link) mode, added Sprint 4 Ticket 18/19: a link with
+  // wsId but no linkId is the shareable deal-room link revealed by /demo-sandbox.
+  // There is no click destination and no buyer session yet, so route the buyer
+  // to the zero-friction gate at /view/[id] (which logs portal_view on entry and
+  // enforces demo-tenant scoping). The existing link-click flow below is
+  // unchanged — it still requires both linkId and wsId.
+  if (!linkId) {
+    return NextResponse.redirect(new URL(`/view/${wsId}`, request.url), 302);
   }
 
   const cookieStore = await cookies();
