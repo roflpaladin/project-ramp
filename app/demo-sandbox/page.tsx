@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { DEMO_OWNER_EMAIL } from "@/lib/demo";
 import { SandboxSimulator } from "./sandbox-simulator";
+import { ResetSandbox } from "./reset-sandbox";
 
 // Pitch tool — keep it out of search indexes.
 export const metadata: Metadata = {
@@ -42,6 +43,7 @@ export default function DemoSandboxPage() {
       </header>
 
       <SandboxSimulator demoOwnerEmail={DEMO_OWNER_EMAIL} presets={PRESETS} />
+      <ResetSandbox />
     </main>
   );
 }
