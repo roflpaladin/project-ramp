@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { LivePulse } from "./live-pulse";
 
 type Preset = { label: string; domain: string; name: string };
 type Status = "idle" | "running" | "done" | "error";
@@ -270,6 +271,8 @@ export function SandboxSimulator({
           </p>
         </div>
       )}
+
+      {status === "done" && result ? <LivePulse workspaceId={result.workspaceId} /> : null}
     </section>
   );
 }
