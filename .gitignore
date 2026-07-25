@@ -8,3 +8,8 @@ out/
 .DS_Store
 *.tsbuildinfo
 next-env.d.ts
+
+# Internal working docs — keep out of the public repo
+Project Ramp/
+.claude/
+/ramp-brand-guideline.html
