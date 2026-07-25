@@ -1,8 +1,32 @@
+import { createHash, timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import type { ParseResult } from "@/lib/crm/parse";
 import { provisionWorkspaceFromCrm } from "@/lib/crm/provisioner";
 import { resolveOwnerByEmail } from "@/lib/crm/tenant";
 import { getTriggerStageForTenant, normalizeStage } from "@/lib/crm/trigger-stage";
+
+// Shared secret proving a webhook call actually came from our configured CRM
+// relay. Without this, both vendor routes are unauthenticated: knowing a
+// seller's owner_email is enough to forge a deal event and provision a
+// workspace inside that real tenant (with an attacker-chosen approved_emails
+// list). We fail CLOSED — an unset CRM_WEBHOOK_SECRET rejects every call
+// rather than silently disabling the gate.
+function isAuthorizedWebhook(request: Request): boolean {
+  const secret = process.env.CRM_WEBHOOK_SECRET;
+  if (!secret) return false;
+
+  const provided =
+    request.headers.get("x-ramp-webhook-secret") ??
+    request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ??
+    "";
+
+  // Hash both sides first so timingSafeEqual always gets equal-length buffers
+  // (it throws otherwise) and the comparison stays constant-time regardless of
+  // the provided value's length.
+  const expected = createHash("sha256").update(secret).digest();
+  const actual = createHash("sha256").update(provided).digest();
+  return timingSafeEqual(expected, actual);
+}
 
 // Shared webhook ingestion pipeline (Sprint 3, Ticket 14). Both vendor routes
 // funnel here after vendor-specific parsing. Response matrix per PRD §3.2:
@@ -18,6 +42,12 @@ import { getTriggerStageForTenant, normalizeStage } from "@/lib/crm/trigger-stag
 // network egress — scraper egress lives inside the provisioner behind
 // lib/ssrf-guard.ts.
 export async function ingestCrmWebhook(request: Request, parse: (body: unknown) => ParseResult) {
+  // Authenticate BEFORE reading or parsing the body: a forged/unauthorized call
+  // must not reach request.json(), the owner lookup, or any DB write.
+  if (!isAuthorizedWebhook(request)) {
+    return NextResponse.json({ success: false, message: "Unauthorized." }, { status: 401 });
+  }
+
   let body: unknown;
   try {
     body = await request.json();
