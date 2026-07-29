@@ -8,6 +8,10 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:security": "vitest run tests/security",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "seed:demo": "node --env-file=.env.local scripts/seed-demo.mjs"
   },
   "engines": {
@@ -28,10 +32,12 @@
     "@types/nodemailer": "^6.4.17",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@vitest/coverage-v8": "^4.1.10",
     "eslint": "^9.39.5",
     "eslint-config-next": "^15.5.21",
     "postcss": "^8.5.19",
     "tailwindcss": "^4.3.3",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vitest": "^4.1.10"
   }
 }

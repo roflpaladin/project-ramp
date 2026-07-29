@@ -36,3 +36,66 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+
+    # Fork PRs cannot read repository secrets. Running this job on one would fail
+    # on missing credentials and read as a broken gate rather than an inapplicable
+    # one, so it is scoped to same-repo events. A fork contribution is verified by
+    # a maintainer re-running the suite from a same-repo branch.
+    if: >-
+      github.event_name == 'push' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+
+    # The suite talks to a real Supabase project: the fixture writes and deletes
+    # rows under a shared sentinel tenant, and from Ticket 26 the security tests
+    # additionally add and drop a column. Two overlapping runs would delete each
+    # other's rows mid-assertion. Serialized repo-wide, and NOT cancelled in
+    # progress — a run killed between its DDL and its cleanup leaves the database
+    # dirty for the next one.
+    concurrency:
+      group: security-suite
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Fail, never skip. A security gate that goes green because its credentials
+      # were absent is worse than no gate: the PR page shows a passing check and
+      # everyone reads that as "the buyer boundary holds."
+      - name: Verify test credentials are present
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          PORTAL_SESSION_SECRET: ${{ secrets.PORTAL_SESSION_SECRET }}
+        run: |
+          missing=""
+          for name in NEXT_PUBLIC_SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY PORTAL_SESSION_SECRET; do
+            if [ -z "${!name}" ]; then
+              missing="$missing $name"
+            fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secret(s):$missing — add them under Settings > Secrets and variables > Actions. Failing rather than skipping: a security suite that does not run must not report success."
+            exit 1
+          fi
+          echo "All three test credentials are present."
+
+      - name: Run tests
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          PORTAL_SESSION_SECRET: ${{ secrets.PORTAL_SESSION_SECRET }}
+        run: npm run test
