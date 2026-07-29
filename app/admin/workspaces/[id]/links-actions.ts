@@ -40,6 +40,11 @@ export async function addLink(workspaceId: string, formData: FormData) {
     link_label,
     url_string,
     display_order: count ?? 0,
+    // Written explicitly, never left to the column default (0005). The default
+    // exists to backfill pre-Sprint-5 rows truthfully — relying on it here would
+    // make every new link buyer-visible by omission rather than by decision.
+    // The private/shared toggle itself arrives with the builder (Ticket 30).
+    visibility: "shared",
   });
 
   revalidatePath(`/admin/workspaces/${workspaceId}`);
