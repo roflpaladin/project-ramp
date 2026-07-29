@@ -96,6 +96,12 @@ export const FORBIDDEN_VALUES: readonly string[] = [
   CRM_FORECAST_CATEGORY,
   TEST_APPROVED_EMAIL,
   TEST_TENANT_ID,
+  // The date half of crm_synced_at only. PostgREST renders timestamptz as
+  // "2026-07-20T09:15:00+00:00", not the "...Z" form written above, so the full
+  // literal would never match. The date alone survives the round trip and does
+  // not collide with any buyer-visible date (plan start 2026-07-01, target
+  // 2026-09-30, completed_at 2026-07-05).
+  "2026-07-20",
   // Numeric/date columns cannot carry the token, so they are listed as raw
   // literals. The bare digits (not "487500.00") because PostgREST emits
   // numeric(14,2) as a JSON number, which serializes back as 487500 — the short
@@ -103,6 +109,19 @@ export const FORBIDDEN_VALUES: readonly string[] = [
   "487500",
   CRM_CLOSE_DATE,
 ];
+
+/**
+ * The forbidden set including values only known at run time.
+ *
+ * `created_by` is in the audit's forbidden set but is an auth.users UUID minted
+ * when the fixture first runs, so it cannot be a static literal. Callers should
+ * prefer this over FORBIDDEN_VALUES: greping the static array alone would skip
+ * `created_by` silently, which is exactly the kind of quiet gap this suite exists
+ * to prevent.
+ */
+export function forbiddenValuesFor(seeded: LeakyWorkspace): readonly string[] {
+  return [...FORBIDDEN_VALUES, seeded.createdBy];
+}
 
 /** Values that must survive the boundary — asserted so the strip is not overzealous. */
 export const EXPECTED_VISIBLE_VALUES: readonly string[] = [

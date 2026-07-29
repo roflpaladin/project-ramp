@@ -15,8 +15,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireTestEnv } from "../fixtures/env";
 import {
   EXPECTED_VISIBLE_VALUES,
-  FORBIDDEN_VALUES,
   PRIVATE_LINK_URLS,
+  forbiddenValuesFor,
   SHARED_LINK_URLS,
   TEST_PLAN_ID,
   TEST_TENANT_ID,
@@ -121,7 +121,7 @@ describe("seedLeakyWorkspace", () => {
     const graph = await readRawGraph();
     const serialized = JSON.stringify(graph);
 
-    const absent = FORBIDDEN_VALUES.filter((value) => !serialized.includes(value));
+    const absent = forbiddenValuesFor(seeded).filter((value) => !serialized.includes(value));
     expect(
       absent,
       "Fixture is missing forbidden value(s), so any leakage test using it would " +
