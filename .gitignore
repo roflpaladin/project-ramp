@@ -8,6 +8,8 @@ out/
 .DS_Store
 *.tsbuildinfo
 next-env.d.ts
+# Written by `npm run test:coverage` (vitest v8 provider).
+coverage/
 
 # Internal working docs — keep out of the public repo
 Project Ramp/
