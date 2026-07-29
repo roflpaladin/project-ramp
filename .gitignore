@@ -13,3 +13,9 @@ next-env.d.ts
 Project Ramp/
 .claude/
 /ramp-brand-guideline.html
+# Local ECC tooling checkout. Untracked, but tsconfig's "**/*.ts" include still
+# sweeps it into `npm run typecheck`, which fails on its sample assets. CI never
+# sees it (fresh checkout), so ignoring it here keeps the local invariant usable.
+ECC/
+# Sprint construction plans — working artifacts. Sprint truth lives in Notion.
+plans/
