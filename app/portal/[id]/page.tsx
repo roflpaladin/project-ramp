@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { buildPortalHeaderTitle, getFaviconUrl } from "@/lib/branding";
 import { groupByCategory } from "@/lib/links";
 import { portalCookieName, verifyPortalSessionValue } from "@/lib/portal-session";
+import { toBuyerPayload, type LinkRow, type WorkspaceRow } from "@/lib/portal-payload";
 import { FaviconImage } from "./favicon-image";
 import { requestAccess, verifyAccess } from "./gate-actions";
 
@@ -33,12 +34,16 @@ export async function generateMetadata({
 async function GrantedPortal({ workspaceId, buyerEmail }: { workspaceId: string; buyerEmail: string }) {
   const supabase = createAdminClient();
 
-  const [{ data: workspace }, { data: links }] = await Promise.all([
-    supabase.from("workspaces").select("target_company_name, target_domain").eq("id", workspaceId).single(),
+  const [{ data: workspaceRow }, { data: links }] = await Promise.all([
+    // select("*") then strip in one named place (Ticket 25) — see the note in
+    // lib/portal-payload.ts on why a narrow SELECT is the weaker boundary.
+    supabase.from("workspaces").select("*").eq("id", workspaceId).maybeSingle(),
     supabase
       .from("links")
-      .select("id, category_header, link_label, url_string, display_order")
+      .select("*")
       .eq("workspace_id", workspaceId)
+      // Defence in depth; toBuyerPayload filters again.
+      .eq("visibility", "shared")
       .order("category_header", { ascending: true })
       .order("display_order", { ascending: true }),
   ]);
@@ -53,13 +58,18 @@ async function GrantedPortal({ workspaceId, buyerEmail }: { workspaceId: string;
     console.error("[portal_view] analytics insert failed:", viewError);
   }
 
-  const grouped = groupByCategory(links ?? []);
-  const headerTitle = workspace ? buildPortalHeaderTitle(workspace.target_company_name) : "Deal Room";
+  // The buyer boundary (Ticket 25). Nothing below this line touches a raw row.
+  const payload = workspaceRow
+    ? toBuyerPayload(workspaceRow as WorkspaceRow, null, (links ?? []) as LinkRow[])
+    : null;
+
+  const grouped = groupByCategory(payload?.resources ?? []);
+  const headerTitle = payload ? buildPortalHeaderTitle(payload.workspace.target_company_name) : "Deal Room";
 
   return (
     <main>
       <header style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-        {workspace ? <FaviconImage src={getFaviconUrl(workspace.target_domain)} alt="" /> : null}
+        {payload ? <FaviconImage src={getFaviconUrl(payload.workspace.target_domain)} alt="" /> : null}
         <h1>{headerTitle}</h1>
       </header>
       {grouped.size === 0 ? (
