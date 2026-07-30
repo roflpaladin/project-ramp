@@ -9,10 +9,18 @@ export interface TestEnv {
   readonly supabaseUrl: string;
   readonly serviceRoleKey: string;
   readonly portalSessionSecret: string;
+  /**
+   * The public anon key — already shipped to every browser, so not a secret in
+   * any meaningful sense. Required because proving RLS *holds* (Ticket 24) needs
+   * a client that is actually subject to it; the service-role key bypasses RLS
+   * and so can never demonstrate it working.
+   */
+  readonly anonKey: string;
 }
 
 const REQUIRED = [
   "NEXT_PUBLIC_SUPABASE_URL",
+  "NEXT_PUBLIC_SUPABASE_ANON_KEY",
   "SUPABASE_SERVICE_ROLE_KEY",
   "PORTAL_SESSION_SECRET",
 ] as const;
@@ -33,5 +41,6 @@ export function requireTestEnv(): TestEnv {
     supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL as string,
     serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY as string,
     portalSessionSecret: process.env.PORTAL_SESSION_SECRET as string,
+    anonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string,
   };
 }

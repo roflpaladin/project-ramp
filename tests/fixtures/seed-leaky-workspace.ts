@@ -40,7 +40,23 @@ export const TEST_BUYER_STEP_ID = "7e570000-0000-4000-8000-000000000007";
 export const TEST_BLOCKED_STEP_ID = "7e570000-0000-4000-8000-000000000008";
 export const TEST_DONE_STEP_ID = "7e570000-0000-4000-8000-000000000009";
 
+export const TEST_TIED_STEP_ID = "7e570000-0000-4000-8000-00000000000a";
+
+// A workspace under the SAME tenant that deliberately has no plan at all, so the
+// "no plan returns null rather than throwing" path has something to read.
+export const EMPTY_WORKSPACE_ID = "7e570000-0000-4000-8000-0000000000e1";
+
+// A second tenant. Proving RLS *holds* needs a workspace the seller genuinely
+// cannot reach — asserting against one they can see proves nothing. Its plan
+// carries one stage and ZERO steps, which doubles as the "stages but no steps
+// assembles without error" case.
+export const FOREIGN_TENANT_ID = "7e570000-0000-4000-8000-0000000000f1";
+export const FOREIGN_WORKSPACE_ID = "7e570000-0000-4000-8000-0000000000f2";
+export const FOREIGN_PLAN_ID = "7e570000-0000-4000-8000-0000000000f3";
+export const FOREIGN_STAGE_ID = "7e570000-0000-4000-8000-0000000000f4";
+
 export const TEST_TENANT_LABEL = "TEST — buyer boundary";
+export const FOREIGN_TENANT_LABEL = "TEST — foreign tenant (RLS control)";
 export const TEST_OWNER_EMAIL = "t23-harness@projectramp.invalid";
 export const TEST_APPROVED_EMAIL = `buyer.${LEAK_TOKEN}@acme-test.invalid`;
 
@@ -140,6 +156,19 @@ export interface LeakyWorkspace {
   readonly stageIds: readonly string[];
   readonly sellerStepId: string;
   readonly buyerStepId: string;
+  /**
+   * Credentials for the AE who owns this tenant. The password is regenerated on
+   * every seed and exists only in memory — tests sign in with it to obtain an
+   * RLS-scoped client, which is the only way to prove RLS actually holds.
+   */
+  readonly ownerEmail: string;
+  readonly ownerPassword: string;
+  /** A workspace under this tenant with no plan at all. */
+  readonly emptyWorkspaceId: string;
+  /** A workspace under a DIFFERENT tenant — the RLS control. */
+  readonly foreignTenantId: string;
+  readonly foreignWorkspaceId: string;
+  readonly foreignPlanId: string;
 }
 
 type AdminClient = ReturnType<typeof createAdminClient>;
@@ -160,31 +189,56 @@ function failOn(label: string, error: { message: string } | null): void {
  * by email and created only when absent. workspaces.created_by is a NOT NULL FK
  * to auth.users (migration 0001), so this must resolve before the workspace insert.
  */
-async function ensureTestUser(db: AdminClient): Promise<string> {
+async function ensureTestUser(db: AdminClient): Promise<{ id: string; password: string }> {
+  // Regenerated every run and never written to disk. The seller tests must sign
+  // in as this user to get a session RLS will actually scope, and a fixed
+  // password in the repo would be a committed credential for no benefit.
+  const password = crypto.randomUUID();
+
+  // app_metadata.tenant_id is the claim every RLS policy in 0001-0005 reads
+  // — `(auth.jwt() -> 'app_metadata' ->> 'tenant_id')::uuid`, never auth.uid().
+  // Without it the signed-in client sees nothing at all, and the RLS tests would
+  // pass for entirely the wrong reason.
+  const app_metadata = { tenant_id: TEST_TENANT_ID };
+
   const { data: list, error } = await db.auth.admin.listUsers({ page: 1, perPage: 1000 });
   failOn("listUsers", error);
 
   const existing = list?.users.find((user) => user.email === TEST_OWNER_EMAIL);
-  if (existing) return existing.id;
+  if (existing) {
+    const { error: updateError } = await db.auth.admin.updateUserById(existing.id, {
+      password,
+      app_metadata,
+    });
+    failOn("updateUser", updateError);
+    return { id: existing.id, password };
+  }
 
   const { data, error: createError } = await db.auth.admin.createUser({
     email: TEST_OWNER_EMAIL,
     email_confirm: true,
-    password: crypto.randomUUID(),
+    password,
+    app_metadata,
   });
   failOn("createUser", createError);
   if (!data?.user) throw new Error("seedLeakyWorkspace — createUser returned no user");
 
-  return data.user.id;
+  return { id: data.user.id, password };
 }
 
 export async function seedLeakyWorkspace(): Promise<LeakyWorkspace> {
   const db = testDb();
-  const createdBy = await ensureTestUser(db);
+  const owner = await ensureTestUser(db);
+  const createdBy = owner.id;
 
   failOn(
     "tenants",
-    (await db.from("tenants").upsert({ id: TEST_TENANT_ID, company_name: TEST_TENANT_LABEL })).error,
+    (
+      await db.from("tenants").upsert([
+        { id: TEST_TENANT_ID, company_name: TEST_TENANT_LABEL },
+        { id: FOREIGN_TENANT_ID, company_name: FOREIGN_TENANT_LABEL },
+      ])
+    ).error,
   );
 
   failOn(
@@ -299,6 +353,19 @@ export async function seedLeakyWorkspace(): Promise<LeakyWorkspace> {
           private_note: BUYER_STEP_PRIVATE_NOTE,
         },
         {
+          // Shares display_order with TEST_BUYER_STEP_ID on purpose. plan_stages
+          // and plan_steps carry no unique constraint on display_order (0005
+          // leaves it a plain index so the builder can reorder by rewriting the
+          // whole set), so ties are legal and reachable — this is what the
+          // id-tiebreak in assemblePlanTree exists to make deterministic.
+          id: TEST_TIED_STEP_ID,
+          stage_id: TEST_STAGE_TWO_ID,
+          label: `Share the rollout timeline ${VISIBLE_TOKEN}`,
+          owner_side: "seller",
+          status: "open",
+          display_order: 1,
+        },
+        {
           id: TEST_BLOCKED_STEP_ID,
           stage_id: TEST_STAGE_TWO_ID,
           label: `Complete the security questionnaire ${VISIBLE_TOKEN}`,
@@ -321,6 +388,66 @@ export async function seedLeakyWorkspace(): Promise<LeakyWorkspace> {
     ).error,
   );
 
+  // A workspace under this tenant with no plan. Kept deliberately bare so
+  // "no plan returns null" is read from a real row rather than a missing one —
+  // a nonexistent workspace id would return null for the wrong reason.
+  failOn(
+    "workspaces (empty)",
+    (
+      await db.from("workspaces").upsert({
+        id: EMPTY_WORKSPACE_ID,
+        tenant_id: TEST_TENANT_ID,
+        target_company_name: `No Plan Co ${VISIBLE_TOKEN}`,
+        target_domain: "no-plan-test.invalid",
+        created_by: createdBy,
+      })
+    ).error,
+  );
+
+  // The RLS control: a different tenant entirely. created_by reuses the same
+  // auth user because created_by grants nothing — every policy keys off
+  // workspaces.tenant_id, so this workspace stays invisible to the AE above.
+  failOn(
+    "workspaces (foreign)",
+    (
+      await db.from("workspaces").upsert({
+        id: FOREIGN_WORKSPACE_ID,
+        tenant_id: FOREIGN_TENANT_ID,
+        target_company_name: "Foreign Tenant Co",
+        target_domain: "foreign-test.invalid",
+        created_by: createdBy,
+      })
+    ).error,
+  );
+
+  failOn(
+    "success_plans (foreign)",
+    (
+      await db.from("success_plans").upsert({
+        id: FOREIGN_PLAN_ID,
+        workspace_id: FOREIGN_WORKSPACE_ID,
+        title: "Foreign tenant plan",
+        status: "active",
+      })
+    ).error,
+  );
+
+  // One stage, zero steps — the "stages but no steps assembles without error"
+  // case. An empty nested array comes back from PostgREST as [], not null, but
+  // assemblePlanTree tolerates either.
+  failOn(
+    "plan_stages (foreign)",
+    (
+      await db.from("plan_stages").upsert({
+        id: FOREIGN_STAGE_ID,
+        plan_id: FOREIGN_PLAN_ID,
+        title: "Stage with no steps",
+        display_order: 0,
+        status: "upcoming",
+      })
+    ).error,
+  );
+
   return {
     tenantId: TEST_TENANT_ID,
     workspaceId: TEST_WORKSPACE_ID,
@@ -329,6 +456,12 @@ export async function seedLeakyWorkspace(): Promise<LeakyWorkspace> {
     stageIds: [TEST_STAGE_ONE_ID, TEST_STAGE_TWO_ID],
     sellerStepId: TEST_SELLER_STEP_ID,
     buyerStepId: TEST_BUYER_STEP_ID,
+    ownerEmail: TEST_OWNER_EMAIL,
+    ownerPassword: owner.password,
+    emptyWorkspaceId: EMPTY_WORKSPACE_ID,
+    foreignTenantId: FOREIGN_TENANT_ID,
+    foreignWorkspaceId: FOREIGN_WORKSPACE_ID,
+    foreignPlanId: FOREIGN_PLAN_ID,
   };
 }
 
@@ -340,7 +473,7 @@ export async function teardownLeakyWorkspace(): Promise<void> {
   const { data: workspaces } = await db
     .from("workspaces")
     .select("id")
-    .eq("tenant_id", TEST_TENANT_ID);
+    .in("tenant_id", [TEST_TENANT_ID, FOREIGN_TENANT_ID]);
 
   const workspaceIds = (workspaces ?? []).map((row: { id: string }) => row.id);
 
@@ -353,7 +486,7 @@ export async function teardownLeakyWorkspace(): Promise<void> {
     await db.from("workspaces").delete().in("id", workspaceIds);
   }
 
-  await db.from("tenants").delete().eq("id", TEST_TENANT_ID);
+  await db.from("tenants").delete().in("id", [TEST_TENANT_ID, FOREIGN_TENANT_ID]);
 
   const { data: list } = await db.auth.admin.listUsers({ page: 1, perPage: 1000 });
   const owner = list?.users.find((user) => user.email === TEST_OWNER_EMAIL);

@@ -20,4 +20,7 @@ Project Ramp/
 # sees it (fresh checkout), so ignoring it here keeps the local invariant usable.
 ECC/
 # Sprint construction plans — working artifacts. Sprint truth lives in Notion.
-plans/
+# The leading slash matters: a bare "plans/" matches at ANY depth and silently
+# swallowed lib/plans/ and tests/plans/ when the plan data layer landed
+# (Ticket 24). Anchored to the repo root only.
+/plans/
