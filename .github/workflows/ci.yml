@@ -78,11 +78,12 @@ jobs:
       - name: Verify test credentials are present
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           PORTAL_SESSION_SECRET: ${{ secrets.PORTAL_SESSION_SECRET }}
         run: |
           missing=""
-          for name in NEXT_PUBLIC_SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY PORTAL_SESSION_SECRET; do
+          for name in NEXT_PUBLIC_SUPABASE_URL NEXT_PUBLIC_SUPABASE_ANON_KEY SUPABASE_SERVICE_ROLE_KEY PORTAL_SESSION_SECRET; do
             if [ -z "${!name}" ]; then
               missing="$missing $name"
             fi
@@ -96,6 +97,7 @@ jobs:
       - name: Run tests
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           PORTAL_SESSION_SECRET: ${{ secrets.PORTAL_SESSION_SECRET }}
         run: npm run test
