@@ -6,50 +6,63 @@ import { buildPortalHeaderTitle, getFaviconUrl } from "@/lib/branding";
 import { groupByCategory } from "@/lib/links";
 import { DEMO_TENANT_ID } from "@/lib/demo";
 import { portalCookieName, verifyPortalSessionValue } from "@/lib/portal-session";
+import { toBuyerPayload, type BuyerPayload, type LinkRow, type WorkspaceRow } from "@/lib/portal-payload";
 import { FaviconImage } from "@/app/portal/[id]/favicon-image";
 import { enterView } from "./gate-actions";
 
-type DemoWorkspace = { id: string; target_company_name: string; target_domain: string };
-
-// Fetch + demo-scope guard. /view is ONLY for the seeded demo tenant: a real
-// workspace must never be reachable through the any-@ gate (that would bypass
-// the production Security Gate), so anything that isn't a demo-tenant workspace
-// 404s. Returns just the fields the public viewport needs — no tenant_id or
-// other backend props cross into the rendered page (RSC hardening, Ticket 21).
-async function getDemoWorkspace(id: string): Promise<DemoWorkspace | null> {
+// Fetch + demo-scope guard, then the buyer boundary. /view is ONLY for the
+// seeded demo tenant: a real workspace must never be reachable through the
+// any-@ gate (that would bypass the production Security Gate), so anything that
+// isn't a demo-tenant workspace 404s.
+//
+// Everything that reaches the rendered page goes through toBuyerPayload
+// (Ticket 25). This used to hand-pick three fields inline, which was correct on
+// the day it was written and is exactly the pattern that rots: the next person
+// who needs one more field adds it here, where no test is looking.
+//
+// select("*") is deliberate. Fetching the full row and stripping in one named
+// place beats a narrow SELECT that silently pre-filters — and Ticket 26's proof
+// that a NEW private column stays out of the payload only means something if
+// the column was actually fetched.
+async function getBuyerPayload(id: string): Promise<BuyerPayload | null> {
   const supabase = createAdminClient();
-  const { data } = await supabase
-    .from("workspaces")
-    .select("id, tenant_id, target_company_name, target_domain")
-    .eq("id", id)
-    .maybeSingle();
-  if (!data || data.tenant_id !== DEMO_TENANT_ID) return null;
-  return { id: data.id, target_company_name: data.target_company_name, target_domain: data.target_domain };
+  const { data: workspace } = await supabase.from("workspaces").select("*").eq("id", id).maybeSingle();
+  if (!workspace || workspace.tenant_id !== DEMO_TENANT_ID) return null;
+
+  const { data: links } = await supabase
+    .from("links")
+    .select("*")
+    .eq("workspace_id", id)
+    // Defence in depth — toBuyerPayload filters again. Free at the index level
+    // via idx_links_workspace_shared. Without this, every private resource the
+    // demo seed plants (Ticket 27) would be served straight to the buyer.
+    .eq("visibility", "shared")
+    .order("category_header", { ascending: true })
+    .order("display_order", { ascending: true });
+
+  // plan: null until Ticket 33 renders the plan tree. Fetching a plan nothing
+  // displays would add a round trip to a latency-critical page for no buyer
+  // benefit; the boundary's plan handling is proven at the unit level against
+  // the Ticket 23 fixture, which does carry a full plan.
+  return toBuyerPayload(workspace as WorkspaceRow, null, (links ?? []) as LinkRow[]);
 }
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params;
-  const workspace = await getDemoWorkspace(id);
-  if (!workspace) {
+  const payload = await getBuyerPayload(id);
+  if (!payload) {
     return { robots: { index: false, follow: false } };
   }
   return {
-    title: buildPortalHeaderTitle(workspace.target_company_name),
-    icons: { icon: getFaviconUrl(workspace.target_domain) },
+    title: buildPortalHeaderTitle(payload.workspace.target_company_name),
+    icons: { icon: getFaviconUrl(payload.workspace.target_domain) },
     robots: { index: false, follow: false },
   };
 }
 
-async function GrantedView({ workspace }: { workspace: DemoWorkspace }) {
-  const supabase = createAdminClient();
-  const { data: links } = await supabase
-    .from("links")
-    .select("id, category_header, link_label, url_string, display_order")
-    .eq("workspace_id", workspace.id)
-    .order("category_header", { ascending: true })
-    .order("display_order", { ascending: true });
-
-  const grouped = groupByCategory(links ?? []);
+function GrantedView({ payload }: { payload: BuyerPayload }) {
+  const { workspace } = payload;
+  const grouped = groupByCategory(payload.resources);
   // Fallback branding is inherent: target_company_name is the CRM name, the
   // scraped title, or the bare domain (provisioner), and getFaviconUrl always
   // resolves to at least a default icon — so a metadata-less domain still
@@ -116,15 +129,16 @@ export default async function ViewPage({
   const { id } = await params;
   const { error } = await searchParams;
 
-  const workspace = await getDemoWorkspace(id);
-  if (!workspace) {
+  const payload = await getBuyerPayload(id);
+  if (!payload) {
     notFound();
   }
+  const { workspace } = payload;
 
   const cookieStore = await cookies();
   const session = verifyPortalSessionValue(id, cookieStore.get(portalCookieName(id))?.value);
   if (session) {
-    return <GrantedView workspace={workspace} />;
+    return <GrantedView payload={payload} />;
   }
 
   const enterViewForWorkspace = enterView.bind(null, id);

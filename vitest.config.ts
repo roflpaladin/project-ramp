@@ -42,8 +42,19 @@ export default defineConfig({
   },
 
   resolve: {
-    // Mirrors the "@/*" -> "./*" mapping in tsconfig.json, so tests import
-    // application code by the same specifier the app itself uses.
-    alias: { "@": repoRoot },
+    alias: {
+      // Mirrors the "@/*" -> "./*" mapping in tsconfig.json, so tests import
+      // application code by the same specifier the app itself uses.
+      "@": repoRoot,
+
+      // lib/portal-payload.ts is marked `import "server-only"` so it can never
+      // be pulled into a client component. That package's default export throws
+      // on import by design; only Next's "react-server" condition resolves it to
+      // the empty module. Vitest does not set that condition, so without this
+      // alias every test of the buyer boundary would die at import time. Points
+      // at the package's own empty.js rather than a hand-rolled stub, so the
+      // guard stays real in the app and inert only under test.
+      "server-only": `${repoRoot}node_modules/server-only/empty.js`,
+    },
   },
 });
