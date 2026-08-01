@@ -21,6 +21,7 @@ const BASE_URL = `http://127.0.0.1:${PORT}`;
 const READY_TIMEOUT_MS = 30_000;
 const READY_POLL_INTERVAL_MS = 250;
 const SHUTDOWN_GRACE_MS = 5_000;
+const PREFLIGHT_TIMEOUT_MS = 1_000;
 
 function isBuilt(): boolean {
   return existsSync(path.join(REPO_ROOT, ".next", "BUILD_ID"));
@@ -32,6 +33,16 @@ function buildApp(): void {
     stdio: "inherit",
     env: process.env,
   });
+}
+
+/** True if anything at all answers on the suite's port before we start ours. */
+async function somethingIsListening(): Promise<boolean> {
+  try {
+    await fetch(`${BASE_URL}/`, { redirect: "manual", signal: AbortSignal.timeout(PREFLIGHT_TIMEOUT_MS) });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function waitUntilReady(): Promise<void> {
@@ -60,6 +71,20 @@ export interface LiveServer {
  * server down.
  */
 export async function startLiveServer(): Promise<LiveServer> {
+  // waitUntilReady() cannot tell OUR server from a stranger's — it only knows
+  // that something answered on the port. A server left behind by an earlier
+  // run (or a developer's own `next start`) would therefore be adopted
+  // silently, and every assertion in this gate would then be made against
+  // whatever build that process is serving rather than the code under test. A
+  // suite that green-lights a stale build is exactly the "green and worthless"
+  // outcome Ticket 26 exists to prevent, so refuse rather than guess.
+  if (await somethingIsListening()) {
+    throw new Error(
+      `${BASE_URL} is already serving something. This suite refuses to run against a server it did not ` +
+        "start, because it cannot verify which build that server is running. Stop it and re-run.",
+    );
+  }
+
   if (!isBuilt()) {
     buildApp();
   }
