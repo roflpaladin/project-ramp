@@ -49,6 +49,19 @@ async function getBuyerPayload(id: string): Promise<BuyerPayload | null> {
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params;
+
+  // Same pre-auth disclosure as /portal/[id]: the page body below verifies a
+  // portal session, but generateMetadata runs independently of it and was
+  // emitting the customer's name and favicon domain to anyone with a workspace
+  // id. Narrower here — this route is hard-scoped to DEMO_TENANT_ID, so only
+  // demo deal rooms were exposed — but it is the same bug, and the demo tenant
+  // is precisely what gets shown to prospects.
+  const cookieStore = await cookies();
+  const session = verifyPortalSessionValue(id, cookieStore.get(portalCookieName(id))?.value);
+  if (!session) {
+    return { robots: { index: false, follow: false } };
+  }
+
   const payload = await getBuyerPayload(id);
   if (!payload) {
     return { robots: { index: false, follow: false } };

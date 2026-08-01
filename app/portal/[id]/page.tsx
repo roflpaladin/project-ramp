@@ -14,6 +14,24 @@ export async function generateMetadata({
   params: Promise<{ id: string }>;
 }): Promise<Metadata> {
   const { id } = await params;
+
+  // Metadata renders for EVERY visitor, including one who has not passed the
+  // access gate — generateMetadata runs before, and independently of, the
+  // session check in the page component below. Emitting the customer's name
+  // and domain here told anyone holding a workspace id two things they had not
+  // earned: that the deal room is real (a nonexistent id yields no title, a
+  // real one does — an enumeration oracle), and WHO it belongs to. The buyer
+  // boundary is not only about plan fields; a company name in a <title> is the
+  // seller's customer list leaking one id at a time.
+  //
+  // Return exactly what the not-found branch returns, so the two are
+  // indistinguishable without a session. Found by Ticket 26's suite.
+  const cookieStore = await cookies();
+  const session = verifyPortalSessionValue(id, cookieStore.get(portalCookieName(id))?.value);
+  if (!session) {
+    return {};
+  }
+
   const supabase = createAdminClient();
   const { data: workspace } = await supabase
     .from("workspaces")
