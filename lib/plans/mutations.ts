@@ -9,7 +9,24 @@
 // 0005 rather than guessed from the PRD, so it cannot drift from what the
 // database will actually accept.
 
+import type { PlanErrorCode } from "./errors";
 import type { OwnerSide, PlanStatus, StageStatus, StepStatus } from "./types";
+
+// PlanErrorCode's canonical home is errors.ts (mapPostgrestError needs it and
+// has no dependency on this file), re-exported here so callers of the write
+// layer can import both the result type and its error vocabulary from one
+// place — lib/plans/mutations.ts, per T28-7.
+export type { PlanErrorCode } from "./errors";
+
+/**
+ * The result every plan mutation returns instead of throwing or returning
+ * void (T28-7). Deliberately just `{ ok: false; code: PlanErrorCode }` on
+ * failure — no free-text `message` field — because every caller in this
+ * codebase (server actions, write.ts, tests) works off `code`, and a
+ * free-text field is exactly the raw-Postgres leak surface errors.ts's
+ * mapping exists to avoid.
+ */
+export type PlanActionResult<T> = { ok: true; data: T } | { ok: false; code: PlanErrorCode };
 
 export interface NewPlanInput {
   workspace_id: string;
@@ -64,3 +81,34 @@ export type StepCompletionInput =
       completed_at?: null;
       completed_by_email?: null;
     };
+
+// --- Patch shapes (T28-7) ---------------------------------------------------
+//
+// Each patch OMITS its parent FK by construction: `Omit<New*Input, fk>` first,
+// `Partial<...>` second — never a bare `Partial<New*Input>`. A bare
+// `Partial<NewPlanInput>` would leave `workspace_id` an assignable (if
+// optional) key on the patch type, and an update path that forwarded it
+// unfiltered could move a plan between two of the seller's own workspaces.
+// lib/plans/write.ts's updatePlan/updateStage/updateStep never accept the
+// parent FK for exactly this reason — it isn't on the type to accept.
+
+/** workspace_id omitted by construction — see the note above. */
+export type PlanPatch = Partial<Omit<NewPlanInput, "workspace_id">>;
+
+/** plan_id omitted by construction — see the note above. */
+export type StagePatch = Partial<Omit<NewStageInput, "plan_id">>;
+
+/** stage_id omitted by construction — see the note above. */
+export type StepPatch = Partial<Omit<NewStepInput, "stage_id">>;
+
+/**
+ * The full, ordered id set for one parent (a plan's stages, or a stage's
+ * steps) after a move-up/move-down reorder (Ticket 29, decision 5 — drag-and-
+ * drop was cut). Matches 0007's RPC wire format exactly: an ordered id array,
+ * not (id, display_order) pairs (Notion amendment, plans/sprint-6-7-replan.md
+ * §10) — a pairs array can express duplicates, gaps and negatives, which is
+ * why "validate the whole batch" was an AC in the first place; an ordered
+ * array of the full set cannot express any of those, so that AC is deleted
+ * rather than tested.
+ */
+export type ReorderInput = readonly string[];
