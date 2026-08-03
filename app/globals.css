@@ -1,5 +1,62 @@
+/* Ramp design tokens (Notion "UI/UX and Design Guidelines" — live page is the
+   source of truth; this is the mirror). Every brand colour in the app MUST
+   resolve to one of these variables — never a hardcoded hex, never Tailwind's
+   neutral- or emerald-scale palette for brand colour. Both themes ship: light here,
+   dark under [data-theme="dark"] (app/theme-provider.tsx sets that attribute
+   via next-themes, following the OS preference). */
 :root {
   color-scheme: light dark;
+
+  --paper: #fcfbf8;
+  --mist: #f1f0eb;
+  --line: #e2e1db;
+  --slate: #6b6e76;
+  --ink: #17181c;
+  --onyx: #0d0e11;
+
+  --signal: #a85b12;
+  --signal-fg: #ffffff;
+  --signal-hover: #8f4c0d;
+  --signal-press: #764009;
+  --signal-wash: #fbf1e3;
+
+  --state-done: #17936b;
+  --state-risk: #d9503e;
+  --state-wait: var(--slate);
+  --wash-done: #e7f3ee;
+  --wash-risk: #faeae7;
+
+  --seller-tint: #eceef9;
+  --seller-marker: #41477f;
+  --buyer-tint: #f3ebf1;
+  --buyer-marker: #6e4a6b;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --paper: #17181c;
+  --mist: #202329;
+  --line: #2a2d34;
+  --slate: #9ba0aa;
+  --ink: #f1f0eb;
+  --onyx: #0d0e11;
+
+  --signal: #e3a34a;
+  --signal-fg: #17181c;
+  --signal-hover: #eeb162;
+  --signal-press: #c98a36;
+  --signal-wash: #2a2118;
+
+  --state-done: #2fb98a;
+  --state-risk: #f0705c;
+  --wash-done: #14261f;
+  --wash-risk: #2a1917;
+
+  --seller-tint: #1e2130;
+  --seller-marker: #8d95c9;
+  --buyer-tint: #2a1f28;
+  --buyer-marker: #c39bbe;
 }
 
 * {
@@ -50,8 +107,8 @@ input, button {
 button {
   cursor: pointer;
   border: none;
-  background: #111;
-  color: #fff;
+  background: var(--onyx);
+  color: var(--paper);
   width: fit-content;
 }
 
