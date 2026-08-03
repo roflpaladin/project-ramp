@@ -1,7 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
+import { redirect } from "next/navigation";
+import { requireSeller } from "@/lib/plans/require-seller";
 
 function isValidUrl(value: string): boolean {
   try {
@@ -14,6 +15,11 @@ function isValidUrl(value: string): boolean {
 }
 
 export async function addLink(workspaceId: string, formData: FormData) {
+  const seller = await requireSeller();
+  if (!seller) {
+    redirect("/admin/login");
+  }
+
   const category_header = String(formData.get("category_header") ?? "").trim();
   const link_label = String(formData.get("link_label") ?? "").trim();
   const url_string = String(formData.get("url_string") ?? "").trim();
@@ -25,7 +31,7 @@ export async function addLink(workspaceId: string, formData: FormData) {
     return;
   }
 
-  const supabase = await createClient();
+  const supabase = seller.client;
 
   // New links append to the end of their category's existing order.
   const { count } = await supabase
@@ -51,10 +57,14 @@ export async function addLink(workspaceId: string, formData: FormData) {
 }
 
 export async function deleteLink(workspaceId: string, linkId: string) {
-  const supabase = await createClient();
+  const seller = await requireSeller();
+  if (!seller) {
+    redirect("/admin/login");
+  }
+
   // No explicit tenant/workspace check needed here beyond RLS: the
   // "AE manages own tenant links" policy already blocks deleting a row
   // whose workspace isn't in the caller's tenant.
-  await supabase.from("links").delete().eq("id", linkId);
+  await seller.client.from("links").delete().eq("id", linkId);
   revalidatePath(`/admin/workspaces/${workspaceId}`);
 }
