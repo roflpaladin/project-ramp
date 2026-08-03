@@ -10,6 +10,9 @@ out/
 next-env.d.ts
 # Written by `npm run test:coverage` (vitest v8 provider).
 coverage/
+# Playwright local-run artifacts (Ticket 29 e2e specs are local-run, never a CI job).
+test-results/
+playwright-report/
 
 # Internal working docs — keep out of the public repo
 Project Ramp/
