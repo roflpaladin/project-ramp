@@ -48,6 +48,7 @@ import {
 import { extractRscFlightPayload } from "./support/rsc-flight";
 import { startLiveServer, type LiveServer } from "./support/live-server";
 import { pendingReason, routeFileExists } from "./support/route-probe";
+import { buildSellerCookieHeader } from "./support/seller-http-session";
 
 /**
  * Pattern-based, never a hand-maintained list of field names — a list only
@@ -582,6 +583,37 @@ describe("Tier 2 — GET /api/plans/[ws] (Ticket 28)", () => {
       const response = await fetch(`${server.baseUrl}/api/plans/${seeded.workspaceId}`);
       expect(response.status).toBe(401);
     },
+  });
+
+  // T28-12 (Sprint 6, Ticket 28; plans/sprint-6-7-replan.md §6, decision 2).
+  // POSITIVE CONTROL. Without this, the two 401 assertions above are
+  // satisfiable by a handler that is unconditionally `return new
+  // Response(null, { status: 401 })` — every negative case would pass while
+  // the route did nothing real. This is the third time this suite has needed
+  // a positive control after a confirmed vacuous pass (see the /portal and
+  // /view "Your deal room" / "Shared resource 1" controls above); making it a
+  // habit here rather than special-casing it.
+  //
+  // Signs in through a REAL @supabase/ssr server client (support/
+  // seller-http-session.ts) rather than hand-building the session cookie, so
+  // this exercises the exact cookie format lib/supabase/server.ts's
+  // createClient() reads back — not a shortcut that could drift from what a
+  // real browser sends.
+  //
+  // Registered directly as `it`, not through tier2(): this assertion is not
+  // gated on the route's existence (T28-11 ships it in the same ticket as
+  // this test), so there is nothing for it to self-activate against.
+  it("returns 200 with the plan tree for an authenticated seller of the owning tenant", async () => {
+    const cookie = await buildSellerCookieHeader(seeded.ownerEmail, seeded.ownerPassword);
+
+    const response = await fetch(`${server.baseUrl}/api/plans/${seeded.workspaceId}`, {
+      headers: { cookie },
+    });
+    expect(response.status).toBe(200);
+
+    const json = (await response.json()) as { data: { id: string; workspace_id: string } };
+    expect(json.data.id).toBe(seeded.planId);
+    expect(json.data.workspace_id).toBe(seeded.workspaceId);
   });
 });
 
