@@ -45,7 +45,7 @@ async function somethingIsListening(): Promise<boolean> {
   }
 }
 
-async function waitUntilReady(): Promise<void> {
+async function pollUntilReady(): Promise<void> {
   const deadline = Date.now() + READY_TIMEOUT_MS;
   while (Date.now() < deadline) {
     try {
@@ -57,6 +57,43 @@ async function waitUntilReady(): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, READY_POLL_INTERVAL_MS));
   }
   throw new Error(`live Next.js server did not become ready within ${READY_TIMEOUT_MS}ms`);
+}
+
+/**
+ * Races the readiness poll against the child process itself. Without this, a
+ * spawn failure (`"error"`) or an early crash (`"exit"` before we ever saw a
+ * ready response) would be invisible to pollUntilReady() — it only knows how
+ * to fetch, not that the process it's fetching against is already gone — so
+ * startup would burn the entire READY_TIMEOUT_MS and then report whatever
+ * (possibly empty) diagnostics were captured. That blind-timeout-with-empty-
+ * diagnostics profile is exactly the unreproduced live-server startup flake
+ * this hardens against: fail fast, with the real cause, instead.
+ */
+async function waitUntilReady(child: ChildProcess): Promise<void> {
+  let onError!: (error: Error) => void;
+  let onExit!: (code: number | null, signal: NodeJS.Signals | null) => void;
+
+  const childFailed = new Promise<never>((_, reject) => {
+    onError = (error) => {
+      reject(new Error(`live Next.js server process failed to spawn: ${error.message}`));
+    };
+    onExit = (code, signal) => {
+      reject(
+        new Error(
+          `live Next.js server exited during startup before becoming ready (code=${code}, signal=${signal})`,
+        ),
+      );
+    };
+    child.once("error", onError);
+    child.once("exit", onExit);
+  });
+
+  try {
+    await Promise.race([pollUntilReady(), childFailed]);
+  } finally {
+    child.off("error", onError);
+    child.off("exit", onExit);
+  }
 }
 
 export interface LiveServer {
@@ -95,14 +132,20 @@ export async function startLiveServer(): Promise<LiveServer> {
     stdio: "pipe",
   });
 
-  const startupErrors: string[] = [];
-  child.stderr?.on("data", (chunk: Buffer) => startupErrors.push(chunk.toString()));
+  // Captures BOTH streams. Next prints its readiness line and some startup
+  // errors to stdout, not only stderr, so stderr-only capture can under-report
+  // exactly the failure this is meant to diagnose. Interleaved into one
+  // ordered buffer so the diagnostic message reads as a single transcript
+  // rather than two streams a reader has to reconcile by hand.
+  const startupOutput: string[] = [];
+  child.stdout?.on("data", (chunk: Buffer) => startupOutput.push(chunk.toString()));
+  child.stderr?.on("data", (chunk: Buffer) => startupOutput.push(chunk.toString()));
 
   try {
-    await waitUntilReady();
+    await waitUntilReady(child);
   } catch (error) {
     child.kill();
-    throw new Error(`${(error as Error).message}\nServer stderr:\n${startupErrors.join("")}`);
+    throw new Error(`${(error as Error).message}\nServer output (stdout+stderr):\n${startupOutput.join("")}`);
   }
 
   return {
