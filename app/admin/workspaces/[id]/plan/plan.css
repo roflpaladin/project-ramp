@@ -1,0 +1,247 @@
+/* Tailwind for the seller plan-builder surface (Sprint 6, Ticket 29). Same
+   layering choice as /settings and /view: theme layered, utilities
+   unlayered so class specificity beats globals.css's plain element
+   selectors (form, label, button, input). Brand colour comes entirely from
+   the Ramp tokens defined globally in app/globals.css — everything below
+   only adds layout utilities plus the handful of rules Tailwind utilities
+   can't express with CSS custom properties alone. */
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css";
+
+[data-surface="plan-builder"] {
+  min-height: 100dvh;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+/* Quality floor: prefers-reduced-motion respected. Nothing on this surface
+   animates beyond a hover/focus colour transition, but this keeps that true
+   even as the surface grows. */
+@media (prefers-reduced-motion: reduce) {
+  [data-surface="plan-builder"] * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+/* ---- buttons: secondary only ------------------------------------------
+   Every button on this page is the secondary style (paper fill, 1px line,
+   ink text). The page's one Signal budget (design system MUST: "exactly one
+   Signal element per decision scope") is spent entirely on the live step's
+   wash + rail below — no button on this surface competes for it. */
+
+[data-surface="plan-builder"] .plan-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+[data-surface="plan-builder"] .plan-btn:hover:not(:disabled) {
+  background: var(--mist);
+}
+[data-surface="plan-builder"] .plan-btn:disabled {
+  background: var(--mist);
+  color: var(--slate);
+  cursor: not-allowed;
+}
+/* Focus ring is the one MUST-level exception to "one Signal element": it is
+   a transient keyboard-interaction affordance, not a static page element,
+   and the design system's own button rule requires it on every interactive
+   element regardless of the one-Signal-per-scope rule. */
+[data-surface="plan-builder"] .plan-btn:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+[data-surface="plan-builder"] .plan-btn--icon {
+  height: 32px;
+  width: 32px;
+  padding: 0;
+  border-radius: 10px;
+}
+
+/* ---- status badge: dot + text, never colour-only ---------------------- */
+
+[data-surface="plan-builder"] .plan-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink);
+  white-space: nowrap;
+}
+[data-surface="plan-builder"] .plan-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+}
+
+/* ---- side chip: identity whisper, distinct from status semantics ------ */
+
+[data-surface="plan-builder"] .plan-owner-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+[data-surface="plan-builder"] .plan-owner-chip[data-side="seller"] {
+  background: var(--seller-tint);
+  color: var(--seller-marker);
+}
+[data-surface="plan-builder"] .plan-owner-chip[data-side="buyer"] {
+  background: var(--buyer-tint);
+  color: var(--buyer-marker);
+}
+
+/* ---- stage / step rows ------------------------------------------------- */
+
+[data-surface="plan-builder"] .plan-stage {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+[data-surface="plan-builder"] .plan-step {
+  position: relative;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 16px 12px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* The rail is a real element (span.plan-step-rail), not a ::before pseudo —
+   its colour is set inline per row (owner marker, or the live gradient) so
+   the "one Signal element" contract is provable in a component test without
+   a loaded stylesheet. This CSS only positions it. */
+[data-surface="plan-builder"] .plan-step-rail {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  border-radius: 12px 0 0 12px;
+}
+
+[data-surface="plan-builder"] .plan-step-title {
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+[data-surface="plan-builder"] .plan-step-meta {
+  margin: 0;
+  font-family: "Geist Mono", "SFMono-Regular", ui-monospace, monospace;
+  font-size: 12px;
+  color: var(--slate);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+
+/* ---- owner toggle: visible, never a dropdown --------------------------- */
+
+[data-surface="plan-builder"] .plan-owner-toggle {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 2px;
+  gap: 2px;
+  width: fit-content;
+}
+[data-surface="plan-builder"] .plan-owner-option {
+  position: relative;
+  display: inline-flex;
+}
+[data-surface="plan-builder"] .plan-owner-input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+[data-surface="plan-builder"] .plan-owner-label {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--slate);
+  cursor: pointer;
+}
+[data-surface="plan-builder"] .plan-owner-option[data-side="seller"] .plan-owner-input:checked + .plan-owner-label {
+  background: var(--seller-tint);
+  color: var(--seller-marker);
+}
+[data-surface="plan-builder"] .plan-owner-option[data-side="buyer"] .plan-owner-input:checked + .plan-owner-label {
+  background: var(--buyer-tint);
+  color: var(--buyer-marker);
+}
+[data-surface="plan-builder"] .plan-owner-input:focus-visible + .plan-owner-label {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+
+/* ---- form fields --------------------------------------------------------- */
+
+[data-surface="plan-builder"] .plan-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 500;
+}
+[data-surface="plan-builder"] .plan-input,
+[data-surface="plan-builder"] .plan-select,
+[data-surface="plan-builder"] .plan-textarea {
+  font: inherit;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--ink);
+}
+[data-surface="plan-builder"] .plan-input:focus-visible,
+[data-surface="plan-builder"] .plan-select:focus-visible,
+[data-surface="plan-builder"] .plan-textarea:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+
+[data-surface="plan-builder"] .plan-error {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: var(--wash-risk);
+  color: var(--state-risk);
+  font-size: 13px;
+}
+
+@media (max-width: 480px) {
+  [data-surface="plan-builder"] .plan-stage {
+    padding: 12px;
+  }
+}
