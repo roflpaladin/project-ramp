@@ -1,3 +1,4 @@
+import "server-only";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
 // Server-only, service-role client. Buyer /portal sessions are validated via a

@@ -442,6 +442,19 @@ interface Tier2Probe {
 
 const tier2Registry: Tier2Probe[] = [];
 
+interface Tier2Wiring {
+  readonly routeFile: string;
+  /** True iff tier2() actually wired a live `it` for this probe, not `it.skip`. */
+  readonly live: boolean;
+}
+
+// Records what tier2() ACTUALLY did, separately from tier2Registry (which
+// only records what was registered) and separately from Tier2Probe itself
+// (which must carry no enabled/disabled/skip field — see the sibling meta
+// test below). This is what lets the meta-test catch a hand-forced
+// `it.skip`, not just re-derive routeFileExists() a second time.
+const tier2Wiring: Tier2Wiring[] = [];
+
 /**
  * Registers one Tier 2 probe as BOTH a collection-time entry (for the meta
  * test below) and an actual vitest test. Registration happens synchronously,
@@ -455,6 +468,11 @@ function tier2(probe: Tier2Probe): void {
   tier2Registry.push(probe);
   const exists = routeFileExists(probe.routeFile);
   const runner = exists ? it : it.skip;
+  // Captures the runner tier2() actually chose (via `runner === it`), not
+  // just `exists`, so a future edit that hand-forces `it.skip` for a route
+  // that exists on disk is caught by the meta-test below rather than by
+  // re-deriving the same routeFileExists() call a second time.
+  tier2Wiring.push({ routeFile: probe.routeFile, live: runner === it });
   runner(exists ? probe.name : pendingReason(probe.name, probe.ticket), probe.assert);
 }
 
@@ -588,18 +606,15 @@ describe("Tier 2 registry — self-activation meta-test", () => {
   });
 
   it("fails if any registered route exists on disk without a corresponding live (non-skipped) test", () => {
-    // tier2() above wires `it` vs `it.skip` from the exact same
-    // routeFileExists() call used here — by construction there is no third
-    // state. This re-derivation exists so a refactor that broke that wiring
-    // (e.g. someone hand-adding an `it.skip` for a route that now exists)
-    // fails a test instead of silently shipping a soft gate.
-    const staleRoutes = tier2Registry.filter((probe) => routeFileExists(probe.routeFile));
-    // As of Sprint 5, neither Ticket 28 nor Ticket 35 has landed — this array
-    // must be empty. The day either route file appears, its probe above
-    // switches from `it.skip` to `it` in the SAME commit that adds the route,
-    // because the check lives in code, not in a comment.
-    for (const probe of staleRoutes) {
-      expect(probe.assert).toBeTypeOf("function");
+    // tier2Wiring records the runner tier2() ACTUALLY chose (`runner === it`),
+    // not merely a second call to routeFileExists() — asserting `entry.live`
+    // against a fresh routeFileExists() call is what catches a refactor that
+    // breaks the wiring (e.g. someone hand-forcing `it.skip` for a route that
+    // now exists on disk), which a self-referential check re-deriving only
+    // from routeFileExists() could never fail.
+    expect(tier2Wiring.length).toBeGreaterThan(0);
+    for (const entry of tier2Wiring) {
+      expect(entry.live).toBe(routeFileExists(entry.routeFile));
     }
   });
 });

@@ -65,6 +65,9 @@ export async function verifyAccess(workspaceId: string, formData: FormData) {
     .update({ consumed_at: new Date().toISOString() })
     .eq("id", candidate.id);
 
+  // Signed, workspace-scoped session cookie (Sprint 1 primitive). Path "/" — not
+  // /portal/[id] — so the SAME cookie is sent to /api/track when the buyer clicks
+  // a resource link, and later to /api/steps/[id]/complete.
   const { value, expiresAt } = createPortalSessionValue(workspaceId, email);
   const cookieStore = await cookies();
   cookieStore.set(portalCookieName(workspaceId), value, {
@@ -72,7 +75,7 @@ export async function verifyAccess(workspaceId: string, formData: FormData) {
     secure: true,
     sameSite: "lax",
     expires: expiresAt,
-    path: `/portal/${workspaceId}`,
+    path: "/",
   });
 
   redirect(`/portal/${workspaceId}`);
