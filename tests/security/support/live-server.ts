@@ -96,6 +96,24 @@ async function waitUntilReady(child: ChildProcess): Promise<void> {
   }
 }
 
+/**
+ * Signals the child's entire process group (negative pid) rather than just
+ * the child itself. Requires the child to have been spawned with
+ * `detached: true`, which makes its pid the pgid for itself and everything
+ * it (or npx, or next) forks. Swallows ESRCH — the group already being gone
+ * is a successful teardown, not a failure — so this never rejects and can
+ * safely be called from both the happy-path stop() and the startup
+ * error-path cleanup.
+ */
+function killProcessGroup(child: ChildProcess, signal: NodeJS.Signals): void {
+  if (typeof child.pid !== "number") return;
+  try {
+    process.kill(-child.pid, signal);
+  } catch {
+    // ESRCH (group already exited) or similar — nothing left to signal.
+  }
+}
+
 export interface LiveServer {
   readonly baseUrl: string;
   stop(): Promise<void>;
@@ -126,10 +144,17 @@ export async function startLiveServer(): Promise<LiveServer> {
     buildApp();
   }
 
+  // detached: true puts the child in its own process group (its pid becomes
+  // the group's pgid). That's required for the teardown below: npx forks the
+  // real `next start` process, and `next start` itself forks a worker, so a
+  // SIGTERM aimed only at the npx leader is not reliably forwarded to either
+  // descendant and can leave the real server holding the port after stop()
+  // resolves.
   const child: ChildProcess = spawn("npx", ["next", "start", "-p", String(PORT)], {
     cwd: REPO_ROOT,
     env: process.env,
     stdio: "pipe",
+    detached: true,
   });
 
   // Captures BOTH streams. Next prints its readiness line and some startup
@@ -144,7 +169,7 @@ export async function startLiveServer(): Promise<LiveServer> {
   try {
     await waitUntilReady(child);
   } catch (error) {
-    child.kill();
+    killProcessGroup(child, "SIGTERM");
     throw new Error(`${(error as Error).message}\nServer output (stdout+stderr):\n${startupOutput.join("")}`);
   }
 
@@ -153,11 +178,19 @@ export async function startLiveServer(): Promise<LiveServer> {
     stop: () =>
       new Promise<void>((resolve) => {
         child.once("exit", () => resolve());
-        child.kill("SIGTERM");
+        // Signal the whole process GROUP (negative pid), not just the npx
+        // leader: npx does not reliably forward SIGTERM to the real `next
+        // start` process it launches, and `next start` forks its own worker
+        // on top of that. A leader-only kill() reliably leaves the actual
+        // server holding port 4173 after this promise resolves, which is
+        // exactly what caused the next suite's somethingIsListening()
+        // preflight to (correctly) refuse to run. Do not "simplify" this
+        // back to child.kill().
+        killProcessGroup(child, "SIGTERM");
         // Belt-and-braces: a hung child would otherwise leave the process
         // unable to exit and the whole suite hanging.
         setTimeout(() => {
-          child.kill("SIGKILL");
+          killProcessGroup(child, "SIGKILL");
           resolve();
         }, SHUTDOWN_GRACE_MS).unref();
       }),
