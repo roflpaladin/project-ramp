@@ -1,0 +1,212 @@
+/* Scoped styles for the resource-library / links section of the workspace
+   detail page (Sprint 6, Ticket 30). Same layering choice as
+   plan.css/settings.css/view.css: theme layered, utilities unlayered, so
+   Tailwind utility classes reliably beat globals.css's plain element
+   selectors (form, label, button, input) on this page. Brand colour comes
+   entirely from the Ramp tokens in app/globals.css — nothing here hardcodes
+   a hex. Scoped to [data-surface="workspace-links"] only (set on this
+   page's <main>) so nothing else on /admin is affected. */
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css";
+
+@media (prefers-reduced-motion: reduce) {
+  [data-surface="workspace-links"] * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+/* ---- link rows ----------------------------------------------------------- */
+
+[data-surface="workspace-links"] .wsl-link-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+[data-surface="workspace-links"] .wsl-link-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--paper);
+}
+
+/* T30-4: fenced private treatment. Dashed border is the row-level cue;
+   PrivateBadge (icon + "Private to you" text) is the other two legs of the
+   same "unmistakable at a glance, never colour-only" requirement. Neutral
+   --mist wash only — never Signal amber, a private resource is a state, not
+   an action. */
+[data-surface="workspace-links"] .wsl-link-row[data-visibility="private"] {
+  border-style: dashed;
+  background: var(--mist);
+}
+
+[data-surface="workspace-links"] .wsl-link-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  min-width: 0;
+}
+
+[data-surface="workspace-links"] .wsl-link-anchor {
+  color: var(--ink);
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+[data-surface="workspace-links"] .wsl-link-anchor:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+
+[data-surface="workspace-links"] .wsl-link-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* ---- private badge: icon + text, never colour-only ------------------------ */
+
+[data-surface="workspace-links"] .wsl-private-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px dashed var(--line);
+  /* Explicit --paper rather than inheriting the private row's --mist wash:
+     slate-on-mist measures 4.47:1 in light mode, just under the design
+     system's 4.5:1 body/label contrast floor. Slate-on-paper clears it
+     (4.93:1 light, 6.76:1 dark) while staying neutral, never Signal. */
+  background: var(--paper);
+  color: var(--slate);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+[data-surface="workspace-links"] .wsl-private-icon {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+}
+
+/* ---- visibility control: two real buttons, never a dropdown --------------- */
+
+[data-surface="workspace-links"] .wsl-visibility {
+  display: inline-flex;
+  gap: 4px;
+}
+[data-surface="workspace-links"] .wsl-visibility form,
+[data-surface="workspace-links"] .wsl-inline-form {
+  display: inline-flex;
+  margin: 0;
+  max-width: none;
+}
+[data-surface="workspace-links"] .wsl-visibility-option {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--slate);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+[data-surface="workspace-links"] .wsl-visibility-option:hover:not(:disabled) {
+  background: var(--mist);
+}
+[data-surface="workspace-links"] .wsl-visibility-option[data-active="true"] {
+  background: var(--mist);
+  color: var(--ink);
+  cursor: default;
+}
+[data-surface="workspace-links"] .wsl-visibility-option:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+
+/* ---- buttons: secondary style, matching the plan-builder surface ---------- */
+
+[data-surface="workspace-links"] .wsl-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  width: fit-content;
+  transition: background-color 0.15s ease;
+}
+[data-surface="workspace-links"] .wsl-btn:hover:not(:disabled) {
+  background: var(--mist);
+}
+[data-surface="workspace-links"] .wsl-btn:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+
+/* ---- resource_type sub-heading (T30-5) ------------------------------------ */
+
+[data-surface="workspace-links"] .wsl-type-heading {
+  margin: 0;
+  font-family: "Geist Mono", "SFMono-Regular", ui-monospace, monospace;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--slate);
+  text-transform: none;
+}
+
+/* ---- add-link form fields --------------------------------------------------- */
+
+[data-surface="workspace-links"] .wsl-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 500;
+}
+[data-surface="workspace-links"] .wsl-input,
+[data-surface="workspace-links"] .wsl-select {
+  font: inherit;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--ink);
+}
+[data-surface="workspace-links"] .wsl-input:focus-visible,
+[data-surface="workspace-links"] .wsl-select:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+
+/* ---- nav link to the plan builder ------------------------------------------ */
+
+[data-surface="workspace-links"] .wsl-plan-nav {
+  margin: 4px 0 20px;
+}
+
+@media (max-width: 480px) {
+  [data-surface="workspace-links"] .wsl-link-row {
+    padding: 10px;
+  }
+}

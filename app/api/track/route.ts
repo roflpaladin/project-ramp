@@ -39,11 +39,21 @@ export async function GET(request: Request) {
   // Requiring workspace_id to match on the link row (not just linkId) is
   // what blocks cross-workspace link probing -- a linkId from a different
   // workspace simply won't be found here.
+  //
+  // The visibility filter (Sprint 6, Ticket 30, fix B2) closes a related
+  // hole: without it, a buyer holding a private link's id could still
+  // resolve the resource after the seller flips it private. A private hit
+  // MUST fall through to the exact same "not found" branch below as a
+  // nonexistent id -- never a distinct response (e.g. 404) for "private"
+  // versus "nonexistent". Distinguishing the two would rebuild an
+  // enumeration oracle: a caller could brute-force link ids and learn which
+  // ones exist-but-are-private purely from the response shape.
   const { data: link } = await supabase
     .from("links")
     .select("id, url_string")
     .eq("id", linkId)
     .eq("workspace_id", wsId)
+    .eq("visibility", "shared")
     .maybeSingle();
 
   if (!link) {
