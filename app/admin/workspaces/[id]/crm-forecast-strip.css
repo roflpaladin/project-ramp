@@ -1,0 +1,174 @@
+/* Scoped styles for the seller-private CRM/forecast strip (Sprint 6, Ticket
+   31). Same layering choice as workspace-links.css/plan.css: theme layered,
+   utilities unlayered. Brand colour comes entirely from the Ramp tokens in
+   app/globals.css — nothing here hardcodes a hex. Scoped to
+   [data-surface="crm-strip"] so nothing else on /admin is affected. */
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css";
+
+@media (prefers-reduced-motion: reduce) {
+  [data-surface="crm-strip"] * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+/* ---- fence: dashed border, --mist wash, matching Ticket 30's private idiom
+   (icon + text, never colour alone) ------------------------------------- */
+
+[data-surface="crm-strip"] {
+  display: block;
+  margin: 16px 0 24px;
+  padding: 14px 16px;
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  background: var(--mist);
+}
+
+[data-surface="crm-strip"] .cfs-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+[data-surface="crm-strip"] .cfs-fence-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--slate);
+}
+
+[data-surface="crm-strip"] .cfs-lock-icon {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+}
+
+/* Illustrative affordance (T31-5) — never lets this read as a live feed. */
+[data-surface="crm-strip"] .cfs-illustrative-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px dashed var(--line);
+  background: var(--paper);
+  color: var(--slate);
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* ---- cached crm_* fields ------------------------------------------------ */
+
+[data-surface="crm-strip"] .cfs-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px 20px;
+  margin: 0 0 10px;
+}
+
+[data-surface="crm-strip"] .cfs-field dt {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--slate);
+}
+
+[data-surface="crm-strip"] .cfs-field dd {
+  margin: 2px 0 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+/* T31-3: crm_amount (and other numeric/date fields) in Geist Mono. */
+[data-surface="crm-strip"] .cfs-mono {
+  font-family: "Geist Mono", "SFMono-Regular", ui-monospace, monospace;
+}
+
+/* T31-3: crm_synced_at as "as of <time>" — staleness visible, not silent. */
+[data-surface="crm-strip"] .cfs-synced {
+  margin: 0 0 12px;
+  font-family: "Geist Mono", "SFMono-Regular", ui-monospace, monospace;
+  font-size: 12px;
+  color: var(--slate);
+}
+
+/* ---- forecast nudge: the one Signal in this scope (T31-4) -------------- */
+
+[data-surface="crm-strip"] .cfs-nudge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 12px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+}
+[data-surface="crm-strip"] .cfs-nudge[data-tone="signal"] {
+  border-color: var(--signal);
+  background: var(--signal-wash);
+}
+[data-surface="crm-strip"] .cfs-nudge-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+}
+
+/* ---- internal chat: masked behind a reveal action (T31-6) -------------- */
+
+[data-surface="crm-strip"] .cfs-internal-chat {
+  margin-top: 4px;
+}
+
+[data-surface="crm-strip"] .cfs-reveal-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px dashed var(--line);
+  background: var(--paper);
+  color: var(--slate);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  list-style: none;
+}
+[data-surface="crm-strip"] .cfs-reveal-btn::-webkit-details-marker {
+  display: none;
+}
+[data-surface="crm-strip"] .cfs-reveal-btn:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+
+[data-surface="crm-strip"] .cfs-internal-chat-link {
+  display: block;
+  margin-top: 6px;
+  font-family: "Geist Mono", "SFMono-Regular", ui-monospace, monospace;
+  font-size: 12px;
+  color: var(--ink);
+  word-break: break-all;
+}
+[data-surface="crm-strip"] .cfs-internal-chat-link:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+
+@media (max-width: 480px) {
+  [data-surface="crm-strip"] {
+    padding: 12px;
+  }
+}
