@@ -67,6 +67,52 @@ export const PRIVATE_LINK_URLS = [
   `https://internal-only.example.com/board-deck-${LEAK_TOKEN}`,
 ] as const;
 
+// Ticket 30 (T30-9/T30-10). Explicit id constants, index-aligned with
+// PRIVATE_LINK_URLS / SHARED_LINK_URLS above, so callers that need a
+// *specific* link's id (e.g. the B2 /api/track regression, which posts a
+// real private link id) don't have to re-derive the
+// `7e570000-0000-4000-8000-00000000002${index}` convention by hand in a
+// second file.
+export const PRIVATE_LINK_IDS = [
+  "7e570000-0000-4000-8000-000000000020",
+  "7e570000-0000-4000-8000-000000000021",
+] as const;
+
+export const SHARED_LINK_IDS = [
+  "7e570000-0000-4000-8000-000000000010",
+  "7e570000-0000-4000-8000-000000000011",
+  "7e570000-0000-4000-8000-000000000012",
+] as const;
+
+// Ticket 30 (T30-7/T30-8). A dedicated link whose visibility the toggle
+// tests flip live, kept separate from PRIVATE_LINK_URLS/SHARED_LINK_URLS so
+// those tests can never disturb the fixed-visibility assertions the rest of
+// this suite (and buyer-boundary.spec.ts) make against the other rows. NOT
+// inserted by seedLeakyWorkspace() itself — tests/security/link-visibility-
+// toggle.spec.ts inserts (and, via full-workspace teardown, cleans up) this
+// row on its own, so files that assert exact link counts against the base
+// seed (tests/harness/seed-leaky-workspace.spec.ts,
+// tests/plans/portal-payload.spec.ts) are unaffected. Starts "shared" — the
+// same state a freshly created link defaults to (0005's column default,
+// mirrored explicitly by addLink per T30-3's comment) — so T30-7 has a real
+// shared->private transition to prove.
+export const TEST_TOGGLE_LINK_ID = "7e570000-0000-4000-8000-000000000023";
+export const TOGGLE_TOKEN = "TOGGLECHECK";
+export const TOGGLE_LINK_URL = `https://docs.example.com/toggle-target-${TOGGLE_TOKEN}`;
+export const TOGGLE_LINK_LABEL = `Toggle target ${TOGGLE_TOKEN}`;
+
+// Ticket 30 (T30-9). A private link that also carries a resource_type
+// (T30-5's new column), proving the resource_type grouping introduces no
+// second leak path for a link that is already private. Deliberately a
+// SEPARATE row from PRIVATE_LINK_URLS rather than adding resource_type to
+// an existing one, so a future edit to those two rows can't silently widen
+// or narrow what this specific assertion covers. NOT inserted by
+// seedLeakyWorkspace() — see TEST_TOGGLE_LINK_ID's comment above for why.
+export const TEST_PRIVATE_RESOURCE_TYPE_LINK_ID = "7e570000-0000-4000-8000-000000000024";
+export const PRIVATE_RESOURCE_TYPE_LINK_URL = `https://internal-only.example.com/deck-${LEAK_TOKEN}`;
+export const PRIVATE_RESOURCE_TYPE_LINK_LABEL = `Private deck ${LEAK_TOKEN}`;
+export const PRIVATE_RESOURCE_TYPE_VALUE = "deck";
+
 export const INTERNAL_CHAT_URL = `https://internal-only.example.com/war-room-${LEAK_TOKEN}`;
 export const SELLER_PRIVATE_NOTE = `SELLER PRIVATE ${LEAK_TOKEN} — champion is wobbling on price`;
 export const BUYER_STEP_PRIVATE_NOTE = `SELLER PRIVATE ${LEAK_TOKEN} — chase legal directly, not via champion`;
@@ -103,6 +149,12 @@ export const BUYER_STEP_LABEL = `Confirm the technical validation call ${VISIBLE
  */
 export const FORBIDDEN_VALUES: readonly string[] = [
   ...PRIVATE_LINK_URLS,
+  // NOTE: PRIVATE_RESOURCE_TYPE_LINK_URL (Ticket 30, T30-9) is deliberately
+  // NOT included here — that row is not part of the base seed (see the
+  // comment on the `links` array above), so it would not always exist when
+  // this array is checked from other spec files, making the check there
+  // vacuous. tests/security/link-visibility-toggle.spec.ts asserts its
+  // absence directly, scoped to the file that actually seeds it.
   INTERNAL_CHAT_URL,
   SELLER_PRIVATE_NOTE,
   BUYER_STEP_PRIVATE_NOTE,
@@ -266,7 +318,7 @@ export async function seedLeakyWorkspace(): Promise<LeakyWorkspace> {
 
   const links = [
     ...SHARED_LINK_URLS.map((url, index) => ({
-      id: `7e570000-0000-4000-8000-00000000001${index}`,
+      id: SHARED_LINK_IDS[index],
       workspace_id: TEST_WORKSPACE_ID,
       category_header: "Getting started",
       link_label: `Shared resource ${index + 1} ${VISIBLE_TOKEN}`,
@@ -275,7 +327,7 @@ export async function seedLeakyWorkspace(): Promise<LeakyWorkspace> {
       visibility: "shared",
     })),
     ...PRIVATE_LINK_URLS.map((url, index) => ({
-      id: `7e570000-0000-4000-8000-00000000002${index}`,
+      id: PRIVATE_LINK_IDS[index],
       workspace_id: TEST_WORKSPACE_ID,
       category_header: "Internal",
       link_label: `Private resource ${index + 1} ${LEAK_TOKEN}`,
@@ -283,6 +335,15 @@ export async function seedLeakyWorkspace(): Promise<LeakyWorkspace> {
       display_order: index,
       visibility: "private",
     })),
+    // Ticket 30's toggle/resource-type rows (TEST_TOGGLE_LINK_ID,
+    // TEST_PRIVATE_RESOURCE_TYPE_LINK_ID) are DELIBERATELY NOT seeded here.
+    // tests/harness/seed-leaky-workspace.spec.ts and
+    // tests/plans/portal-payload.spec.ts both assert exact shared/private
+    // counts against this base set ("three shared and two private links");
+    // adding rows here regressed both. tests/security/link-visibility-
+    // toggle.spec.ts inserts and cleans up its own two rows instead — see
+    // that file's beforeAll — while still importing the id/url constants
+    // exported below so the two files can't drift on what those ids mean.
   ];
   failOn("links", (await db.from("links").upsert(links)).error);
 
