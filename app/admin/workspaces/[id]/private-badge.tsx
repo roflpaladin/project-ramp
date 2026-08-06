@@ -1,6 +1,9 @@
 import type { SVGProps } from "react";
 
-function LockIcon(props: SVGProps<SVGSVGElement>) {
+// Exported (not just used locally) so the seller-private CRM/forecast strip
+// (Ticket 31, crm-forecast-strip.tsx) can reuse the exact same fenced-private
+// lock glyph rather than duplicating the SVG — same fence idiom, one icon.
+export function LockIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg
       viewBox="0 0 16 16"

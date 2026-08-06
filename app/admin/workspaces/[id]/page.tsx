@@ -2,10 +2,29 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { groupByCategoryAndType, RESOURCE_TYPE_OPTIONS } from "@/lib/links";
+import { getPlanForSeller } from "@/lib/plans/queries";
+import type { PlanStepRow } from "@/lib/plans/types";
+import { computeEngagementSignal, type EngagementEventInput } from "@/lib/plans/engagement";
+import { getCrmForecastForWorkspace } from "@/lib/crm/forecast";
 import { addLink } from "./links-actions";
 import { LinkUrlField } from "./link-url-field";
 import { LinkRow } from "./link-row";
+import { CrmForecastStrip } from "./crm-forecast-strip";
 import "./workspace-links.css";
+
+// Ticket 31 (T31-4). Not yet configurable — Ticket 36 (T36-4) threads a
+// per-tenant/per-workspace value into computeEngagementSignal without adding
+// any new engagement math; until then this is the single call-site constant.
+const STALL_THRESHOLD_DAYS = 5;
+
+/** Flattens the plan tree's stages into a single ordered step list — the
+ * shape computeEngagementSignal needs. A workspace without a live plan yet
+ * (plan === null) contributes zero steps, which is an ordinary state for
+ * engagement.ts (see its "waiting" branch), not an error. */
+function flattenSteps(plan: Awaited<ReturnType<typeof getPlanForSeller>>): PlanStepRow[] {
+  if (!plan) return [];
+  return plan.stages.flatMap((stage) => stage.steps);
+}
 
 export default async function WorkspaceDetailPage({
   params,
@@ -17,7 +36,7 @@ export default async function WorkspaceDetailPage({
 
   const { data: workspace } = await supabase
     .from("workspaces")
-    .select("id, target_company_name, target_domain")
+    .select("id, target_company_name, target_domain, internal_chat_url")
     .eq("id", id)
     .single();
 
@@ -35,6 +54,33 @@ export default async function WorkspaceDetailPage({
   const grouped = groupByCategoryAndType(links ?? []);
   const addLinkForWorkspace = addLink.bind(null, id);
 
+  // Ticket 31 — seller-private CRM/forecast strip. Three RLS-scoped reads
+  // through the same seller `supabase` client already created above:
+  //   1. the cached crm_* fields (lib/crm/forecast.ts, T31-2 — not modified here)
+  //   2. the plan tree, for step owner_side/status (lib/plans/queries.ts, Ticket 28)
+  //   3. workspace_analytics events, for real buyer engagement (T31-1's input)
+  const [crmForecast, plan, { data: analyticsRows }] = await Promise.all([
+    getCrmForecastForWorkspace(id, supabase),
+    getPlanForSeller(id, supabase),
+    supabase
+      .from("workspace_analytics")
+      .select("action_type, created_at")
+      .eq("workspace_id", id)
+      .order("created_at", { ascending: false }),
+  ]);
+
+  const engagementEvents: EngagementEventInput[] = (analyticsRows ?? []).map((row) => ({
+    actionType: row.action_type,
+    createdAt: row.created_at,
+  }));
+
+  const engagementSignal = computeEngagementSignal(
+    engagementEvents,
+    flattenSteps(plan),
+    new Date(), // the clock is supplied at the call site; engagement.ts stays pure
+    STALL_THRESHOLD_DAYS,
+  );
+
   return (
     <main data-surface="workspace-links">
       <h1>{workspace.target_company_name}</h1>
@@ -45,6 +91,20 @@ export default async function WorkspaceDetailPage({
           Go to plan builder
         </Link>
       </p>
+
+      {/* T31-5: getCrmForecastForWorkspace returning null means "not visible
+          to this caller" (RLS yielded zero rows) — hide the strip cleanly
+          rather than rendering it with empty fields. The source === null
+          case ("exists, never synced") is handled inside the component
+          itself. */}
+      {crmForecast ? (
+        <CrmForecastStrip
+          targetCompanyName={workspace.target_company_name}
+          forecast={crmForecast}
+          engagementSignal={engagementSignal}
+          internalChatUrl={workspace.internal_chat_url}
+        />
+      ) : null}
 
       <h2>Links</h2>
       {[...grouped.entries()].map(([category, byType]) => {
