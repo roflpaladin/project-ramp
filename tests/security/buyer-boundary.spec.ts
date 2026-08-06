@@ -56,6 +56,13 @@ import { buildSellerCookieHeader } from "./support/seller-http-session";
  */
 const FORBIDDEN: readonly RegExp[] = [
   /crm_/i,
+  // T32-6 (Sprint 6, Ticket 32): this pattern, plus INTERNAL_CHAT_URL in
+  // FORBIDDEN_VALUES (tests/fixtures/seed-leaky-workspace.ts) via
+  // forbiddenValuesFor() below, already cover workspaces.internal_chat_url
+  // end-to-end -- payload JSON, rendered HTML, and RSC flight, on both
+  // /portal/[id] and /view/[id]. See also the explicit chat_url-passes /
+  // internal_chat_url-drops assertion in tests/plans/portal-payload.spec.ts.
+  // Confirmed free coverage; deliberately no duplicate test added here.
   /internal_chat/i,
   /private_note/i,
   /tenant_id/i,

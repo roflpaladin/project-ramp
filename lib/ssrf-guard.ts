@@ -72,3 +72,31 @@ export async function assertPublicHttpUrl(value: string): Promise<URL> {
 
   return parsed;
 }
+
+// T32-1 (Sprint 6, Ticket 32; plans/sprint-6-7-replan.md §6). A thin,
+// additive wrapper -- NOT a replacement for assertPublicHttpUrl above, which
+// intentionally permits http: because /api/scrape-meta depends on that.
+// This one is for seller-controlled URLs that are stored and later rendered
+// as a raw, clickable href (workspaces.chat_url / internal_chat_url) rather
+// than fetched server-side, so there's no SSRF surface to guard here (no
+// hostname/DNS resolution needed): the risk is scheme-based, a stored
+// `javascript:`/`data:`/`vbscript:` URL executing in the buyer's browser.
+// https:-only rather than http+https, because unlike assertPublicHttpUrl
+// nothing here depends on http: working.
+//
+// Deliberately synchronous and pure (no I/O) so it stays a trivially
+// unit-testable throwing function for the T32-5 scheme-rejection tests.
+export function assertHttpsUrl(value: string): URL {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error("Not a valid URL.");
+  }
+
+  if (parsed.protocol !== "https:") {
+    throw new Error("URL scheme must be https.");
+  }
+
+  return parsed;
+}

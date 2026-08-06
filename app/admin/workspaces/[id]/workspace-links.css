@@ -199,6 +199,50 @@
   outline-offset: 2px;
 }
 
+/* ---- page header: title left, chat presence + edit disclosure top-right (T32-3/T32-8) ---- */
+
+[data-surface="workspace-links"] .wsl-page-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px 24px;
+}
+
+[data-surface="workspace-links"] .wsl-chat-chrome {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+/* Edit-chat-links disclosure — same collapsed-by-default idiom as
+   add-step-form.tsx and the CRM strip's internal-chat reveal, so the raw
+   urls aren't sitting in the chrome by default. */
+[data-surface="workspace-links"] .wsl-chat-edit > summary {
+  list-style: none;
+  cursor: pointer;
+}
+[data-surface="workspace-links"] .wsl-chat-edit > summary::-webkit-details-marker {
+  display: none;
+}
+[data-surface="workspace-links"] .wsl-chat-edit > summary:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+
+[data-surface="workspace-links"] .wsl-chat-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--paper);
+  min-width: 260px;
+}
+
 /* ---- nav link to the plan builder ------------------------------------------ */
 
 [data-surface="workspace-links"] .wsl-plan-nav {

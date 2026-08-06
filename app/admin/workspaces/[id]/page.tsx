@@ -10,6 +10,8 @@ import { addLink } from "./links-actions";
 import { LinkUrlField } from "./link-url-field";
 import { LinkRow } from "./link-row";
 import { CrmForecastStrip } from "./crm-forecast-strip";
+import { ChatPresence } from "./chat-presence";
+import { ChatUrlForm } from "./chat-url-form";
 import "./workspace-links.css";
 
 // Ticket 31 (T31-4). Not yet configurable — Ticket 36 (T36-4) threads a
@@ -36,7 +38,7 @@ export default async function WorkspaceDetailPage({
 
   const { data: workspace } = await supabase
     .from("workspaces")
-    .select("id, target_company_name, target_domain, internal_chat_url")
+    .select("id, target_company_name, target_domain, chat_url, internal_chat_url")
     .eq("id", id)
     .single();
 
@@ -83,8 +85,33 @@ export default async function WorkspaceDetailPage({
 
   return (
     <main data-surface="workspace-links">
-      <h1>{workspace.target_company_name}</h1>
-      <p>Domain: {workspace.target_domain}</p>
+      {/* T32-3/T32-8: top-right chrome, coordinated with Ticket 30's rail —
+          the CRM strip and Links section below are untouched, this only
+          adds a header row above them. ChatPresence hides itself entirely
+          when both urls are null (T32-4), so a workspace with no chat links
+          set yet still shows the "Edit chat links" disclosure as the only
+          way to set them the first time. */}
+      <div className="wsl-page-header">
+        <div>
+          <h1>{workspace.target_company_name}</h1>
+          <p>Domain: {workspace.target_domain}</p>
+        </div>
+        <div className="wsl-chat-chrome">
+          <ChatPresence
+            chatUrl={workspace.chat_url}
+            internalChatUrl={workspace.internal_chat_url}
+            audience="seller"
+          />
+          <details className="wsl-chat-edit">
+            <summary className="wsl-btn">Edit chat links</summary>
+            <ChatUrlForm
+              workspaceId={id}
+              chatUrl={workspace.chat_url}
+              internalChatUrl={workspace.internal_chat_url}
+            />
+          </details>
+        </div>
+      </div>
 
       <p className="wsl-plan-nav">
         <Link href={`/admin/workspaces/${id}/plan`} className="wsl-btn">

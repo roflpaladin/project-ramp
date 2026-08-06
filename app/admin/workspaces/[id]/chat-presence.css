@@ -1,0 +1,69 @@
+/* Scoped styles for the reusable team-chat presence control (Sprint 6,
+   Ticket 32). Self-contained (own data-surface, own class prefix) rather
+   than reusing workspace-links.css's wsl-* classes, because this component
+   is designed to also mount on the buyer surface later (Tickets 33/34) --
+   it must not depend on a seller-only page's scoping. Same layering choice
+   as the other per-component css files on this page: theme layered,
+   utilities unlayered. Brand colour comes entirely from the Ramp tokens in
+   app/globals.css -- nothing here hardcodes a hex. */
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css";
+
+@media (prefers-reduced-motion: reduce) {
+  [data-surface="chat-presence"] * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+[data-surface="chat-presence"] {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Neutral Slate throughout -- chat is not the decision Signal (one Signal
+   per scope already belongs to the forecast nudge). Signal only appears
+   here as the universal focus-visible ring, same convention every other
+   interactive control on this page already uses. */
+[data-surface="chat-presence"] .cp-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+[data-surface="chat-presence"] .cp-btn:hover {
+  background: var(--mist);
+}
+[data-surface="chat-presence"] .cp-btn:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+
+/* War room button: dashed border + --mist wash, the same fenced idiom
+   PrivateBadge (T30-4) and the CRM strip's internal-chat reveal (T31-6) use
+   to mark something seller-only -- unmistakable at a glance, icon plus
+   text, never colour alone. */
+[data-surface="chat-presence"] .cp-btn[data-tone="internal"] {
+  border-style: dashed;
+  background: var(--mist);
+}
+
+[data-surface="chat-presence"] .cp-icon {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  color: var(--slate);
+}
