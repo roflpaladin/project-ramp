@@ -1,0 +1,458 @@
+/* Scoped styles for the buyer workspace renderer (Sprint 7, Ticket 33).
+   Same layering choice as plan.css / crm-forecast-strip.css: theme layered,
+   utilities unlayered so class specificity beats globals.css's plain
+   element selectors. Brand colour comes entirely from the Ramp tokens in
+   app/globals.css — nothing here hardcodes a hex. Scoped to
+   [data-surface="buyer-workspace"] so nothing else on either buyer route is
+   affected.
+
+   Density: the buyer posture from the guideline (§6) — body-lg (16/24),
+   56px row height, 16–24px spacing steps, roughly 40% fewer controls than
+   the seller's dense tables. Same component vocabulary as the seller plan
+   builder (dot + text status, side rails), just a calmer instance of it. */
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css";
+
+[data-surface="buyer-workspace"] {
+  display: block;
+  min-height: 100dvh;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: "Geist", "Inter", system-ui, -apple-system, sans-serif;
+  font-size: 16px;
+  line-height: 24px;
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 24px 16px 64px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-surface="buyer-workspace"] * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+[data-surface="buyer-workspace"] .bw-mono {
+  font-family: "Geist Mono", "SFMono-Regular", ui-monospace, monospace;
+}
+
+/* ---- identity header ----------------------------------------------------
+   Whitelabel confinement (T33-7): the buyer's own scraped accent — distinct
+   from the fixed --seller-marker / --buyer-marker "side" tokens used
+   everywhere else for ownership — is permitted in exactly one place in this
+   component, the identity-rule underline below the company name. BuyerPayload
+   carries no accent/logo field yet (no scrape pipeline wired to it), so
+   --buyer-accent always falls back to --ink today; the seam exists so a
+   future payload field is a one-line change here, not a redesign. */
+
+[data-surface="buyer-workspace"] .bw-identity {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+/* .bw-identity-logo wraps FaviconImage (app/portal/[id]/favicon-image.tsx),
+   which renders at 32px natively — capped here to the whitelabel logo
+   maximum (§4 MUST: "max 24px tall") regardless of the favicon service's
+   native size or FaviconImage's own fallback state. !important because
+   FaviconImage's error-fallback <div> sets its 32px size as an inline
+   style, which otherwise outranks a plain class selector. */
+[data-surface="buyer-workspace"] .bw-identity-logo {
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+[data-surface="buyer-workspace"] .bw-identity-logo img,
+[data-surface="buyer-workspace"] .bw-identity-logo > div {
+  width: 24px !important;
+  height: 24px !important;
+  border-radius: 6px;
+  object-fit: contain;
+}
+
+[data-surface="buyer-workspace"] .bw-identity-name {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 24px;
+}
+
+[data-surface="buyer-workspace"] .bw-identity-rule {
+  display: block;
+  width: 48px;
+  height: 3px;
+  margin-top: 4px;
+  border-radius: 999px;
+  background: var(--buyer-accent, var(--ink));
+}
+
+/* ---- runway banner ------------------------------------------------------ */
+
+[data-surface="buyer-workspace"] .bw-runway {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 16px 20px;
+  margin-bottom: 24px;
+}
+
+[data-surface="buyer-workspace"] .bw-runway-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 10px;
+}
+
+[data-surface="buyer-workspace"] .bw-runway-day {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+[data-surface="buyer-workspace"] .bw-runway-dates {
+  font-size: 13px;
+  color: var(--slate);
+}
+
+[data-surface="buyer-workspace"] .bw-runway-track {
+  position: relative;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--mist);
+}
+
+[data-surface="buyer-workspace"] .bw-runway-marker {
+  position: absolute;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: var(--ink);
+  border: 2px solid var(--paper);
+  transform: translate(-50%, -50%);
+}
+
+[data-surface="buyer-workspace"] .bw-runway-empty {
+  margin: 0;
+  font-size: 14px;
+  color: var(--slate);
+}
+
+/* ---- "Your move" / "Their move" card — the one Signal element ---------
+   Same idiom as crm-forecast-strip.css's .cfs-nudge (Ticket 31): a signal
+   border plus --signal-wash fill, never a solid amber block, so the card
+   reads as "this is where the action is" rather than adding a second loud
+   surface. */
+
+[data-surface="buyer-workspace"] .bw-signal-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid var(--signal);
+  background: var(--signal-wash);
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 24px;
+}
+
+[data-surface="buyer-workspace"] .bw-signal-card--quiet {
+  border-color: var(--line);
+  background: var(--mist);
+}
+
+[data-surface="buyer-workspace"] .bw-signal-eyebrow {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: var(--slate);
+}
+
+[data-surface="buyer-workspace"] .bw-signal-heading {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 26px;
+}
+
+[data-surface="buyer-workspace"] .bw-signal-step-label {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+[data-surface="buyer-workspace"] .bw-signal-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  font-size: 13px;
+  color: var(--slate);
+}
+
+/* ---- staged plan --------------------------------------------------------- */
+
+[data-surface="buyer-workspace"] .bw-spine {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+[data-surface="buyer-workspace"] .bw-staged-plan {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+[data-surface="buyer-workspace"] .bw-stage-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+[data-surface="buyer-workspace"] .bw-stage {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+[data-surface="buyer-workspace"] .bw-stage[data-current="true"] {
+  background: var(--signal-wash);
+  border-color: var(--signal);
+}
+
+[data-surface="buyer-workspace"] .bw-stage-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+[data-surface="buyer-workspace"] .bw-stage-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+/* The ramp gesture — the rising-plane clip-path from the brand guideline
+   (§9), reused here as the "section marker" for the current stage. Solid
+   --signal fill on a small shape, same treatment the seller plan builder
+   gives the live step's rail; it is not itself a control and carries no
+   click handler, so it does not compete with the Your-move card above as a
+   second "shout" — it is that same one decision, echoed at its location in
+   the plan. */
+[data-surface="buyer-workspace"] .bw-ramp-gesture {
+  width: 16px;
+  height: 12px;
+  flex: 0 0 auto;
+  background: var(--signal);
+  clip-path: polygon(0 100%, 100% 0, 100% 100%);
+}
+
+[data-surface="buyer-workspace"] .bw-stage-empty {
+  margin: 0;
+  font-size: 14px;
+  color: var(--slate);
+}
+
+/* ---- step rows: identity rail (who) + status badge (what) -------------- */
+
+[data-surface="buyer-workspace"] .bw-step {
+  position: relative;
+  min-height: 56px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 16px 12px 20px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+}
+
+[data-surface="buyer-workspace"] .bw-step-rail {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  border-radius: 12px 0 0 12px;
+}
+[data-surface="buyer-workspace"] .bw-step[data-owner="seller"] .bw-step-rail {
+  background: var(--seller-marker);
+}
+[data-surface="buyer-workspace"] .bw-step[data-owner="buyer"] .bw-step-rail {
+  background: var(--buyer-marker);
+}
+
+[data-surface="buyer-workspace"] .bw-step-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+[data-surface="buyer-workspace"] .bw-step-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+[data-surface="buyer-workspace"] .bw-step-meta {
+  margin: 0;
+  font-size: 12px;
+  color: var(--slate);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+
+/* ---- status badge + owner chip: dot + text, never colour alone --------- */
+
+[data-surface="buyer-workspace"] .bw-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink);
+  white-space: nowrap;
+}
+[data-surface="buyer-workspace"] .bw-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+}
+
+[data-surface="buyer-workspace"] .bw-owner-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+[data-surface="buyer-workspace"] .bw-owner-chip[data-side="seller"] {
+  background: var(--seller-tint);
+  color: var(--seller-marker);
+}
+[data-surface="buyer-workspace"] .bw-owner-chip[data-side="buyer"] {
+  background: var(--buyer-tint);
+  color: var(--buyer-marker);
+}
+
+/* ---- rail: quiet and Slate throughout (T33-4) --------------------------- */
+
+[data-surface="buyer-workspace"] .bw-layout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 24px;
+}
+@media (min-width: 768px) {
+  [data-surface="buyer-workspace"] .bw-layout {
+    grid-template-columns: minmax(0, 1fr) 300px;
+    align-items: start;
+  }
+}
+
+[data-surface="buyer-workspace"] .bw-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+[data-surface="buyer-workspace"] .bw-rail-section {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 16px;
+  background: var(--mist);
+}
+
+[data-surface="buyer-workspace"] .bw-rail-heading {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--slate);
+}
+
+[data-surface="buyer-workspace"] .bw-rail-empty {
+  margin: 0;
+  font-size: 13px;
+  color: var(--slate);
+}
+
+[data-surface="buyer-workspace"] .bw-rail-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+[data-surface="buyer-workspace"] .bw-rail-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+}
+
+[data-surface="buyer-workspace"] .bw-rail-item-owner {
+  color: var(--slate);
+}
+
+[data-surface="buyer-workspace"] .bw-rail-link,
+[data-surface="buyer-workspace"] .bw-rail-invite {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+}
+[data-surface="buyer-workspace"] .bw-rail-link:hover,
+[data-surface="buyer-workspace"] .bw-rail-invite:hover {
+  background: var(--line);
+}
+[data-surface="buyer-workspace"] .bw-rail-link:focus-visible,
+[data-surface="buyer-workspace"] .bw-rail-invite:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+
+/* ---- empty plan state (T33-5) ------------------------------------------- */
+
+[data-surface="buyer-workspace"] .bw-empty-plan {
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  padding: 24px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+[data-surface="buyer-workspace"] .bw-empty-plan p {
+  margin: 0;
+  color: var(--slate);
+}
+
+@media (max-width: 480px) {
+  [data-surface="buyer-workspace"] .bw-stage,
+  [data-surface="buyer-workspace"] .bw-runway,
+  [data-surface="buyer-workspace"] .bw-signal-card {
+    padding: 14px;
+  }
+}
