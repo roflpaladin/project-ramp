@@ -25,11 +25,26 @@ import {
   TEST_BLOCKED_STEP_ID,
   TEST_BUYER_STEP_ID,
   TEST_DONE_STEP_ID,
+  TEST_STAGE_TWO_ID,
   seedLeakyWorkspace,
   teardownLeakyWorkspace,
   type LeakyWorkspace,
 } from "../fixtures/seed-leaky-workspace";
 import { startLiveServer, type LiveServer } from "./support/live-server";
+
+// T35-6/T35-7 (Sprint 7, Ticket 35; plans/sprint-6-7-replan.md §7 — QA).
+// Three additional buyer-owned, OPEN steps dedicated to this file's own
+// body-is-ignored and replay-semantics tests, kept separate from
+// TEST_BUYER_STEP_ID (whose "happy path" test above already consumes its one
+// completion) so those tests never race or double-consume the same row.
+// Not exported from tests/fixtures/seed-leaky-workspace.ts — scoped to this
+// file only, mirroring tests/security/link-visibility-toggle.spec.ts's own
+// dedicated-row idiom. No separate teardown is needed: these live under
+// TEST_STAGE_TWO_ID, which cascades away with the rest of the workspace in
+// teardownLeakyWorkspace() (success_plans -> plan_stages -> plan_steps).
+const FRESH_STEP_EMPTY_BODY_ID = "7e570000-0000-4000-8000-00000000000b";
+const FRESH_STEP_SPOOFED_BODY_ID = "7e570000-0000-4000-8000-00000000000c";
+const FRESH_STEP_REPLAY_ID = "7e570000-0000-4000-8000-00000000000d";
 
 let seeded: LeakyWorkspace;
 let server: LiveServer;
@@ -39,10 +54,14 @@ function sessionCookieHeader(workspaceId: string, email: string): string {
   return `${portalCookieName(workspaceId)}=${encodeURIComponent(value)}`;
 }
 
-async function completeStep(stepId: string, cookie?: string): Promise<Response> {
+async function completeStep(stepId: string, cookie?: string, body?: unknown): Promise<Response> {
   return fetch(`${server.baseUrl}/api/steps/${stepId}/complete`, {
     method: "POST",
-    headers: cookie ? { cookie } : {},
+    headers: {
+      ...(cookie ? { cookie } : {}),
+      ...(body !== undefined ? { "content-type": "application/json" } : {}),
+    },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
   });
 }
 
@@ -60,6 +79,49 @@ beforeAll(async () => {
   seeded = await seedLeakyWorkspace();
   server = await startLiveServer();
 }, 120_000);
+
+beforeAll(async () => {
+  // Runs after the seed above (vitest executes same-scope beforeAll hooks in
+  // declaration order), so TEST_STAGE_TWO_ID already exists. upsert, not
+  // insert, so a rerun after a previous failed run's cleanup is idempotent —
+  // explicitly resets status back to 'open' and clears completed_at /
+  // completed_by_email every run, matching the other fixtures' idiom for
+  // dedicated file-scoped rows.
+  const db = createAdminClient();
+  const { error } = await db.from("plan_steps").upsert([
+    {
+      id: FRESH_STEP_EMPTY_BODY_ID,
+      stage_id: TEST_STAGE_TWO_ID,
+      label: "T35-6 fresh step (empty body)",
+      owner_side: "buyer",
+      status: "open",
+      display_order: 3,
+      completed_at: null,
+      completed_by_email: null,
+    },
+    {
+      id: FRESH_STEP_SPOOFED_BODY_ID,
+      stage_id: TEST_STAGE_TWO_ID,
+      label: "T35-6 fresh step (spoofed body)",
+      owner_side: "buyer",
+      status: "open",
+      display_order: 4,
+      completed_at: null,
+      completed_by_email: null,
+    },
+    {
+      id: FRESH_STEP_REPLAY_ID,
+      stage_id: TEST_STAGE_TWO_ID,
+      label: "T35-7 fresh step (replay)",
+      owner_side: "buyer",
+      status: "open",
+      display_order: 5,
+      completed_at: null,
+      completed_by_email: null,
+    },
+  ]);
+  if (error) throw new Error(`step-completion.spec.ts fresh-step seed failed: ${error.message}`);
+}, 30_000);
 
 afterAll(async () => {
   // Cleanup must never depend on the tests above having passed -- each step
@@ -164,4 +226,132 @@ describe("POST /api/steps/[id]/complete", () => {
     const response = await completeStep(crypto.randomUUID());
     expect(response.status).toBe(404);
   });
+
+  it(
+    "T35-6: the request body is never parsed -- an empty body and a body spoofing owner_side/" +
+      "completed_by_email/completed_at both complete the step under the SESSION's own email and a " +
+      "server-generated completed_at",
+    async () => {
+      const cookie = sessionCookieHeader(seeded.workspaceId, TEST_APPROVED_EMAIL);
+      const fakeCompletedAt = "2000-01-01T00:00:00.000Z";
+
+      // Arrange + Act: one POST with an empty body, one POST with a body
+      // spoofing every field this endpoint would otherwise need to trust the
+      // session for -- both under the exact same session cookie.
+      const emptyBodyResponse = await completeStep(FRESH_STEP_EMPTY_BODY_ID, cookie, {});
+      const spoofedBodyResponse = await completeStep(FRESH_STEP_SPOOFED_BODY_ID, cookie, {
+        owner_side: "buyer",
+        completed_by_email: "attacker@evil.test",
+        completed_at: fakeCompletedAt,
+      });
+
+      expect(emptyBodyResponse.status).toBe(200);
+      expect(spoofedBodyResponse.status).toBe(200);
+
+      const db = createAdminClient();
+      const { data: rows } = await db
+        .from("plan_steps")
+        .select("id, completed_by_email, completed_at")
+        .in("id", [FRESH_STEP_EMPTY_BODY_ID, FRESH_STEP_SPOOFED_BODY_ID]);
+      const emptyBodyRow = rows?.find((row) => row.id === FRESH_STEP_EMPTY_BODY_ID);
+      const spoofedBodyRow = rows?.find((row) => row.id === FRESH_STEP_SPOOFED_BODY_ID);
+
+      // Assert: both rows carry the SESSION's email -- never a value read
+      // from either body. This is stronger than "a spoofed field gets
+      // overridden": the spoofed field never had a chance to be read at all,
+      // because the handler never parses the body (T35-1).
+      expect(emptyBodyRow?.completed_by_email).toBe(TEST_APPROVED_EMAIL);
+      expect(spoofedBodyRow?.completed_by_email).toBe(TEST_APPROVED_EMAIL);
+      expect(spoofedBodyRow?.completed_by_email).not.toBe("attacker@evil.test");
+
+      // Both completed_at values are server-generated: neither is null, and
+      // the spoofed one is specifically NOT the attacker's fake past date.
+      expect(emptyBodyRow?.completed_at).toBeTruthy();
+      expect(spoofedBodyRow?.completed_at).toBeTruthy();
+      expect(spoofedBodyRow?.completed_at).not.toBe(fakeCompletedAt);
+      const recentFloor = Date.now() - 60_000;
+      expect(new Date(emptyBodyRow!.completed_at as string).getTime()).toBeGreaterThan(recentFloor);
+      expect(new Date(spoofedBodyRow!.completed_at as string).getTime()).toBeGreaterThan(recentFloor);
+    },
+  );
+
+  it(
+    "T35-7: replaying a completion is a true no-op against the conditional update -- analytics count " +
+      "stays unchanged (not merely un-duplicated) and completed_at is strictly equal to the first call's " +
+      "own value",
+    async () => {
+      const cookie = sessionCookieHeader(seeded.workspaceId, TEST_APPROVED_EMAIL);
+      const before = await countStepCompleteRows(FRESH_STEP_REPLAY_ID);
+      expect(before).toBe(0);
+
+      const first = await completeStep(FRESH_STEP_REPLAY_ID, cookie);
+      expect(first.status).toBe(200);
+      const firstJson = (await first.json()) as { data: { completed_at: string } };
+      expect(firstJson.data.completed_at).toBeTruthy();
+
+      const afterFirst = await countStepCompleteRows(FRESH_STEP_REPLAY_ID);
+      expect(afterFirst).toBe(before + 1);
+
+      const second = await completeStep(FRESH_STEP_REPLAY_ID, cookie);
+      expect(second.status).toBe(200);
+      const secondJson = (await second.json()) as { data: { completed_at: string } };
+
+      // Strictly equal to the FIRST call's own value -- proves this branch
+      // read back the exact row the first call wrote, not a re-completion
+      // that happened to land on the same timestamp by coincidence.
+      expect(secondJson.data.completed_at).toBe(firstJson.data.completed_at);
+
+      const afterSecond = await countStepCompleteRows(FRESH_STEP_REPLAY_ID);
+      // UNCHANGED from the count right after the FIRST call -- not merely "no
+      // duplicate of one specific row" (which a check-then-act, non-
+      // conditional-update implementation could also satisfy by accident).
+      // Proves the conditional update's WHERE (status = 'open') did not
+      // match on the replay at all, so the analytics insert (T35-4, gated on
+      // a genuine "completed" transition) never ran a second time.
+      expect(afterSecond).toBe(afterFirst);
+    },
+  );
+
+  it(
+    "T35-11: a malformed step id forces a genuine Postgres error, and the response is clean 4xx/5xx " +
+      "JSON -- never raw Postgres text, a stack trace, or SQL",
+    async () => {
+      // "not-a-valid-uuid" is not merely absent (which would 404 via
+      // resolveStepWorkspace's `if (!data) return null` branch) -- Postgres
+      // itself rejects the WHERE clause's implicit uuid cast (SQLSTATE
+      // 22P02, "invalid input syntax for type uuid"), so this reaches
+      // resolveStepWorkspace's `if (error) throw error` line and is a
+      // GENUINE, unmocked database error, not a hand-thrown one. Confirmed
+      // manually against a live `next start` before writing this assertion:
+      // 500 { "error": "UNKNOWN_ERROR" }, nothing else in the body.
+      const response = await completeStep("not-a-valid-uuid");
+
+      // lib/plans/errors.ts's mapPostgrestError has no named-constraint
+      // branch for 22P02, so this falls through to its UNKNOWN_ERROR
+      // default (500) rather than one of the specific 4xx codes -- still
+      // funnelled through errorResponse(), still clean JSON, never an
+      // unhandled rejection reaching Next's own default error page (which
+      // would render HTML, not JSON, and this test's JSON.parse below would
+      // fail loudly if that regressed).
+      expect(response.status).toBe(500);
+
+      const bodyText = await response.text();
+      const json = JSON.parse(bodyText) as Record<string, unknown>;
+
+      // The ONLY key in the body is the mapped error code -- nothing else
+      // leaked alongside it (no `details`, no `hint`, no raw `message`).
+      expect(Object.keys(json)).toEqual(["error"]);
+      expect(json.error).toBe("UNKNOWN_ERROR");
+
+      // No raw Postgres text of any kind reaches the client: not the
+      // SQLSTATE, not Postgres's own "invalid input syntax" wording, not a
+      // table/column name, not a stack frame, not a SQL keyword.
+      expect(bodyText).not.toMatch(/invalid input syntax/i);
+      expect(bodyText).not.toMatch(/22P02/);
+      expect(bodyText).not.toMatch(/postgres/i);
+      expect(bodyText).not.toMatch(/plan_steps/i);
+      expect(bodyText).not.toMatch(/\bat [A-Za-z0-9_$.]+ \(/); // a stack-frame line's shape
+      expect(bodyText).not.toMatch(/\bselect\b|\binsert\b|\bupdate\b|\bwhere\b/i);
+    },
+  );
 });
