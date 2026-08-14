@@ -10,7 +10,7 @@
   --paper: #fcfbf8;
   --mist: #f1f0eb;
   --line: #e2e1db;
-  --slate: #6b6e76;
+  --slate: #686b73;
   --ink: #17181c;
   --onyx: #0d0e11;
 
@@ -20,8 +20,8 @@
   --signal-press: #764009;
   --signal-wash: #fbf1e3;
 
-  --state-done: #17936b;
-  --state-risk: #d9503e;
+  --state-done: #0e7a57;
+  --state-risk: #c03a28;
   --state-wait: var(--slate);
   --wash-done: #e7f3ee;
   --wash-risk: #faeae7;
