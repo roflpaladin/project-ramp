@@ -1,0 +1,89 @@
+/* Scoped styles for the seller-dashboard stall alert (Sprint 7, Ticket 36;
+   T36-5). Same layering choice as the sibling components on this page
+   (crm-forecast-strip.css, chat-presence.css, workspace-links.css): theme
+   layered, utilities unlayered. Brand colour comes entirely from the Ramp
+   tokens in app/globals.css — nothing here hardcodes a hex. Scoped to
+   [data-surface="stall-alert"] so nothing else on /admin is affected. */
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css";
+
+@media (prefers-reduced-motion: reduce) {
+  [data-surface="stall-alert"] * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+/* Container stays neutral for BOTH "waiting" and "stalled" — the state
+   itself is never a loud colour. Only .wsa-cta below carries Signal. */
+[data-surface="stall-alert"] {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin: 4px 0 20px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--mist);
+}
+
+[data-surface="stall-alert"] .wsa-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Status is never colour-only: dot + text. The dot is ALWAYS Slate — both
+   "waiting" and "stalled" are states, never a loud colour (no --state-risk
+   red here; stalled is waiting-flavoured, not an error). */
+[data-surface="stall-alert"] .wsa-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+  background: var(--state-wait);
+}
+
+[data-surface="stall-alert"] .wsa-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+/* ---- the one Signal element (T36-5) ------------------------------------- */
+
+[data-surface="stall-alert"] .wsa-cta {
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 10px;
+  background: var(--signal);
+  color: var(--signal-fg);
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background-color 0.15s ease;
+}
+[data-surface="stall-alert"] .wsa-cta:hover {
+  background: var(--signal-hover);
+}
+[data-surface="stall-alert"] .wsa-cta:active {
+  background: var(--signal-press);
+}
+/* Focus ring is the one MUST-level exception to "one Signal element" — a
+   transient keyboard-interaction affordance, not a static page element
+   (see plan.css's identical rule/comment for the established precedent). */
+[data-surface="stall-alert"] .wsa-cta:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+
+@media (max-width: 480px) {
+  [data-surface="stall-alert"] {
+    padding: 10px 12px;
+  }
+}
