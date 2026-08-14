@@ -36,8 +36,11 @@ import {
   type WorkspaceRow,
 } from "@/lib/portal-payload";
 import {
+  BUYER_STEP_LABEL,
   FOREIGN_WORKSPACE_ID,
   PRIVATE_LINK_URLS,
+  SELLER_STEP_LABEL,
+  SELLER_STEP_OWNER_NAME,
   TEST_APPROVED_EMAIL,
   TEST_SELLER_STEP_ID,
   forbiddenValuesFor,
@@ -289,6 +292,24 @@ describe("Tier 1 — must be green to close Sprint 5", () => {
       // reaching toBuyerPayload — green, and guarding nothing.
       expect(body).toContain("Shared resource 1");
 
+      // T34-2 (plans/sprint-6-7-replan.md §7): BuyerWorkspaceView is now
+      // mounted here (both loaders used to hardcode plan: null), so this is
+      // the first live-server assertion that PLAN data actually reaches
+      // buyer HTML. Closes the it.todo left in
+      // tests/components/buyer-workspace-view-leak.dom.spec.tsx ("[Ticket
+      // 34] ... extend tests/security/buyer-boundary.spec.ts ... once
+      // mounted") rather than duplicating its machinery — same fixture, same
+      // RSC-flight extractor, run against a real page response instead of a
+      // happy-dom render. Visible: step labels and owner names (T33-6's
+      // deliberate asymmetry — seller-owned steps stay visible). Never:
+      // private_note, crm_*, internal_chat_url (already covered below by the
+      // forbiddenValuesFor() loop, which — now that plan data really
+      // reaches this page — is a real check of those fields for the first
+      // time rather than a vacuous one).
+      expect(body).toContain(SELLER_STEP_LABEL);
+      expect(body).toContain(SELLER_STEP_OWNER_NAME);
+      expect(body).toContain(BUYER_STEP_LABEL);
+
       for (const forbidden of forbiddenValuesFor(seeded)) {
         expect(body).not.toContain(forbidden);
       }
@@ -355,11 +376,18 @@ describe("Tier 1 — must be green to close Sprint 5", () => {
         // test. app/view/[id]/page.tsx renders the unauthenticated "Enter your
         // deal room" gate with status 200, exactly like the granted view. A
         // fetch carrying no valid session therefore satisfied every assertion
-        // below while never reaching GrantedView or toBuyerPayload: the check
-        // was green and proved nothing. Demonstrated adversarially, not
+        // below while never reaching the granted render or toBuyerPayload: the
+        // check was green and proved nothing. Demonstrated adversarially, not
         // theorised. Assert we are holding the granted page before concluding
         // anything from what is missing from it.
-        expect(body).toContain("Your deal room");
+        //
+        // T34-2: the granted branch now mounts BuyerWorkspaceView, which
+        // replaced the old hand-rolled header carrying the literal "Your deal
+        // room" string with the shared identity header (no such literal).
+        // data-testid="buyer-workspace" is that component's own root marker —
+        // present only on the granted render, never on the gate form below —
+        // so it is the stable equivalent of the old text check.
+        expect(body).toContain('data-testid="buyer-workspace"');
 
         for (const privateUrl of DEMO_PRIVATE_RESOURCE_URLS) {
           expect(body).not.toContain(privateUrl);

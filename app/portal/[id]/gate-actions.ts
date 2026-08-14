@@ -65,6 +65,22 @@ export async function verifyAccess(workspaceId: string, formData: FormData) {
     .update({ consumed_at: new Date().toISOString() })
     .eq("id", candidate.id);
 
+  // Engagement signal for the seller dashboard (Ticket 20), written HERE —
+  // gate entry, once per successful verification — rather than during
+  // app/portal/[id]/page.tsx's render (T34-4). An RSC render can re-run,
+  // which made the old render-time write an occasional duplicate; this
+  // matches /view/[id]/gate-actions.ts's enterView, which has always fired
+  // portal_view exactly once, at the same lifecycle point. Service-role
+  // write — buyers have no Supabase Auth session and bypass RLS, per the
+  // portal model. Best-effort: a failed insert must not block the buyer's
+  // entry.
+  const { error: viewError } = await supabase
+    .from("workspace_analytics")
+    .insert({ workspace_id: workspaceId, buyer_email: email, action_type: "portal_view" });
+  if (viewError) {
+    console.error("[portal verifyAccess portal_view] analytics insert failed:", viewError);
+  }
+
   // Signed, workspace-scoped session cookie (Sprint 1 primitive). Path "/" — not
   // /portal/[id] — so the SAME cookie is sent to /api/track when the buyer clicks
   // a resource link, and later to /api/steps/[id]/complete.
