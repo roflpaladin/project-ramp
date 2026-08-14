@@ -8,7 +8,7 @@
 
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen, within } from "@testing-library/react";
-import type { BuyerPayload, BuyerPlan, BuyerStage, BuyerStep } from "@/lib/portal-payload";
+import type { BuyerPayload, BuyerPlan, BuyerResource, BuyerStage, BuyerStep } from "@/lib/portal-payload";
 import * as BuyerWorkspaceModule from "@/components/buyer/buyer-workspace-view";
 import { BuyerWorkspaceView } from "@/components/buyer/buyer-workspace-view";
 
@@ -333,6 +333,70 @@ describe("rail", () => {
     });
     const { getByTestId } = render(<BuyerWorkspaceView payload={makePayload({ plan })} />);
     expect(getByTestId("buyer-rail-overdue").textContent).toContain("Provide SSO metadata");
+  });
+});
+
+// T34-2 (Sprint 7, Ticket 34; plans/sprint-6-7-replan.md §7). Ticket 33
+// shipped BuyerWorkspaceView without any resources rendering at all — a real
+// regression once this component became the sole rendering for both buyer
+// surfaces (tests/security/buyer-boundary.spec.ts and
+// tests/security/link-visibility-toggle.spec.ts both assert on shared-resource
+// labels reaching /portal/[id]'s rendered HTML). Added here as part of
+// mounting, not deferred, so the component keeps parity with what the old
+// hand-rolled page rendering already proved out.
+function makeResource(overrides: Partial<BuyerResource> & Pick<BuyerResource, "id" | "link_label">): BuyerResource {
+  return {
+    category_header: "Getting started",
+    url_string: "https://docs.example.com/doc",
+    display_order: 0,
+    resource_type: null,
+    ...overrides,
+  };
+}
+
+describe("rail — shared resources (T34-2, closing a Ticket 33 gap)", () => {
+  it("renders a shared resource grouped under its category header, linked through /api/track", () => {
+    const payload = makePayload({
+      resources: [makeResource({ id: "res-1", link_label: "Security overview", category_header: "Docs" })],
+    });
+    const { getByTestId, getByRole } = render(<BuyerWorkspaceView payload={payload} />);
+
+    const section = getByTestId("buyer-rail-resources");
+    expect(within(section).getByText("Docs")).toBeInTheDocument();
+
+    const link = getByRole("link", { name: "Security overview" });
+    expect(link).toHaveAttribute("href", "/api/track?linkId=res-1&wsId=workspace-1");
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", expect.stringContaining("noopener"));
+  });
+
+  it("groups multiple resources under their own category headings", () => {
+    const payload = makePayload({
+      resources: [
+        makeResource({ id: "res-1", link_label: "Onboarding guide", category_header: "Getting started" }),
+        makeResource({ id: "res-2", link_label: "Reference architecture", category_header: "Technical" }),
+      ],
+    });
+    const { getByTestId } = render(<BuyerWorkspaceView payload={payload} />);
+    const section = getByTestId("buyer-rail-resources");
+    expect(within(section).getByText("Getting started")).toBeInTheDocument();
+    expect(within(section).getByText("Technical")).toBeInTheDocument();
+    expect(within(section).getByText("Onboarding guide")).toBeInTheDocument();
+    expect(within(section).getByText("Reference architecture")).toBeInTheDocument();
+  });
+
+  it("hides the resources section entirely when there are no shared resources", () => {
+    const { queryByTestId } = render(<BuyerWorkspaceView payload={makePayload({ resources: [] })} />);
+    expect(queryByTestId("buyer-rail-resources")).not.toBeInTheDocument();
+  });
+
+  it("never carries the --buyer-accent whitelabel token on a resource link", () => {
+    const payload = makePayload({
+      resources: [makeResource({ id: "res-1", link_label: "Security overview" })],
+    });
+    const { getByRole } = render(<BuyerWorkspaceView payload={payload} />);
+    const link = getByRole("link", { name: "Security overview" });
+    expect(link.getAttribute("style") ?? "").not.toContain("--buyer-accent");
   });
 });
 

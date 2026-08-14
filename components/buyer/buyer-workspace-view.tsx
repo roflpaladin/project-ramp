@@ -30,6 +30,7 @@
 
 import { getFaviconUrl } from "@/lib/branding";
 import type { BuyerPayload } from "@/lib/portal-payload";
+import { groupByCategory } from "@/lib/links";
 import { FaviconImage } from "@/app/portal/[id]/favicon-image";
 import {
   buildCommitteeInviteHref,
@@ -51,6 +52,7 @@ type Workspace = BuyerPayload["workspace"];
 type Plan = NonNullable<BuyerPayload["plan"]>;
 type Stage = Plan["stages"][number];
 type Step = Stage["steps"][number];
+type Resource = BuyerPayload["resources"][number];
 interface StepLocation {
   readonly stage: Stage;
   readonly step: Step;
@@ -64,14 +66,14 @@ const TONE_COLOR: Record<StatusTone, string> = {
 
 /** The single public entry point (T33-1). */
 export function BuyerWorkspaceView({ payload }: { payload: BuyerPayload }) {
-  const { workspace, plan } = payload;
+  const { workspace, plan, resources } = payload;
 
   return (
     <div data-surface="buyer-workspace" data-testid="buyer-workspace">
       <IdentityHeader workspace={workspace} />
       <div className="bw-layout">
         {plan ? <PlanSpine plan={plan} /> : <EmptyPlanState chatUrl={workspace.chat_url} />}
-        <Rail workspace={workspace} plan={plan} />
+        <Rail workspace={workspace} plan={plan} resources={resources} />
       </div>
     </div>
   );
@@ -290,7 +292,15 @@ function EmptyPlanState({ chatUrl }: { chatUrl: string | null }) {
 
 // ── Rail (T33-4): quiet and Slate throughout ───────────────────────────────
 
-function Rail({ workspace, plan }: { workspace: Workspace; plan: Plan | null }) {
+function Rail({
+  workspace,
+  plan,
+  resources,
+}: {
+  workspace: Workspace;
+  plan: Plan | null;
+  resources: readonly Resource[];
+}) {
   const blocked = plan ? collectBlockedSteps(plan) : [];
   const overdue = plan ? collectOverdueBuyerSteps(plan, new Date()) : [];
 
@@ -298,6 +308,7 @@ function Rail({ workspace, plan }: { workspace: Workspace; plan: Plan | null }) 
     <aside className="bw-rail" data-testid="buyer-rail" aria-label="Plan status">
       <BlockersSection blocked={blocked} />
       {overdue.length > 0 ? <OverdueSection overdue={overdue} /> : null}
+      {resources.length > 0 ? <ResourcesSection resources={resources} workspaceId={workspace.id} /> : null}
       <CommitteeSection targetCompanyName={workspace.target_company_name} />
       {workspace.chat_url ? <ContactSellerSection chatUrl={workspace.chat_url} /> : null}
     </aside>
@@ -348,6 +359,47 @@ function OverdueSection({ overdue }: { overdue: readonly StepLocation[] }) {
           </li>
         ))}
       </ul>
+    </section>
+  );
+}
+
+/** T34-2 (Sprint 7, Ticket 34; plans/sprint-6-7-replan.md §7). Ticket 33
+ *  shipped this component without any resources rendering — a gap invisible
+ *  until this ticket mounted it as the SOLE rendering for both buyer
+ *  surfaces, at which point shared resources would have silently stopped
+ *  reaching buyer HTML at all (tests/security/buyer-boundary.spec.ts and
+ *  tests/security/link-visibility-toggle.spec.ts both already prove real
+ *  resource labels reach /portal/[id]'s rendered HTML — closing this gap is
+ *  what keeps that proof, not a new claim). Hidden entirely when the buyer
+ *  has nothing shared with them yet, matching every other rail section's
+ *  zero-state idiom. Every link routes through /api/track (never a raw
+ *  url_string in the DOM) so clicks are logged for the seller's pulse. */
+function ResourcesSection({ resources, workspaceId }: { resources: readonly Resource[]; workspaceId: string }) {
+  const grouped = groupByCategory([...resources]);
+
+  return (
+    <section className="bw-rail-section" data-testid="buyer-rail-resources" aria-label="Shared resources">
+      <h3 className="bw-rail-heading">Shared resources</h3>
+      {[...grouped.entries()].map(([category, categoryResources]) => (
+        <div key={category}>
+          <p className="bw-resource-category">{category}</p>
+          <ul className="bw-resource-list">
+            {categoryResources.map((resource) => (
+              <li key={resource.id}>
+                <a
+                  className="bw-resource-link"
+                  href={`/api/track?linkId=${resource.id}&wsId=${workspaceId}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <span>{resource.link_label}</span>
+                  <span aria-hidden="true">↗</span>
+                </a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
     </section>
   );
 }

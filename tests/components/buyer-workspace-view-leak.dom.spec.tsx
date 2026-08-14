@@ -201,14 +201,14 @@ describe("T33-9 — private_note is value-level absent from rendered HTML", () =
     }
   });
 
-  it.todo(
-    "[Ticket 34] private_note is absent from the extracted RSC flight payload of a real /portal/[id] or " +
-      "/view/[id] response — cannot run until BuyerWorkspaceView is mounted on a real page " +
-      "(both loaders currently hardcode plan: null; plans/sprint-6-7-replan.md T34-2). Once mounted, " +
-      "extend tests/security/buyer-boundary.spec.ts using its existing fetchHtml() + " +
-      "extractRscFlightPayload() (tests/security/support/rsc-flight.ts) idiom against a workspace " +
-      "seeded with a populated private_note, rather than duplicating that machinery here.",
-  );
+  // [Ticket 34, T34-2] DONE, not deferred: BuyerWorkspaceView is now mounted
+  // on /portal/[id] and /view/[id] (both loaders no longer hardcode
+  // plan: null), so the RSC-flight check this it.todo named is live in
+  // tests/security/buyer-boundary.spec.ts's "rendered HTML and RSC flight
+  // payload — /portal/[id]" describe block — same fetchHtml() +
+  // extractRscFlightPayload() idiom, run against the seeded leaky
+  // workspace's populated private_note fields via forbiddenValuesFor(),
+  // rather than duplicated here.
 });
 
 describe("T33-10 — the asymmetry: seller-owned step LABEL and OWNER survive, private_note does not", () => {

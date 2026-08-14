@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
+import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { buildPortalHeaderTitle, getFaviconUrl } from "@/lib/branding";
-import { groupByCategory } from "@/lib/links";
 import { portalCookieName, verifyPortalSessionValue } from "@/lib/portal-session";
-import { toBuyerPayload, type LinkRow, type WorkspaceRow } from "@/lib/portal-payload";
-import { FaviconImage } from "./favicon-image";
+import { loadBuyerPayload } from "@/lib/portal/load-buyer-payload";
+import { BuyerWorkspaceView } from "@/components/buyer/buyer-workspace-view";
 import { requestAccess, verifyAccess } from "./gate-actions";
 
 export async function generateMetadata({
@@ -49,69 +49,29 @@ export async function generateMetadata({
   };
 }
 
+// T34-2 (Sprint 7, Ticket 34; plans/sprint-6-7-replan.md §7). Post-gate
+// rendering now goes through the ONE shared loader (lib/portal/load-buyer-
+// payload.ts) and the ONE shared renderer (components/buyer/buyer-workspace-
+// view.tsx) — this file no longer builds a payload or a header by hand.
+//
+// T34-4 (plans/sprint-6-7-replan.md §3, §7): portal_view is no longer
+// written here. An RSC render can re-run (React re-renders a server
+// component more than once for the same navigation in some cases), which
+// made a render-time insert an occasional duplicate — inconsistent with
+// /view's gate-action write, which fires exactly once per entry. The write
+// lives in verifyAccess (./gate-actions.ts), matching /view's enterView, so
+// both surfaces log the same event at the same lifecycle point. Ticket 36's
+// stall arithmetic depends on that consistency.
 async function GrantedPortal({ workspaceId }: { workspaceId: string }) {
-  const supabase = createAdminClient();
-
-  // T34-4 (plans/sprint-6-7-replan.md §3, §7): portal_view is no longer
-  // written here. An RSC render can re-run (React re-renders a server
-  // component more than once for the same navigation in some cases), which
-  // made this render-time insert an occasional duplicate — inconsistent with
-  // /view's gate-action write, which fires exactly once per entry. The write
-  // now lives in verifyAccess (./gate-actions.ts), matching /view's
-  // enterView, so both surfaces log the same event at the same lifecycle
-  // point. Ticket 36's stall arithmetic depends on that consistency.
-  const [{ data: workspaceRow }, { data: links }] = await Promise.all([
-    // select("*") then strip in one named place (Ticket 25) — see the note in
-    // lib/portal-payload.ts on why a narrow SELECT is the weaker boundary.
-    supabase.from("workspaces").select("*").eq("id", workspaceId).maybeSingle(),
-    supabase
-      .from("links")
-      .select("*")
-      .eq("workspace_id", workspaceId)
-      // Defence in depth; toBuyerPayload filters again.
-      .eq("visibility", "shared")
-      .order("category_header", { ascending: true })
-      .order("display_order", { ascending: true }),
-  ]);
-
-  // The buyer boundary (Ticket 25). Nothing below this line touches a raw row.
-  const payload = workspaceRow
-    ? toBuyerPayload(workspaceRow as WorkspaceRow, null, (links ?? []) as LinkRow[])
-    : null;
-
-  const grouped = groupByCategory(payload?.resources ?? []);
-  const headerTitle = payload ? buildPortalHeaderTitle(payload.workspace.target_company_name) : "Deal Room";
-
-  return (
-    <main>
-      <header style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-        {payload ? <FaviconImage src={getFaviconUrl(payload.workspace.target_domain)} alt="" /> : null}
-        <h1>{headerTitle}</h1>
-      </header>
-      {grouped.size === 0 ? (
-        <p>No resources have been shared yet.</p>
-      ) : (
-        [...grouped.entries()].map(([category, categoryLinks]) => (
-          <section key={category}>
-            <h2>{category}</h2>
-            <ul>
-              {categoryLinks.map((link) => (
-                <li key={link.id}>
-                  <a
-                    href={`/api/track?linkId=${link.id}&wsId=${workspaceId}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    {link.link_label}
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </section>
-        ))
-      )}
-    </main>
-  );
+  const payload = await loadBuyerPayload(workspaceId);
+  // A verified session proves the workspace existed when the session was
+  // issued, not that it still does — null here (workspace deleted since, or
+  // never existed) is the same 404-equivalent every other buyer-boundary
+  // caller treats it as (lib/portal/load-buyer-payload.ts's header comment).
+  if (!payload) {
+    notFound();
+  }
+  return <BuyerWorkspaceView payload={payload} />;
 }
 
 export default async function PortalPage({

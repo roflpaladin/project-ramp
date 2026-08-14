@@ -2,21 +2,29 @@
    choice as /settings and /demo-sandbox: theme layered, utilities unlayered so
    class specificity beats globals.css element selectors.
 
-   Brand: this is the BUYER side, so it uses the warm buyer-side tint from
-   ramp-brand-guideline.html (the seller sandbox uses the cool tint). Signal
-   (#4B37FF) stays reserved for the single action — the "Enter" button. */
+   T34-2 (Sprint 7, Ticket 34; plans/sprint-6-7-replan.md §7). This block used
+   to redeclare --paper/--ink/--slate/--line/--signal/--signal-press/
+   --buyer-tint locally, with values from an earlier brand pass that predates
+   app/globals.css's unified design tokens (most visibly: --signal was
+   #4b37ff here, not the one amber token the live guideline defines). That
+   was invisible while this route's own hand-rolled markup was the only thing
+   reading those variables. It stopped being invisible the moment this ticket
+   mounted components/buyer/buyer-workspace-view.tsx here: that shared
+   component reads var(--signal) expecting the SAME amber the guideline
+   defines everywhere else, and a route-scoped override would have rendered
+   its Signal card and ramp gesture in the wrong colour on /view only — the
+   two buyer surfaces silently diverging in exactly the value CLAUDE.md calls
+   "one Signal... never a fifth loud colour." Removed rather than kept "for
+   the gate form" below: the gate form's own inline styles read the SAME
+   var(--x) names, so it now inherits the correct global tokens too — one set
+   of brand values, not two silently different ones scoped by route.
+   --pos and --buyer-mark stay local: neither exists in the shared token set,
+   and the gate form still reads --buyer-mark for its eyebrow label. */
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css";
 
 [data-surface="view"] {
-  --paper: #fcfbf8;
-  --ink: #17181c;
-  --slate: #6b6e76;
-  --line: #e2e1db;
-  --signal: #4b37ff; /* action only */
-  --signal-press: #3a29d6;
   --pos: #17936b;
-  --buyer-tint: #f5ede3; /* warm buyer-side tint */
   --buyer-mark: #8c5c36;
 
   min-height: 100dvh;
@@ -26,11 +34,6 @@
 
 @media (prefers-color-scheme: dark) {
   [data-surface="view"] {
-    --paper: #17181c;
-    --ink: #fcfbf8;
-    --slate: #9a9da6;
-    --line: #33353b;
-    --buyer-tint: #2a2320;
     --buyer-mark: #c89a6c;
   }
 }
