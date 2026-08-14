@@ -49,9 +49,17 @@ export async function generateMetadata({
   };
 }
 
-async function GrantedPortal({ workspaceId, buyerEmail }: { workspaceId: string; buyerEmail: string }) {
+async function GrantedPortal({ workspaceId }: { workspaceId: string }) {
   const supabase = createAdminClient();
 
+  // T34-4 (plans/sprint-6-7-replan.md §3, §7): portal_view is no longer
+  // written here. An RSC render can re-run (React re-renders a server
+  // component more than once for the same navigation in some cases), which
+  // made this render-time insert an occasional duplicate — inconsistent with
+  // /view's gate-action write, which fires exactly once per entry. The write
+  // now lives in verifyAccess (./gate-actions.ts), matching /view's
+  // enterView, so both surfaces log the same event at the same lifecycle
+  // point. Ticket 36's stall arithmetic depends on that consistency.
   const [{ data: workspaceRow }, { data: links }] = await Promise.all([
     // select("*") then strip in one named place (Ticket 25) — see the note in
     // lib/portal-payload.ts on why a narrow SELECT is the weaker boundary.
@@ -65,16 +73,6 @@ async function GrantedPortal({ workspaceId, buyerEmail }: { workspaceId: string;
       .order("category_header", { ascending: true })
       .order("display_order", { ascending: true }),
   ]);
-
-  // Best-effort engagement signal for the seller dashboard -- Supabase
-  // resolves with { error } rather than throwing, and a failed insert here
-  // shouldn't break the buyer's page render either way.
-  const { error: viewError } = await supabase
-    .from("workspace_analytics")
-    .insert({ workspace_id: workspaceId, buyer_email: buyerEmail, action_type: "portal_view" });
-  if (viewError) {
-    console.error("[portal_view] analytics insert failed:", viewError);
-  }
 
   // The buyer boundary (Ticket 25). Nothing below this line touches a raw row.
   const payload = workspaceRow
@@ -130,7 +128,7 @@ export default async function PortalPage({
   const session = verifyPortalSessionValue(id, cookieStore.get(portalCookieName(id))?.value);
 
   if (session) {
-    return <GrantedPortal workspaceId={id} buyerEmail={session.email} />;
+    return <GrantedPortal workspaceId={id} />;
   }
 
   const requestAccessForWorkspace = requestAccess.bind(null, id);

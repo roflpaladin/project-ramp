@@ -56,20 +56,24 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   // id. Narrower here — this route is hard-scoped to DEMO_TENANT_ID, so only
   // demo deal rooms were exposed — but it is the same bug, and the demo tenant
   // is precisely what gets shown to prospects.
+  //
+  // No `robots` key returned from any branch below (T34-3, fixes B5): noindex
+  // now lives once in layout.tsx as the base for this whole subtree, so every
+  // branch here — including one added later — inherits it instead of relying
+  // on a literal someone has to remember to copy.
   const cookieStore = await cookies();
   const session = verifyPortalSessionValue(id, cookieStore.get(portalCookieName(id))?.value);
   if (!session) {
-    return { robots: { index: false, follow: false } };
+    return {};
   }
 
   const payload = await getBuyerPayload(id);
   if (!payload) {
-    return { robots: { index: false, follow: false } };
+    return {};
   }
   return {
     title: buildPortalHeaderTitle(payload.workspace.target_company_name),
     icons: { icon: getFaviconUrl(payload.workspace.target_domain) },
-    robots: { index: false, follow: false },
   };
 }
 
