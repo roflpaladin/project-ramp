@@ -143,6 +143,27 @@ export const SELLER_STEP_OWNER_NAME = `Dana Okafor ${VISIBLE_TOKEN}`;
 export const BUYER_STEP_LABEL = `Confirm the technical validation call ${VISIBLE_TOKEN}`;
 
 /**
+ * Pattern-based, never a hand-maintained field-name list — a list only ever
+ * covers the fields someone remembered on the day they wrote it. Historically
+ * this array was re-declared, byte-for-byte identical, in
+ * tests/security/buyer-boundary.spec.ts and tests/plans/portal-payload.spec.ts;
+ * exported here (Ticket 33, T33-9/T33-10) so new leak-assertion suites — e.g.
+ * component-level tests that never touch Supabase — can IMPORT this rather
+ * than re-declaring it a third time. The two existing spec files are left as
+ * they are (each re-declares its own copy); this export only ever grows the
+ * set of callers reusing one definition, never breaks the ones that already
+ * have their own.
+ */
+export const FORBIDDEN_FIELD_PATTERNS: readonly RegExp[] = [
+  /crm_/i,
+  /internal_chat/i,
+  /private_note/i,
+  /tenant_id/i,
+  /approved_emails/i,
+  /created_by/i,
+] as const;
+
+/**
  * Every literal that must be absent from a buyer payload and from buyer-facing
  * HTML. Step 6 asserts on this array directly, so adding a private field to the
  * fixture automatically widens the security suite's coverage.
