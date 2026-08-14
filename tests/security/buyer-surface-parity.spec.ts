@@ -53,20 +53,66 @@ async function fetchGranted(path: string, workspaceId: string, email: string): P
 }
 
 /**
- * Reduces a full HTML document to its VISIBLE text: the <body>...</body>
- * region, with every <script> block removed first (this is where the RSC
- * flight payload and hydration bootstrap live — implementation, not
- * content, and the two routes' internal module references differ even when
- * their rendered output does not), then every remaining tag stripped, HTML
- * entities decoded, and whitespace collapsed. "Gate-specific chrome" — the
- * outer `data-surface="view"` / `data-surface="portal"` wrapper div each
- * layout.tsx adds — carries no text of its own, so it disappears here
- * without needing to be special-cased.
+ * Extracts the raw HTML of the element carrying `data-testid="${testId}"`,
+ * INCLUDING its full subtree, via tag-depth counting on that element's own
+ * tag name (not a whole-document regex) — the only way to find its true
+ * closing tag when the subtree contains nested elements of the same tag
+ * name (BuyerWorkspaceView's root is a <div> and so are several of its
+ * descendants).
+ *
+ * Failure mode this exists to close (found in CI, not locally): comparing
+ * the WHOLE <body> region's text is timing-sensitive under a slow render —
+ * Next/React can stream head-adjacent metadata (e.g. the page <title> text)
+ * into the body region as a trailing text node, present on a slow CI
+ * runner's response but not on a fast local one, which broke exact-text
+ * equality for a reason that had nothing to do with the buyer boundary.
+ * Scoping extraction to BuyerWorkspaceView's own root element — the one
+ * thing both surfaces actually mount identically — removes that streamed
+ * chrome from the comparison instead of trying to pattern-match it away.
+ *
+ * Throws (fails the test loudly, never a vacuous pass) if `testId` is not
+ * found, or if its tags are unbalanced — a missing testid on either surface
+ * is itself a parity failure, not something to silently skip past.
  */
-function extractVisibleBodyText(html: string): string {
-  const bodyMatch = /<body[^>]*>([\s\S]*)<\/body>/i.exec(html);
-  const body = bodyMatch ? bodyMatch[1] : html;
-  return body
+function extractTestIdSubtreeHtml(html: string, testId: string): string {
+  const marker = `data-testid="${testId}"`;
+  const markerIndex = html.indexOf(marker);
+  if (markerIndex === -1) {
+    throw new Error(`extractTestIdSubtreeHtml: no element with ${marker} found in this surface's HTML`);
+  }
+
+  const tagStart = html.lastIndexOf("<", markerIndex);
+  const tagNameMatch = tagStart === -1 ? null : /^<([a-zA-Z][\w-]*)/.exec(html.slice(tagStart, tagStart + 40));
+  if (tagStart === -1 || !tagNameMatch) {
+    throw new Error(`extractTestIdSubtreeHtml: could not determine the enclosing tag for ${marker}`);
+  }
+  const tagName = tagNameMatch[1];
+
+  const boundaryRe = new RegExp(`<${tagName}(?=[\\s>])|</${tagName}>`, "g");
+  boundaryRe.lastIndex = tagStart;
+  let depth = 0;
+  let match: RegExpExecArray | null;
+  while ((match = boundaryRe.exec(html)) !== null) {
+    if (match[0].startsWith("</")) {
+      depth--;
+      if (depth === 0) {
+        return html.slice(tagStart, match.index + match[0].length);
+      }
+    } else {
+      depth++;
+    }
+  }
+  throw new Error(`extractTestIdSubtreeHtml: unbalanced <${tagName}> tags while extracting ${marker}`);
+}
+
+/**
+ * Reduces one element's HTML subtree to its VISIBLE text: any <script>
+ * block removed first (BuyerWorkspaceView mounts no client-component script
+ * of its own, but this stays defensive rather than assuming), then every
+ * remaining tag stripped, HTML entities decoded, and whitespace collapsed.
+ */
+function htmlToVisibleText(html: string): string {
+  return html
     .replace(/<script[\s\S]*?<\/script>/gi, "")
     .replace(/<[^>]+>/g, " ")
     .replace(/&nbsp;/g, " ")
@@ -146,14 +192,24 @@ describe("buyer surface parity — /portal/[id] vs /view/[id] for the same works
     expect(view.body).toContain('data-testid="buyer-workspace"');
 
     // ── Assertion 1: same normalised visible content ──────────────────
-    const portalVisible = extractVisibleBodyText(portal.body);
-    const viewVisible = extractVisibleBodyText(view.body);
+    // Scoped to BuyerWorkspaceView's own root subtree (data-testid=
+    // "buyer-workspace"), not the whole <body> — see extractTestIdSubtreeHtml's
+    // header comment for the CI streaming-timing failure this fixes.
+    // extractTestIdSubtreeHtml() throws (failing this test, not skipping it)
+    // if the testid is missing from either surface's HTML.
+    const portalVisible = htmlToVisibleText(extractTestIdSubtreeHtml(portal.body, "buyer-workspace"));
+    const viewVisible = htmlToVisibleText(extractTestIdSubtreeHtml(view.body, "buyer-workspace"));
     expect(portalVisible).toBe(viewVisible);
     // Guard the equality assertion itself against a vacuous "both empty"
     // pass — there must be real rendered content to have compared.
     expect(portalVisible.length).toBeGreaterThan(200);
 
     // ── Assertion 2: neither leaks anything the other does not ────────
+    // Deliberately UNSCOPED — the full raw HTML of each surface (plus its
+    // RSC flight payload below), not the testid subtree above. A leak
+    // outside BuyerWorkspaceView's own markup (e.g. back in generateMetadata,
+    // exactly T34-6's shape) must still be caught here even though
+    // Assertion 1 no longer looks at that region.
     const portalFlight = extractRscFlightPayload(portal.body);
     const viewFlight = extractRscFlightPayload(view.body);
     const portalMatches = findSensitiveAdjacentMatches(`${portal.body}\n${portalFlight}`);
