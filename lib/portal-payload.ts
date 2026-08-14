@@ -132,7 +132,16 @@ export interface BuyerPayload {
 
 // ── The boundary ───────────────────────────────────────────────────────────
 
-function toBuyerStep(step: PlanTree["stages"][number]["steps"][number]): BuyerStep {
+/**
+ * Exported (Ticket 35, T35-4) so the ONE OTHER place a plan step is ever
+ * serialized back to a buyer -- POST /api/steps/[id]/complete's response,
+ * for optimistic client reconciliation -- reuses this exact allowlist
+ * instead of hand-rolling a second one. "One boundary, one place" (T30-6):
+ * a step's private_note is exactly as seller-private in a completion
+ * response as it is in the page payload, buyer-owned steps included (0005:
+ * private_note has no owner_side condition).
+ */
+export function toBuyerStep(step: PlanTree["stages"][number]["steps"][number]): BuyerStep {
   return {
     id: step.id,
     label: step.label,
