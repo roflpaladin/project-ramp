@@ -5,6 +5,7 @@ import { groupByCategoryAndType, RESOURCE_TYPE_OPTIONS } from "@/lib/links";
 import { getPlanForSeller } from "@/lib/plans/queries";
 import type { PlanStepRow } from "@/lib/plans/types";
 import { computeEngagementSignal, type EngagementEventInput } from "@/lib/plans/engagement";
+import { getStallThresholdDays } from "@/lib/plans/stall-threshold";
 import { getCrmForecastForWorkspace } from "@/lib/crm/forecast";
 import { addLink } from "./links-actions";
 import { LinkUrlField } from "./link-url-field";
@@ -13,11 +14,6 @@ import { CrmForecastStrip } from "./crm-forecast-strip";
 import { ChatPresence } from "./chat-presence";
 import { ChatUrlForm } from "./chat-url-form";
 import "./workspace-links.css";
-
-// Ticket 31 (T31-4). Not yet configurable — Ticket 36 (T36-4) threads a
-// per-tenant/per-workspace value into computeEngagementSignal without adding
-// any new engagement math; until then this is the single call-site constant.
-const STALL_THRESHOLD_DAYS = 5;
 
 /** Flattens the plan tree's stages into a single ordered step list — the
  * shape computeEngagementSignal needs. A workspace without a live plan yet
@@ -80,7 +76,8 @@ export default async function WorkspaceDetailPage({
     engagementEvents,
     flattenSteps(plan),
     new Date(), // the clock is supplied at the call site; engagement.ts stays pure
-    STALL_THRESHOLD_DAYS,
+    // T36-4: configurable, not hardcoded here — see lib/plans/stall-threshold.ts.
+    getStallThresholdDays(),
   );
 
   return (
