@@ -18,12 +18,26 @@ import { createAdminClient } from "@/lib/supabase/admin";
  * or a stack trace.
  */
 function errorResponse(error: unknown, stepId: string): NextResponse {
-  const mapped = isPostgrestErrorLike(error) ? mapPostgrestError(error) : null;
+  const isPostgrest = isPostgrestErrorLike(error);
+  const mapped = isPostgrest ? mapPostgrestError(error) : null;
+
+  // A PostgrestErrorLike is a plain object, not an Error instance -- `error
+  // instanceof Error ? error.message : String(error)` therefore logged the
+  // literal string "[object Object]" for exactly the error class this
+  // handler exists to log in full: the real Postgres message/code/details
+  // never reached the server log. Check isPostgrest FIRST, and log its own
+  // code/message/details fields (not just the mapped PlanErrorCode), since
+  // "full context" is this comment's whole stated intent.
   console.error("[steps/complete] failed:", {
     stepId,
     code: mapped?.code ?? "UNKNOWN_ERROR",
-    message: error instanceof Error ? error.message : String(error),
+    ...(isPostgrest
+      ? { pgCode: error.code, message: error.message, details: error.details }
+      : { message: error instanceof Error ? error.message : String(error) }),
   });
+
+  // Client-facing body is unchanged by this fix -- still only the mapped
+  // PlanErrorCode, never the raw Postgres text logged above (T35-11).
   return NextResponse.json({ error: mapped?.code ?? "UNKNOWN_ERROR" }, { status: mapped?.status ?? 500 });
 }
 
