@@ -13,6 +13,7 @@ import { LinkRow } from "./link-row";
 import { CrmForecastStrip } from "./crm-forecast-strip";
 import { ChatPresence } from "./chat-presence";
 import { ChatUrlForm } from "./chat-url-form";
+import { StallAlert } from "./stall-alert";
 import "./workspace-links.css";
 
 /** Flattens the plan tree's stages into a single ordered step list — the
@@ -109,6 +110,11 @@ export default async function WorkspaceDetailPage({
           </details>
         </div>
       </div>
+
+      {/* T36-5: always-visible stall alert — independent of whether the CRM
+          strip below is even mounted (it hides entirely without CRM sync,
+          T31-5). Renders nothing at all when the buyer is actively engaged. */}
+      <StallAlert signal={engagementSignal} planHref={`/admin/workspaces/${id}/plan`} />
 
       <p className="wsl-plan-nav">
         <Link href={`/admin/workspaces/${id}/plan`} className="wsl-btn">

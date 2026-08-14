@@ -99,7 +99,11 @@
   color: var(--slate);
 }
 
-/* ---- forecast nudge: the one Signal in this scope (T31-4) -------------- */
+/* ---- forecast nudge: a STATE read, never Signal (Ticket 36, T36-5) -----
+   Pre-Ticket-36 this pill switched to a Signal border/wash when the
+   engagement state was "stalled" — corrected here: the page's one Signal is
+   now stall-alert.tsx's call-to-action (see that file's header comment for
+   the full one-Signal audit). This pill stays Slate for every state. */
 
 [data-surface="crm-strip"] .cfs-nudge {
   display: flex;
@@ -114,15 +118,12 @@
   font-weight: 500;
   color: var(--ink);
 }
-[data-surface="crm-strip"] .cfs-nudge[data-tone="signal"] {
-  border-color: var(--signal);
-  background: var(--signal-wash);
-}
 [data-surface="crm-strip"] .cfs-nudge-dot {
   width: 6px;
   height: 6px;
   border-radius: 999px;
   flex: 0 0 auto;
+  background: var(--state-wait);
 }
 
 /* ---- internal chat: masked behind a reveal action (T31-6) -------------- */

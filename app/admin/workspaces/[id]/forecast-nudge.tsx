@@ -1,26 +1,23 @@
 import type { EngagementSignal } from "@/lib/plans/engagement";
+import { describeEngagementState } from "./engagement-copy";
 
 /**
- * The forecast nudge (Ticket 31, T31-4) — derived entirely from
- * `computeEngagementSignal`'s real output, never a hardcoded string. This is
- * the single amber Signal in the seller-workspace-page scope: only the
- * "stalled" state earns `tone: "signal"`. "waiting" and "active" both render
- * in Slate (`tone: "wait"`) per the design guideline — waiting/pending states
- * never render in a loud colour, and only "stalled" is the action-now moment
- * this nudge exists to surface.
+ * The forecast nudge (Ticket 31, T31-4) — a contextual read of buyer
+ * engagement inside the seller-private CRM strip.
+ *
+ * ALWAYS Slate (Sprint 7, Ticket 36, T36-5 correction): engagement state
+ * (active/waiting/stalled) is a STATE, not an action, so per the design
+ * guideline it never carries Signal — "waiting and stalled states rendered
+ * in Slate ... never a loud colour" (plans/sprint-6-7-replan.md §7,
+ * Ticket 36 row). Pre-Ticket-36 this component put the page's one Signal on
+ * its own "stalled" state; that has moved to stall-alert.tsx's real
+ * call-to-action (T36-5), which is mounted independently of whether this
+ * CRM strip is even visible (crm-forecast-strip.tsx hides entirely when
+ * crm_source IS NULL, T31-5) — so the page's one Signal budget can no longer
+ * live inside a component that sometimes doesn't render at all.
  */
-export type ForecastNudgeTone = "signal" | "wait";
-
 export interface ForecastNudgeMeta {
-  readonly tone: ForecastNudgeTone;
   readonly label: string;
-}
-
-function describeRecency(daysSinceLastActivity: number | null): string {
-  if (daysSinceLastActivity === null) return "no recorded activity yet";
-  if (daysSinceLastActivity === 0) return "active today";
-  if (daysSinceLastActivity === 1) return "active 1 day ago";
-  return `active ${daysSinceLastActivity} days ago`;
 }
 
 /**
@@ -29,25 +26,7 @@ function describeRecency(daysSinceLastActivity: number | null): string {
  * planStatusMeta/StatusBadge split).
  */
 export function deriveForecastNudge(signal: EngagementSignal): ForecastNudgeMeta {
-  switch (signal.state) {
-    case "stalled": {
-      const stepWord = signal.openBuyerStepCount === 1 ? "step" : "steps";
-      return {
-        tone: "signal",
-        label: `Buyer's gone quiet — ${signal.openBuyerStepCount} open buyer ${stepWord} waiting on them. Send a nudge.`,
-      };
-    }
-    case "waiting":
-      return {
-        tone: "wait",
-        label: "Waiting on you — no open buyer steps right now.",
-      };
-    case "active":
-      return {
-        tone: "wait",
-        label: `Buyer's engaged — ${describeRecency(signal.daysSinceLastActivity)}.`,
-      };
-  }
+  return { label: describeEngagementState(signal) };
 }
 
 interface ForecastNudgeProps {
@@ -57,11 +36,10 @@ interface ForecastNudgeProps {
 /** Status is never colour-only (design system MUST) — always a dot next to the text label. */
 export function ForecastNudge({ signal }: ForecastNudgeProps) {
   const meta = deriveForecastNudge(signal);
-  const dotColor = meta.tone === "signal" ? "var(--signal)" : "var(--state-wait)";
 
   return (
-    <p className="cfs-nudge" data-tone={meta.tone}>
-      <span className="cfs-nudge-dot" aria-hidden="true" style={{ backgroundColor: dotColor }} />
+    <p className="cfs-nudge">
+      <span className="cfs-nudge-dot" aria-hidden="true" />
       <span>{meta.label}</span>
     </p>
   );

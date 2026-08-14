@@ -27,9 +27,11 @@ export interface ChatPresenceProps {
 
 /**
  * Team-chat presence control (Sprint 6, Ticket 32; T32-3/T32-4). Neutral
- * Slate throughout — chat is not the decision Signal, and the forecast
- * nudge (forecast-nudge.tsx) already owns the one Signal in this page's
- * scope. No fabricated "online" indicator: there is no real presence feed
+ * Slate throughout — chat is not the decision Signal. The stall alert
+ * (stall-alert.tsx, Sprint 7, Ticket 36, T36-5) owns the one Signal in this
+ * page's scope, via its call-to-action only when the buyer's stalled — see
+ * that file's header comment for the full audit. No fabricated "online"
+ * indicator: there is no real presence feed
  * behind this control, only a stored URL, so it renders as a plain link
  * button rather than inventing a status dot with nothing backing it.
  *
