@@ -19,15 +19,17 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath, URL as NodeURL } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import type { SendInviteState } from "@/app/admin/workspaces/[id]/invite-actions";
+import type { SendInviteState } from "@/app/admin/workspaces/[id]/invite-state";
 
 const { mockSendBuyerInvite, mockFlipToBuyerView } = vi.hoisted(() => ({
   mockSendBuyerInvite: vi.fn(),
   mockFlipToBuyerView: vi.fn(),
 }));
 
+// invite-state.ts (the real module) supplies INITIAL_SEND_INVITE_STATE — it
+// moved out of invite-actions.ts because a "use server" file may only export
+// async functions (T44 finding), so only the two actions need mocking now.
 vi.mock("@/app/admin/workspaces/[id]/invite-actions", () => ({
-  INITIAL_SEND_INVITE_STATE: { status: "idle", email: null, message: null },
   sendBuyerInvite: mockSendBuyerInvite,
   flipToBuyerView: mockFlipToBuyerView,
 }));
