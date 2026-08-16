@@ -24,6 +24,20 @@ export interface SellerSession {
    * than an implicit `undefined`.
    */
   readonly email: string | null;
+  /**
+   * T41 (Sprint 8, Ticket 41). The guided first-run onboarding flow
+   * (app/admin/onboarding/onboarding-actions.ts) needs the seller's own
+   * tenant claim to hand to lib/seed/sample-deal.ts's seedSampleDeal() and to
+   * stamp on a manually-created first workspace — mirrors
+   * app/admin/workspaces/new/actions.ts's inline
+   * `user.app_metadata?.tenant_id as string | undefined` read, pulled in here
+   * so onboarding doesn't have to re-derive it from `client.auth.getUser()`
+   * a second time. Additive: `null`, not thrown, when the claim is absent
+   * (the same "explicit value over implicit undefined" reasoning as `email`
+   * above) — a real case for an account whose tenant provisioning (T39)
+   * never completed.
+   */
+  readonly tenantId: string | null;
 }
 
 /**
@@ -45,5 +59,7 @@ export async function requireSeller(): Promise<SellerSession | null> {
 
   if (!user) return null;
 
-  return { client, userId: user.id, email: user.email ?? null };
+  const tenantId = (user.app_metadata?.tenant_id as string | undefined) ?? null;
+
+  return { client, userId: user.id, email: user.email ?? null, tenantId };
 }

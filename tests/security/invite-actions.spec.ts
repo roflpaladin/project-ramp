@@ -166,7 +166,14 @@ beforeEach(() => {
   requestHeaders.clear();
   requestHeaders.set("x-forwarded-proto", "https");
   requestHeaders.set("x-forwarded-host", "getbrava.tech");
-  currentSellerSession.value = { client: sellerClient, userId: "unused-in-tests", email: seeded?.ownerEmail ?? null };
+  // tenantId: mechanical addition only, required by T41's SellerSession.tenantId
+  // field — this suite's assertions/mocking strategy are otherwise untouched.
+  currentSellerSession.value = {
+    client: sellerClient,
+    userId: "unused-in-tests",
+    email: seeded?.ownerEmail ?? null,
+    tenantId: seeded?.tenantId ?? null,
+  };
 });
 
 afterEach(async () => {

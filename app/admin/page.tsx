@@ -3,12 +3,42 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { signOut } from "./actions";
 
-// Sprint 8, Ticket 39 — a freshly self-served seller (app/register) lands
-// here with zero workspaces; before this ticket the page just rendered an
-// empty <ul> with no explanation. The list markup itself is unchanged.
+// Sprint 8, Ticket 39 introduced this empty state for a freshly self-served
+// seller (app/register) landing here with zero workspaces. Ticket 41 swaps
+// its call to action from the old bare "create a workspace" form
+// (/admin/workspaces/new) to the guided onboarding flow — this is that
+// state's one Signal (data-signal="true"), the only primary action /admin
+// ever shows a zero-workspace seller. The non-empty branch below is
+// untouched. No hardcoded colour: every value here is an existing
+// app/globals.css token, consistent with how this page already styles
+// itself (inline `style`, no scoped CSS file of its own).
 const emptyStateStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.75rem",
+  padding: "1.5rem",
+  border: "1px solid var(--line)",
+  borderRadius: "12px",
+};
+
+const emptyStateCopyStyle: CSSProperties = {
+  margin: 0,
   color: "var(--slate)",
   fontSize: "0.9rem",
+};
+
+const emptyStateCtaStyle: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  width: "fit-content",
+  height: "40px",
+  padding: "0 16px",
+  borderRadius: "10px",
+  background: "var(--signal)",
+  color: "var(--signal-fg)",
+  fontWeight: 500,
+  textDecoration: "none",
 };
 
 export default async function AdminHome() {
@@ -49,8 +79,12 @@ export default async function AdminHome() {
         </>
       ) : (
         <div style={emptyStateStyle}>
-          <p>You don&apos;t have any workspaces yet.</p>
-          <Link href="/admin/workspaces/new">Create your first workspace</Link>
+          <p style={emptyStateCopyStyle}>
+            This is where your deals will live — set up your first one to get started.
+          </p>
+          <Link href="/admin/onboarding" style={emptyStateCtaStyle} data-signal="true">
+            Set up your first deal
+          </Link>
         </div>
       )}
     </main>

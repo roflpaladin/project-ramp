@@ -73,5 +73,10 @@ export async function registerSeller(formData: FormData): Promise<void> {
     );
   }
 
-  redirect("/admin");
+  // T41 (Sprint 8, Ticket 41) — a freshly self-served seller now lands on
+  // the guided onboarding flow rather than a bare, possibly-empty /admin.
+  // Not asserted by tests/components/register-page.dom.spec.tsx (that suite
+  // only renders the page's own JSX and never invokes this action), so
+  // nothing there pins the old target.
+  redirect("/admin/onboarding");
 }

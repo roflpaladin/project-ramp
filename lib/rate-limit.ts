@@ -22,6 +22,10 @@ export interface RateLimitBudget {
 // Named budgets so call sites carry policy, not magic numbers.
 export const REGISTRATION_RATE_LIMIT: RateLimitBudget = { limit: 5, windowMs: 15 * 60_000 };
 export const SEND_TOKEN_RATE_LIMIT: RateLimitBudget = { limit: 8, windowMs: 15 * 60_000 };
+// T41 onboarding actions (sample seed + manual create), keyed per seller —
+// the sample seed writes ~17 service-role rows per call with no idempotency,
+// so it needs a budget even though the blast radius is the seller's own tenant.
+export const ONBOARDING_RATE_LIMIT: RateLimitBudget = { limit: 5, windowMs: 15 * 60_000 };
 
 export interface RateLimitResult {
   readonly allowed: boolean;
