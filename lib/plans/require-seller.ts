@@ -15,6 +15,15 @@ import { createClient } from "@/lib/supabase/server";
 export interface SellerSession {
   readonly client: SupabaseClient;
   readonly userId: string;
+  /**
+   * T43 (Sprint 8, Ticket 43). Additive -- the seller-invite flow
+   * (app/admin/workspaces/[id]/invite-actions.ts) needs the AE's own inbox
+   * address for the "invite yourself" case. `null`, not thrown/omitted, on
+   * the rare account that has no email on the Supabase Auth user (e.g. a
+   * phone-only sign-in), so callers get an explicit value to handle rather
+   * than an implicit `undefined`.
+   */
+  readonly email: string | null;
 }
 
 /**
@@ -36,5 +45,5 @@ export async function requireSeller(): Promise<SellerSession | null> {
 
   if (!user) return null;
 
-  return { client, userId: user.id };
+  return { client, userId: user.id, email: user.email ?? null };
 }

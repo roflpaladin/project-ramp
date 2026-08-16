@@ -1,12 +1,23 @@
 // T39-3 (CRITICAL merge blocker) — pins the EXACT cookie options object set at
-// BOTH buyer-gate call sites: app/portal/[id]/gate-actions.ts (`verifyAccess`,
-// the real magic-link gate) and app/view/[id]/gate-actions.ts (`enterView`,
-// the demo/any-"@" gate). Both deliberately set `path: "/"`, not
-// `/portal/[id]` or `/view/[id]` — the SAME signed session cookie must also
-// reach /api/track and (Sprint 6) /api/steps/[id]/complete, which live
-// outside both prefixes. Ticket 38 fixed a pre-auth metadata leak; this test
-// makes a future `path` regression at either call site a static test failure
-// instead of a silent production break.
+// THREE buyer-portal-session minting sites: app/portal/[id]/gate-actions.ts
+// (`verifyAccess`, the real magic-link gate), app/view/[id]/gate-actions.ts
+// (`enterView`, the demo/any-"@" gate), and (T43, Sprint 8) the seller's
+// one-click flip, app/admin/workspaces/[id]/invite-actions.ts
+// (`flipToBuyerView`). All three deliberately set `path: "/"`, not
+// `/portal/[id]`, `/view/[id]`, or `/admin/...` — the SAME signed session
+// cookie must also reach /api/track and (Sprint 6) /api/steps/[id]/complete,
+// which live outside every one of those prefixes. Ticket 38 fixed a pre-auth
+// metadata leak; this test makes a future `path` regression at any of the
+// three call sites a static test failure instead of a silent production
+// break.
+//
+// flipToBuyerView additionally calls requireSeller() (the other two gates
+// don't — buyers have no Supabase Auth session at all), so
+// @/lib/plans/require-seller is mocked here too, returning a fake
+// SellerSession whose `.client` is the SAME minimal query-builder stand-in
+// already used for @/lib/supabase/admin below (table identity, not call
+// sequence, decides the result) — reusing `tableConfig` rather than
+// inventing a second table-mocking mechanism.
 //
 // next/headers.cookies() and next/navigation.redirect() both throw outside a
 // real Next.js request scope, so both are mocked: cookies() returns a fake
@@ -89,6 +100,22 @@ vi.mock("@/lib/supabase/admin", () => ({
   }),
 }));
 
+// flipToBuyerView's own seller.client reads go through this same
+// tableConfig-driven query builder (not a real Supabase client — see this
+// file's header comment) — a fixed, always-authenticated fake session is
+// enough here, since this file is only pinning cookie options, not
+// re-proving requireSeller()'s own auth guard (that's
+// tests/security/server-action-auth.spec.ts's job).
+vi.mock("@/lib/plans/require-seller", () => ({
+  requireSeller: vi.fn(async () => ({
+    client: {
+      from: (table: string) => makeQueryBuilder(tableConfig.get(table) ?? { data: null, error: null }),
+    },
+    userId: "fake-seller-id",
+    email: "seller@pin-test.invalid",
+  })),
+}));
+
 const PINNED_SECURITY_OPTIONS = {
   httpOnly: true,
   secure: true,
@@ -96,7 +123,7 @@ const PINNED_SECURITY_OPTIONS = {
   path: "/",
 } as const;
 
-describe("portal session cookie — options pinning at both gate call sites (T39-3)", () => {
+describe("portal session cookie — options pinning at all three minting sites (T39-3, extended T43)", () => {
   beforeEach(() => {
     cookieSetCalls.length = 0;
     tableConfig.clear();
@@ -166,6 +193,32 @@ describe("portal session cookie — options pinning at both gate call sites (T39
     });
   });
 
+  it("flipToBuyerView (seller one-click flip, T43) sets the SAME pinned httpOnly/secure/sameSite/path cookie options", async () => {
+    const workspaceId = "7e570000-0000-4000-8000-0000000000c5";
+    const email = "buyer@flip-pin-test.invalid";
+
+    // The seller's own workspace lookup — flipToBuyerView refuses to mint
+    // anything unless the email is already on this row's approved_emails.
+    tableConfig.set("workspaces", {
+      data: { id: workspaceId, approved_emails: [email] },
+      error: null,
+    });
+
+    const { flipToBuyerView } = await import("@/app/admin/workspaces/[id]/invite-actions");
+    const formData = new FormData();
+    formData.set("email", email);
+
+    await expect(flipToBuyerView(workspaceId, formData)).rejects.toBe(redirectSentinel);
+
+    expect(cookieSetCalls).toHaveLength(1);
+    const [call] = cookieSetCalls;
+    expect(call.name).toBe(portalCookieName(workspaceId));
+    expect(call.options).toEqual({
+      ...PINNED_SECURITY_OPTIONS,
+      expires: expect.any(Date),
+    });
+  });
+
   it("both gate call sites agree on identical security options — the pinning guarantee itself", async () => {
     const portalWorkspaceId = "7e570000-0000-4000-8000-0000000000c3";
     const portalEmail = "buyer@portal-pin-test-2.invalid";
@@ -200,11 +253,25 @@ describe("portal session cookie — options pinning at both gate call sites (T39
     await expect(enterView(viewWorkspaceId, viewFormData)).rejects.toBe(redirectSentinel);
     const viewOptions = cookieSetCalls[0].options;
 
+    cookieSetCalls.length = 0;
+    tableConfig.clear();
+
+    const flipWorkspaceId = "7e570000-0000-4000-8000-0000000000c6";
+    const flipEmail = "buyer@flip-pin-test-2.invalid";
+    tableConfig.set("workspaces", { data: { id: flipWorkspaceId, approved_emails: [flipEmail] }, error: null });
+    const { flipToBuyerView } = await import("@/app/admin/workspaces/[id]/invite-actions");
+    const flipFormData = new FormData();
+    flipFormData.set("email", flipEmail);
+    await expect(flipToBuyerView(flipWorkspaceId, flipFormData)).rejects.toBe(redirectSentinel);
+    const flipOptions = cookieSetCalls[0].options;
+
     // Compare the four named security-relevant options directly — `expires`
     // deliberately excluded, since each call computes its own independent
     // timestamp and is not itself part of the pinning guarantee.
     expect(portalOptions).toMatchObject(PINNED_SECURITY_OPTIONS);
     expect(viewOptions).toMatchObject(PINNED_SECURITY_OPTIONS);
+    expect(flipOptions).toMatchObject(PINNED_SECURITY_OPTIONS);
     expect({ ...portalOptions, expires: undefined }).toEqual({ ...viewOptions, expires: undefined });
+    expect({ ...viewOptions, expires: undefined }).toEqual({ ...flipOptions, expires: undefined });
   });
 });

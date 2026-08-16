@@ -41,7 +41,20 @@ interface AllowlistEntry {
  * exemption from requireSeller() — see this file's own test run for what
  * that means about the files it currently covers.
  */
-const ALLOWLIST: readonly AllowlistEntry[] = [];
+const ALLOWLIST: readonly AllowlistEntry[] = [
+  {
+    file: "app/admin/workspaces/[id]/invite-actions.ts",
+    functionName: "INITIAL_SEND_INVITE_STATE",
+    reason:
+      "T43 (Sprint 8, Ticket 43). A plain exported data constant (React 19 " +
+      "useActionState's initial state value for sendBuyerInvite), not a " +
+      "server action — it has no request/auth boundary to guard. The " +
+      "regex-based extractExportedFunctions probe matches ANY top-level " +
+      "`export const NAME = ...`, not only functions, so a non-function " +
+      "export needs an explicit exemption rather than a requireSeller() " +
+      "call it could never meaningfully make.",
+  },
+];
 
 interface ExportedFunction {
   readonly name: string;
