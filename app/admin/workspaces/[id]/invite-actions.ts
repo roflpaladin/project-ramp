@@ -181,12 +181,22 @@ const PORTAL_SESSION_COOKIE_OPTIONS = {
  * sendBuyerInvite above). That is treated as sufficient proof to mint the
  * same signed portal-session cookie verifyAccess
  * (app/portal/[id]/gate-actions.ts) mints after a successful code check.
+ *
+ * OWN-INBOX ONLY (T43 follow-up, Session A cross-session audit): the flip
+ * mints a session for the seller's OWN email, never an arbitrary approved
+ * address. A portal session for the real buyer's email would let the seller
+ * complete buyer-owned steps as the buyer — bypassing the A3 two-sided
+ * ownership control and corrupting mutual-accountability attribution. Not a
+ * tenant-security hole (it's their own workspace), but a product-integrity
+ * one. The Sep-1 demo moment is precisely "invite my own inbox, flip in",
+ * so this restriction costs the flow nothing.
  */
 export async function flipToBuyerView(workspaceId: string, formData: FormData): Promise<void> {
   const seller = await requireSeller();
   if (!seller) redirect("/admin/login");
 
   const email = normalizeEmail(formData.get("email"));
+  const isOwnInbox = seller.email !== null && email === seller.email.trim().toLowerCase();
 
   const { data: workspace } = await seller.client
     .from("workspaces")
@@ -203,12 +213,13 @@ export async function flipToBuyerView(workspaceId: string, formData: FormData): 
   const isApproved =
     !!workspace && isEmailApproved(email, workspace.approved_emails ?? [], workspace.target_domain);
 
-  if (!workspace || !email || !isApproved) {
+  if (!workspace || !email || !isOwnInbox || !isApproved) {
     // Refuses without minting a cookie. Deliberately the SAME redirect shape
-    // regardless of which check failed (missing workspace via RLS, or an
-    // email that was never whitelisted) — the same "don't distinguish why"
-    // choice sendBuyerInvite's workspace lookup makes above, so this can
-    // never become an approved-email enumeration oracle either.
+    // regardless of which check failed (missing workspace via RLS, an email
+    // that was never whitelisted, or an address that isn't the seller's own
+    // inbox) — the same "don't distinguish why" choice sendBuyerInvite's
+    // workspace lookup makes above, so this can never become an
+    // approved-email enumeration oracle either.
     redirect(`/admin/workspaces/${workspaceId}`);
   }
 

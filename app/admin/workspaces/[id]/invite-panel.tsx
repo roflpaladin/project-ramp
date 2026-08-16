@@ -117,11 +117,12 @@ function FlipSubmitButton() {
  *
  * One Signal per decision scope (design system MUST): before an invite is
  * sent, "Send invite" is this card's sole primary/Signal element
- * (`data-signal="true"`). The instant it succeeds, "Send invite" drops to
- * secondary and "Open buyer view" becomes the card's one Signal instead —
- * never both at once, in either the "sent" state or the recoverable
- * "cooldown"/"error" states (where no flip renders at all, so the send
- * button stays the only primary throughout).
+ * (`data-signal="true"`). When a send to the seller's OWN inbox succeeds,
+ * "Send invite" drops to secondary and "Open buyer view" becomes the card's
+ * one Signal instead — never both at once. In every other state — the
+ * recoverable "cooldown"/"error" states and a successful send to a real
+ * buyer's address (own-inbox rule above: no flip renders there) — the send
+ * button stays the only primary throughout.
  */
 export function InvitePanel({ workspaceId, sellerEmail }: InvitePanelProps) {
   const [state, formAction, isSending] = useActionState(
@@ -131,7 +132,18 @@ export function InvitePanel({ workspaceId, sellerEmail }: InvitePanelProps) {
   const [emailValue, setEmailValue] = useState("");
 
   const tone = statusTone(state.status);
-  const hasFlip = state.status === "sent" && state.email !== null;
+  // Own-inbox only (T43 follow-up, A3 ownership audit): the flip renders
+  // solely when the invite went to the seller's OWN address — mirroring the
+  // server-side rule in flipToBuyerView, which refuses any other email. A
+  // buyer-bound invite still confirms as sent; it just never offers a button
+  // that would let the seller enter the portal as the buyer (or, client-side,
+  // a button the server would silently refuse). state.email arrives
+  // normalized (lowercased) from the action; sellerEmail comes raw from auth.
+  const hasFlip =
+    state.status === "sent" &&
+    state.email !== null &&
+    sellerEmail !== null &&
+    state.email === sellerEmail.trim().toLowerCase();
 
   function useMyEmail() {
     if (sellerEmail) setEmailValue(sellerEmail);
@@ -170,7 +182,7 @@ export function InvitePanel({ workspaceId, sellerEmail }: InvitePanelProps) {
             label="Send invite"
             pendingLabel="Sending invite"
             isPending={isSending}
-            isPrimary={state.status !== "sent"}
+            isPrimary={!hasFlip}
           />
         </div>
 

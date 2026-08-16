@@ -101,13 +101,18 @@ input, button {
   font: inherit;
   padding: 0.5rem 0.75rem;
   border-radius: 6px;
-  border: 1px solid #ccc;
+  border: 1px solid var(--line);
 }
 
 button {
   cursor: pointer;
   border: none;
-  background: var(--onyx);
+  /* --ink/--paper invert together per theme, so the default button stays an
+     "inverse" chip in both. --onyx does NOT flip in dark mode — pairing it
+     with --paper text collapsed to near-black-on-near-black there (found
+     during T39; the /admin/login inline styles predating this fix already
+     work around it). */
+  background: var(--ink);
   color: var(--paper);
   width: fit-content;
 }

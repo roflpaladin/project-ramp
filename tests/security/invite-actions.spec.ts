@@ -313,8 +313,11 @@ describe("flipToBuyerView (T43)", () => {
     expect(cookieSetCalls).toHaveLength(0);
   });
 
-  it("happy path: mints the pinned-options session cookie for the whitelisted email and redirects to /portal/[id]", async () => {
-    const email = "flip-happy-path@invite-test.invalid";
+  it("happy path: mints the pinned-options session cookie for the seller's own whitelisted email and redirects to /portal/[id]", async () => {
+    // Own-inbox rule (T43 follow-up): the only email the flip will ever mint
+    // for is the signed-in seller's own — the Sep-1 "invite myself, flip in"
+    // moment. The session mock's email is seeded.ownerEmail (beforeEach).
+    const email = seeded.ownerEmail;
     const db = createAdminClient();
     await db.from("workspaces").update({ approved_emails: [email] }).eq("id", seeded.workspaceId);
 
@@ -336,23 +339,28 @@ describe("flipToBuyerView (T43)", () => {
     expect(verifyPortalSessionValue(seeded.workspaceId, call.value)).toEqual({ email });
   });
 
-  it("flips a domain-approved email that was never explicitly whitelisted — same isEmailApproved contract as the invite (T43 review regression)", async () => {
-    // Review finding: sendBuyerInvite deliberately skips the whitelist append
-    // for a domain-covered address, so a literal array-membership check here
-    // made the flip silently refuse the most common approval path right
-    // after the invite reported "sent". The flip must honour the exact same
-    // isEmailApproved contract (explicit list OR target_domain match).
-    const email = `flip-domain-match@${INVITE_TARGET_DOMAIN}`;
+  it("refuses ANY approved email that is not the seller's own inbox — A3 ownership regression (T43 follow-up, Session A audit)", async () => {
+    // The finding: minting a portal session for the real buyer's address
+    // would let the seller complete buyer-owned steps AS the buyer,
+    // corrupting mutual-accountability attribution. So approval alone is no
+    // longer sufficient — this address is BOTH explicitly whitelisted AND
+    // domain-matched (@target_domain), the strongest possible approval, and
+    // the flip must still refuse it because it isn't seller.email.
+    const email = `real-buyer@${INVITE_TARGET_DOMAIN}`;
+    const db = createAdminClient();
+    await db.from("workspaces").update({ approved_emails: [email] }).eq("id", seeded.workspaceId);
 
     await expect(flipToBuyerView(seeded.workspaceId, formDataWithEmail(email))).rejects.toBe(redirectSentinel);
 
-    expect(redirectCalls).toEqual([`/portal/${seeded.workspaceId}`]);
-    expect(cookieSetCalls).toHaveLength(1);
-    expect(verifyPortalSessionValue(seeded.workspaceId, cookieSetCalls[0].value)).toEqual({ email });
+    expect(cookieSetCalls).toHaveLength(0);
+    expect(redirectCalls).toEqual([`/admin/workspaces/${seeded.workspaceId}`]);
   });
 
   it("refuses a wrong-tenant workspace: no cookie set, redirects back to the admin workspace page", async () => {
-    const email = "flip-wrong-tenant@invite-test.invalid";
+    // The seller's OWN email, whitelisted on the foreign workspace — so the
+    // refusal below is attributable to tenancy (RLS zero rows), not to the
+    // own-inbox rule.
+    const email = seeded.ownerEmail;
     const db = createAdminClient();
     await db.from("workspaces").update({ approved_emails: [email] }).eq("id", seeded.foreignWorkspaceId);
 
@@ -362,21 +370,21 @@ describe("flipToBuyerView (T43)", () => {
     expect(redirectCalls).toEqual([`/admin/workspaces/${seeded.foreignWorkspaceId}`]);
   });
 
-  it("refuses an email that is neither whitelisted nor domain-matched on the seller's own workspace: no cookie set", async () => {
-    // Off the workspace's target_domain on purpose: since the flip honours
-    // the full isEmailApproved contract (T43 review regression above), an
-    // address on the target domain is legitimately approved — real refusal
-    // needs an address outside both the explicit list and the domain.
-    await expect(
-      flipToBuyerView(seeded.workspaceId, formDataWithEmail("never-invited@somewhere-else.invalid")),
-    ).rejects.toBe(redirectSentinel);
+  it("refuses the seller's own email when it was never approved: no cookie set", async () => {
+    // Own-inbox alone is not sufficient either — the address must ALSO pass
+    // the same isEmailApproved contract the invite uses. seeded.ownerEmail is
+    // off the workspace's target_domain and (in this test) never whitelisted,
+    // so the flip must refuse even the seller's own inbox.
+    await expect(flipToBuyerView(seeded.workspaceId, formDataWithEmail(seeded.ownerEmail))).rejects.toBe(
+      redirectSentinel,
+    );
 
     expect(cookieSetCalls).toHaveLength(0);
     expect(redirectCalls).toEqual([`/admin/workspaces/${seeded.workspaceId}`]);
   });
 
   it("inserts NO workspace_analytics row — a seller's own flip is not buyer engagement", async () => {
-    const email = "flip-no-analytics@invite-test.invalid";
+    const email = seeded.ownerEmail;
     const db = createAdminClient();
     await db.from("workspaces").update({ approved_emails: [email] }).eq("id", seeded.workspaceId);
 
