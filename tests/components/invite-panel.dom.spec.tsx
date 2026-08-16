@@ -166,15 +166,23 @@ describe("InvitePanel — pending presentation", () => {
   });
 });
 
-describe("InvitePanel — sent", () => {
-  it("names the invited address, gives the flip button the card's one Signal, and drops Send invite to secondary", async () => {
-    mockSendBuyerInvite.mockResolvedValueOnce(sentState("buyer@acme.example"));
-    const { container } = render(<InvitePanel workspaceId={WORKSPACE_ID} sellerEmail={null} />);
+describe("InvitePanel — sent to the seller's own inbox", () => {
+  // The flip is own-inbox only (T43 follow-up, A3 ownership audit): it
+  // renders solely when the invited address is the seller's own, mirroring
+  // flipToBuyerView's server-side rule. sellerEmail arrives raw from auth —
+  // mixed case here on purpose, to pin the case-insensitive comparison
+  // against the action's normalized (lowercased) state.email.
+  const SELLER_EMAIL = "AE@getbrava.io";
+  const SELLER_EMAIL_NORMALIZED = "ae@getbrava.io";
 
-    await submitInvite("buyer@acme.example");
+  it("names the invited address, gives the flip button the card's one Signal, and drops Send invite to secondary", async () => {
+    mockSendBuyerInvite.mockResolvedValueOnce(sentState(SELLER_EMAIL_NORMALIZED));
+    const { container } = render(<InvitePanel workspaceId={WORKSPACE_ID} sellerEmail={SELLER_EMAIL} />);
+
+    await submitInvite(SELLER_EMAIL_NORMALIZED);
 
     const status = await screen.findByRole("status");
-    expect(status).toHaveTextContent("Invite sent to buyer@acme.example.");
+    expect(status).toHaveTextContent(`Invite sent to ${SELLER_EMAIL_NORMALIZED}.`);
     expect(status.querySelector("[data-status-dot]")).not.toBeNull();
     expect(status).toHaveAttribute("data-tone", "done");
 
@@ -189,14 +197,36 @@ describe("InvitePanel — sent", () => {
   });
 
   it("carries the invited email on the flip form as a hidden field", async () => {
-    mockSendBuyerInvite.mockResolvedValueOnce(sentState("buyer@acme.example"));
-    const { container } = render(<InvitePanel workspaceId={WORKSPACE_ID} sellerEmail={null} />);
+    mockSendBuyerInvite.mockResolvedValueOnce(sentState(SELLER_EMAIL_NORMALIZED));
+    const { container } = render(<InvitePanel workspaceId={WORKSPACE_ID} sellerEmail={SELLER_EMAIL} />);
 
-    await submitInvite("buyer@acme.example");
+    await submitInvite(SELLER_EMAIL_NORMALIZED);
     await screen.findByRole("button", { name: "Open buyer view" });
 
     const hiddenInput = container.querySelector('input[type="hidden"][name="email"]') as HTMLInputElement;
-    expect(hiddenInput.value).toBe("buyer@acme.example");
+    expect(hiddenInput.value).toBe(SELLER_EMAIL_NORMALIZED);
+  });
+});
+
+describe("InvitePanel — sent to a real buyer's address (own-inbox rule)", () => {
+  it("confirms the send but renders NO flip button, and Send invite keeps the card's one Signal", async () => {
+    // A3 ownership regression (T43 follow-up): a buyer-bound invite must
+    // never offer a button that would enter the portal as the buyer — the
+    // server refuses it, so the UI must not render it. The send confirmation
+    // itself is unchanged.
+    mockSendBuyerInvite.mockResolvedValueOnce(sentState("buyer@acme.example"));
+    const { container } = render(<InvitePanel workspaceId={WORKSPACE_ID} sellerEmail="ae@getbrava.io" />);
+
+    await submitInvite("buyer@acme.example");
+
+    const status = await screen.findByRole("status");
+    expect(status).toHaveTextContent("Invite sent to buyer@acme.example.");
+    expect(status).toHaveAttribute("data-tone", "done");
+
+    expect(screen.queryByRole("button", { name: "Open buyer view" })).not.toBeInTheDocument();
+    const sendButton = screen.getByRole("button", { name: "Send invite" });
+    expect(sendButton).toHaveAttribute("data-signal", "true");
+    expect(container.querySelectorAll('[data-signal="true"]')).toHaveLength(1);
   });
 });
 

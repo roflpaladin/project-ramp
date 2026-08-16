@@ -195,7 +195,10 @@ describe("portal session cookie — options pinning at all three minting sites (
 
   it("flipToBuyerView (seller one-click flip, T43) sets the SAME pinned httpOnly/secure/sameSite/path cookie options", async () => {
     const workspaceId = "7e570000-0000-4000-8000-0000000000c5";
-    const email = "buyer@flip-pin-test.invalid";
+    // Must be the mocked SellerSession's own email (requireSeller mock above):
+    // the T43 follow-up restricts the flip to the seller's own inbox (A3
+    // ownership audit), so any other address is refused before minting.
+    const email = "seller@pin-test.invalid";
 
     // The seller's own workspace lookup — flipToBuyerView refuses to mint
     // anything unless the email is already on this row's approved_emails.
@@ -257,7 +260,8 @@ describe("portal session cookie — options pinning at all three minting sites (
     tableConfig.clear();
 
     const flipWorkspaceId = "7e570000-0000-4000-8000-0000000000c6";
-    const flipEmail = "buyer@flip-pin-test-2.invalid";
+    // The mocked seller's own email — own-inbox rule, see the flip test above.
+    const flipEmail = "seller@pin-test.invalid";
     tableConfig.set("workspaces", { data: { id: flipWorkspaceId, approved_emails: [flipEmail] }, error: null });
     const { flipToBuyerView } = await import("@/app/admin/workspaces/[id]/invite-actions");
     const flipFormData = new FormData();
