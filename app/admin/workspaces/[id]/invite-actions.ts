@@ -43,7 +43,10 @@ function isPlausibleEmail(email: string): boolean {
   return EMAIL_PATTERN.test(email);
 }
 
-const FALLBACK_ORIGIN = "https://getbrava.io";
+// getbrava.tech is the registered production domain (founder decision
+// 2026-08-16 — .tech, not .io; we do NOT own getbrava.io, so it must never
+// be a fallback an email could carry).
+const FALLBACK_ORIGIN = "https://getbrava.tech";
 
 /**
  * `/portal/[id]`'s absolute URL for the invite email's "Open your deal room"

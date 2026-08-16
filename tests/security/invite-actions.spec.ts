@@ -165,7 +165,7 @@ beforeEach(() => {
   redirectCalls.length = 0;
   requestHeaders.clear();
   requestHeaders.set("x-forwarded-proto", "https");
-  requestHeaders.set("x-forwarded-host", "getbrava.io");
+  requestHeaders.set("x-forwarded-host", "getbrava.tech");
   currentSellerSession.value = { client: sellerClient, userId: "unused-in-tests", email: seeded?.ownerEmail ?? null };
 });
 
@@ -216,7 +216,7 @@ describe("sendBuyerInvite (T43)", () => {
     expect(sendAccessCodeEmail).toHaveBeenCalledTimes(1);
     expect(sendAccessCodeEmail.mock.calls[0][0]).toMatchObject({
       to: email,
-      portalUrl: `https://getbrava.io/portal/${seeded.workspaceId}`,
+      portalUrl: `https://getbrava.tech/portal/${seeded.workspaceId}`,
     });
   });
 
@@ -273,13 +273,13 @@ describe("sendBuyerInvite (T43)", () => {
   it("builds the emailed portal link from NEXT_PUBLIC_APP_URL when set, ignoring forwarded headers (T43 security review)", async () => {
     const email = "env-origin-invite@buyer-inbox-test.invalid";
     requestHeaders.set("x-forwarded-host", "attacker.invalid");
-    vi.stubEnv("NEXT_PUBLIC_APP_URL", "https://app.getbrava.io");
+    vi.stubEnv("NEXT_PUBLIC_APP_URL", "https://app.getbrava.tech");
     try {
       const result = await sendBuyerInvite(seeded.workspaceId, INITIAL_SEND_INVITE_STATE, formDataWithEmail(email));
 
       expect(result.status).toBe("sent");
       expect(sendAccessCodeEmail.mock.calls[0][0]).toMatchObject({
-        portalUrl: `https://app.getbrava.io/portal/${seeded.workspaceId}`,
+        portalUrl: `https://app.getbrava.tech/portal/${seeded.workspaceId}`,
       });
     } finally {
       vi.unstubAllEnvs();
@@ -296,7 +296,7 @@ describe("sendBuyerInvite (T43)", () => {
 
     expect(result.status).toBe("sent");
     expect(sendAccessCodeEmail.mock.calls[0][0]).toMatchObject({
-      portalUrl: `https://getbrava.io/portal/${seeded.workspaceId}`,
+      portalUrl: `https://getbrava.tech/portal/${seeded.workspaceId}`,
     });
   });
 });

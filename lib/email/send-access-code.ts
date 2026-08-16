@@ -58,7 +58,7 @@ export async function sendAccessCodeEmail({
       socketTimeout: 15_000,
     });
 
-    // "Brava" is the product's user-facing name (getbrava.io) -- this is a
+    // "Brava" is the product's user-facing name (getbrava.tech) -- this is a
     // user-facing surface, so it says Brava, not the internal "Ramp"
     // codename this repo otherwise uses throughout its code/comments.
     const portalLinkText = portalUrl ? `\n\nOpen your deal room: ${portalUrl}` : "";
