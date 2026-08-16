@@ -29,3 +29,4 @@ ECC/
 # swallowed lib/plans/ and tests/plans/ when the plan data layer landed
 # (Ticket 24). Anchored to the repo root only.
 /plans/
+e2e/.logs/

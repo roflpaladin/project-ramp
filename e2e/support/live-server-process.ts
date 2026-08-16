@@ -21,6 +21,11 @@
 import { startLiveServer } from "../../tests/security/support/live-server";
 
 async function main() {
+  // T44: forward the Next server's own output through this wrapper so
+  // global-setup.ts can tee it to e2e/.logs/live-server.log — the only place
+  // a prod-build server action's real stack (browser shows just a digest)
+  // can be recovered from a failed run.
+  process.env.LIVE_SERVER_FORWARD_OUTPUT = "1";
   const server = await startLiveServer();
   // Signals global-setup.ts (reading this process's stdout) that the real,
   // already-built Next.js server is actually accepting connections.
