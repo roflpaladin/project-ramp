@@ -7,6 +7,7 @@ import type { PlanStepRow } from "@/lib/plans/types";
 import { computeEngagementSignal, type EngagementEventInput } from "@/lib/plans/engagement";
 import { getStallThresholdDays } from "@/lib/plans/stall-threshold";
 import { getCrmForecastForWorkspace } from "@/lib/crm/forecast";
+import { requireSeller } from "@/lib/plans/require-seller";
 import { addLink } from "./links-actions";
 import { LinkUrlField } from "./link-url-field";
 import { LinkRow } from "./link-row";
@@ -14,6 +15,7 @@ import { CrmForecastStrip } from "./crm-forecast-strip";
 import { ChatPresence } from "./chat-presence";
 import { ChatUrlForm } from "./chat-url-form";
 import { StallAlert } from "./stall-alert";
+import { InvitePanel } from "./invite-panel";
 import "./workspace-links.css";
 
 /** Flattens the plan tree's stages into a single ordered step list — the
@@ -58,7 +60,7 @@ export default async function WorkspaceDetailPage({
   //   1. the cached crm_* fields (lib/crm/forecast.ts, T31-2 — not modified here)
   //   2. the plan tree, for step owner_side/status (lib/plans/queries.ts, Ticket 28)
   //   3. workspace_analytics events, for real buyer engagement (T31-1's input)
-  const [crmForecast, plan, { data: analyticsRows }] = await Promise.all([
+  const [crmForecast, plan, { data: analyticsRows }, seller] = await Promise.all([
     getCrmForecastForWorkspace(id, supabase),
     getPlanForSeller(id, supabase),
     supabase
@@ -66,6 +68,11 @@ export default async function WorkspaceDetailPage({
       .select("action_type, created_at")
       .eq("workspace_id", id)
       .order("created_at", { ascending: false }),
+    // T43: the seller's own inbox for InvitePanel's "use my email"
+    // affordance below — requireSeller() re-derives its own client/session
+    // rather than reusing the `supabase` client already in scope (T28-9's
+    // contract: no caller passes in an unverified client).
+    requireSeller(),
   ]);
 
   const engagementEvents: EngagementEventInput[] = (analyticsRows ?? []).map((row) => ({
@@ -115,6 +122,16 @@ export default async function WorkspaceDetailPage({
           strip below is even mounted (it hides entirely without CRM sync,
           T31-5). Renders nothing at all when the buyer is actively engaged. */}
       <StallAlert signal={engagementSignal} planHref={`/admin/workspaces/${id}/plan`} />
+
+      {/* T43: seller-facing invite panel, its own card just under the chat
+          section and above the links list — the seller's other real
+          destination for sending a buyer into their own portal, complementing
+          rather than competing with the stall alert's Signal above (that
+          Signal only renders in the "stalled" state; this panel's Signal only
+          renders once an invite has actually been sent, so the two are never
+          both live in the same render — see invite-panel.tsx's own header
+          comment for the full one-Signal audit within this card). */}
+      <InvitePanel workspaceId={id} sellerEmail={seller?.email ?? null} />
 
       <p className="wsl-plan-nav">
         <Link href={`/admin/workspaces/${id}/plan`} className="wsl-btn">

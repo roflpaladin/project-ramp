@@ -1,0 +1,266 @@
+/* Scoped styles for the seller-facing buyer-invite panel (Sprint 8, Ticket
+   43; T43 — "Own-inbox buyer invite & instant flip"). Same layering choice
+   as every sibling surface on this page (workspace-links.css,
+   stall-alert.css, crm-forecast-strip.css): theme layered, utilities
+   unlayered. Brand colour comes entirely from the Ramp tokens in
+   app/globals.css — nothing here hardcodes a hex. Scoped to
+   [data-surface="invite-panel"] so nothing else on /admin is affected.
+
+   Button/input/badge measurements below (40px buttons, 6px input radius,
+   999px 12px/500 wash-backed status badge) match the live "UI/UX and Design
+   Guidelines" Notion page as fetched for this ticket. A few px larger than
+   this same page's OTHER buttons (wsl-btn/wsa-cta are 32px, plan-btn is
+   36px — all predate this spec). Deliberately not reconciled here: this
+   ticket only owns the new invite panel; retrofitting sibling buttons is a
+   separate change outside its scope, worth a follow-up sweep once that gap
+   is confirmed against the live page. */
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css";
+
+@media (prefers-reduced-motion: reduce) {
+  [data-surface="invite-panel"] * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+[data-surface="invite-panel"] {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin: 0 0 24px;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--paper);
+}
+
+[data-surface="invite-panel"] .ip-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+[data-surface="invite-panel"] .ip-intro {
+  margin: 0;
+  font-size: 14px;
+  color: var(--slate);
+}
+
+[data-surface="invite-panel"] .ip-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ---- field + input ------------------------------------------------------ */
+
+[data-surface="invite-panel"] .ip-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 360px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+[data-surface="invite-panel"] .ip-input {
+  height: 40px;
+  padding: 0 12px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  transition: border-color 0.12s cubic-bezier(0.2, 0, 0, 1);
+}
+[data-surface="invite-panel"] .ip-input:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+  border-color: var(--signal);
+}
+[data-surface="invite-panel"] .ip-input[aria-invalid="true"] {
+  border-color: var(--state-risk);
+}
+[data-surface="invite-panel"] .ip-input:disabled {
+  background: var(--mist);
+  color: var(--slate);
+}
+
+[data-surface="invite-panel"] .ip-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ---- buttons: primary / secondary / tertiary --------------------------- */
+
+[data-surface="invite-panel"] .ip-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 40px;
+  padding: 0 16px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background-color 0.12s cubic-bezier(0.2, 0, 0, 1),
+    border-color 0.12s cubic-bezier(0.2, 0, 0, 1);
+}
+[data-surface="invite-panel"] .ip-btn:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+[data-surface="invite-panel"] .ip-btn:disabled {
+  cursor: not-allowed;
+}
+
+[data-surface="invite-panel"] .ip-btn-primary {
+  background: var(--signal);
+  border-color: var(--signal);
+  color: var(--signal-fg);
+}
+[data-surface="invite-panel"] .ip-btn-primary:hover:not(:disabled) {
+  background: var(--signal-hover);
+  border-color: var(--signal-hover);
+}
+[data-surface="invite-panel"] .ip-btn-primary:active:not(:disabled) {
+  background: var(--signal-press);
+  border-color: var(--signal-press);
+}
+[data-surface="invite-panel"] .ip-btn-primary:disabled {
+  background: var(--mist);
+  border-color: var(--mist);
+  color: var(--slate);
+}
+
+[data-surface="invite-panel"] .ip-btn-secondary {
+  background: var(--paper);
+  border-color: var(--line);
+  color: var(--ink);
+}
+[data-surface="invite-panel"] .ip-btn-secondary:hover:not(:disabled) {
+  background: var(--mist);
+}
+[data-surface="invite-panel"] .ip-btn-secondary:disabled {
+  background: var(--mist);
+  border-color: var(--mist);
+  color: var(--slate);
+}
+
+[data-surface="invite-panel"] .ip-btn-tertiary {
+  background: transparent;
+  border-color: transparent;
+  color: var(--ink);
+  padding: 0 12px;
+}
+[data-surface="invite-panel"] .ip-btn-tertiary:hover:not(:disabled) {
+  background: var(--mist);
+}
+[data-surface="invite-panel"] .ip-btn-tertiary:disabled {
+  color: var(--slate);
+}
+
+/* ---- pending state: spinner swaps in at the label's own width, no reflow ---- */
+
+[data-surface="invite-panel"] .ip-btn-label {
+  opacity: 1;
+  transition: opacity 0.12s cubic-bezier(0.2, 0, 0, 1);
+}
+[data-surface="invite-panel"] .ip-btn-label[data-pending="true"] {
+  opacity: 0;
+}
+
+[data-surface="invite-panel"] .ip-spinner {
+  position: absolute;
+  inset: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+[data-surface="invite-panel"] .ip-spinner-ring {
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  opacity: 0.85;
+  animation: ip-spin 0.6s linear infinite;
+}
+@keyframes ip-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-surface="invite-panel"] .ip-spinner-ring {
+    animation: none;
+  }
+}
+
+/* ---- status: dot + text, wash background by tone, never colour-only ---- */
+
+[data-surface="invite-panel"] .ip-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  margin: 0;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink);
+}
+[data-surface="invite-panel"] .ip-status[data-tone="done"] {
+  background: var(--wash-done);
+}
+[data-surface="invite-panel"] .ip-status[data-tone="risk"] {
+  background: var(--wash-risk);
+}
+[data-surface="invite-panel"] .ip-status[data-tone="wait"] {
+  background: var(--mist);
+}
+
+[data-surface="invite-panel"] .ip-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+}
+[data-surface="invite-panel"] .ip-status[data-tone="done"] .ip-status-dot {
+  background: var(--state-done);
+}
+[data-surface="invite-panel"] .ip-status[data-tone="risk"] .ip-status-dot {
+  background: var(--state-risk);
+}
+[data-surface="invite-panel"] .ip-status[data-tone="wait"] .ip-status-dot {
+  background: var(--state-wait);
+}
+
+/* Invited email address, in Geist Mono — matching this page's other
+   raw-value treatment (workspace-links.css's resource-type headings,
+   crm-forecast-strip.css's numeric/date fields, its internal-chat link). */
+[data-surface="invite-panel"] .ip-status-email {
+  font-family: "Geist Mono", "SFMono-Regular", ui-monospace, monospace;
+}
+
+[data-surface="invite-panel"] .ip-flip-form {
+  margin: 0;
+  width: fit-content;
+}
+
+@media (max-width: 480px) {
+  [data-surface="invite-panel"] {
+    padding: 16px;
+  }
+}
