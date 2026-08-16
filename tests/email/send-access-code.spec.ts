@@ -33,7 +33,7 @@ const REQUIRED_ENV = {
   SMTP_PORT: "587",
   SMTP_USER: "test-user",
   SMTP_PASSWORD: "test-password",
-  SMTP_FROM: "noreply@getbrava.io",
+  SMTP_FROM: "noreply@getbrava.tech",
 } as const;
 
 describe("sendAccessCodeEmail (T43)", () => {
@@ -75,7 +75,7 @@ describe("sendAccessCodeEmail (T43)", () => {
   });
 
   it("includes an 'Open your deal room' link in both text and html bodies when portalUrl is given", async () => {
-    const portalUrl = "https://getbrava.io/portal/7e570000-0000-4000-8000-000000004302";
+    const portalUrl = "https://getbrava.tech/portal/7e570000-0000-4000-8000-000000004302";
 
     await sendAccessCodeEmail({ to: "buyer@example.invalid", code: "1234", portalUrl });
 
@@ -108,7 +108,7 @@ describe("sendAccessCodeEmail (T43)", () => {
     // (invite-actions.ts's buildPortalUrl) — a value carrying `"` or `<` must
     // not break out of the href attribute or inject markup into an email we
     // send to a third party.
-    const portalUrl = 'https://getbrava.io/portal/x"><script>alert(1)</script>';
+    const portalUrl = 'https://getbrava.tech/portal/x"><script>alert(1)</script>';
 
     await sendAccessCodeEmail({ to: "buyer@example.invalid", code: "1234", portalUrl });
 
