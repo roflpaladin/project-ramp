@@ -165,11 +165,7 @@ beforeEach(() => {
   redirectCalls.length = 0;
   requestHeaders.clear();
   requestHeaders.set("x-forwarded-proto", "https");
-<<<<<<< HEAD
   requestHeaders.set("x-forwarded-host", "getbrava.tech");
-  currentSellerSession.value = { client: sellerClient, userId: "unused-in-tests", email: seeded?.ownerEmail ?? null };
-=======
-  requestHeaders.set("x-forwarded-host", "getbrava.io");
   // tenantId: mechanical addition only, required by T41's SellerSession.tenantId
   // field — this suite's assertions/mocking strategy are otherwise untouched.
   currentSellerSession.value = {
@@ -178,7 +174,6 @@ beforeEach(() => {
     email: seeded?.ownerEmail ?? null,
     tenantId: seeded?.tenantId ?? null,
   };
->>>>>>> a8289d7 (feat: onboarding server actions — sample seed + first workspace (T41))
 });
 
 afterEach(async () => {
