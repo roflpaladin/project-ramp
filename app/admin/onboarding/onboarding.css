@@ -1,0 +1,319 @@
+/* Tailwind for the guided first-run onboarding surface (Sprint 8, Ticket 41
+   — "onboarding IS the demo"). Same layering choice as every sibling surface
+   (plan.css, invite-panel.css): theme layered, utilities unlayered so class
+   specificity beats globals.css's plain element selectors (form, label,
+   button, input). Brand colour comes entirely from the Ramp tokens defined
+   globally in app/globals.css — everything below only adds layout utilities
+   plus the handful of rules Tailwind utilities can't express with CSS custom
+   properties alone.
+
+   Dark-mode trap (documented at app/admin/login/page.tsx:19-39): the global
+   `button` rule in app/globals.css sets background: var(--onyx); color:
+   var(--paper), and [data-theme="dark"] maps --onyx and --paper to two
+   near-identical near-black values — collapsing any button left to that
+   bare rule to unreadable text-on-background in dark mode. Every button on
+   this surface is therefore styled explicitly below (.ob-btn-primary /
+   -secondary / -tertiary), never left to inherit it.
+
+   Token note: app/demo-sandbox/demo-sandbox.css redefines --signal to a
+   legacy blue for that standalone sandbox surface only. This file does not
+   import or reference that file — Signal here resolves to the real warm
+   amber defined in app/globals.css, same as every other production surface. */
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css";
+
+[data-surface="onboarding"] {
+  min-height: 100dvh;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+/* Quality floor: prefers-reduced-motion respected. Per the design system's
+   motion rule, reduced motion drops to opacity-only — this surface has no
+   transform/keyframe motion beyond the sample-deal spinner (already gated
+   below), so this blanket rule covers hover/focus colour transitions too. */
+@media (prefers-reduced-motion: reduce) {
+  [data-surface="onboarding"] * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+/* ---- page shell ---------------------------------------------------------- */
+
+[data-surface="onboarding"] .ob-page {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 48px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+[data-surface="onboarding"] .ob-header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+[data-surface="onboarding"] .ob-title {
+  margin: 0;
+  font-size: 32px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+[data-surface="onboarding"] .ob-intro {
+  margin: 0;
+  font-size: 14px;
+  color: var(--slate);
+}
+
+/* ---- card grid ------------------------------------------------------------ */
+
+[data-surface="onboarding"] .ob-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 24px;
+}
+
+[data-surface="onboarding"] .ob-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--paper);
+}
+
+[data-surface="onboarding"] .ob-card-eyebrow {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--slate);
+}
+
+[data-surface="onboarding"] .ob-card-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+[data-surface="onboarding"] .ob-card-body {
+  margin: 0;
+  font-size: 14px;
+  color: var(--slate);
+  flex: 1 0 auto;
+}
+
+/* Placeholder cards (CSV import / from your website / from your CRM) get no
+   separate greyed-out card background — that would read as a second,
+   competing neutral. "Slate treatment" is carried by the body copy colour
+   above plus the disabled button below (background: var(--mist); color:
+   var(--slate) — the same tokens every other disabled control on this
+   surface already uses), so a disabled card and an idle card share one
+   consistent shell. */
+
+/* ---- buttons: primary / secondary / tertiary ----------------------------- */
+
+[data-surface="onboarding"] .ob-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 40px;
+  padding: 0 16px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  width: fit-content;
+  transition:
+    background-color 0.12s cubic-bezier(0.2, 0, 0, 1),
+    border-color 0.12s cubic-bezier(0.2, 0, 0, 1);
+}
+[data-surface="onboarding"] .ob-btn:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+[data-surface="onboarding"] .ob-btn:disabled {
+  cursor: not-allowed;
+}
+
+[data-surface="onboarding"] .ob-btn-primary {
+  background: var(--signal);
+  border-color: var(--signal);
+  color: var(--signal-fg);
+}
+[data-surface="onboarding"] .ob-btn-primary:hover:not(:disabled) {
+  background: var(--signal-hover);
+  border-color: var(--signal-hover);
+}
+[data-surface="onboarding"] .ob-btn-primary:active:not(:disabled) {
+  background: var(--signal-press);
+  border-color: var(--signal-press);
+}
+[data-surface="onboarding"] .ob-btn-primary:disabled {
+  background: var(--mist);
+  border-color: var(--mist);
+  color: var(--slate);
+}
+
+[data-surface="onboarding"] .ob-btn-secondary {
+  background: var(--paper);
+  border-color: var(--line);
+  color: var(--ink);
+}
+[data-surface="onboarding"] .ob-btn-secondary:hover:not(:disabled) {
+  background: var(--mist);
+}
+[data-surface="onboarding"] .ob-btn-secondary:disabled {
+  background: var(--mist);
+  border-color: var(--mist);
+  color: var(--slate);
+}
+
+[data-surface="onboarding"] .ob-btn-tertiary {
+  background: transparent;
+  border-color: transparent;
+  color: var(--ink);
+  padding: 0 12px;
+}
+[data-surface="onboarding"] .ob-btn-tertiary:hover:not(:disabled) {
+  background: var(--mist);
+}
+[data-surface="onboarding"] .ob-btn-tertiary:disabled {
+  color: var(--slate);
+}
+
+/* ---- pending state: spinner swaps in at the label's own width, no reflow --
+   Copied from app/admin/workspaces/[id]/invite-panel.tsx's InviteSubmitButton
+   pattern (T43): while pending, the label is made transparent (not removed)
+   and a spinner is absolutely centred over the same box, so the button never
+   changes width — no dependency, plain CSS, matching this repo's
+   zero-new-dependency convention. The spinner is aria-hidden (purely
+   decorative): aria-busy already tells assistive tech the button is
+   mid-action, and the button's own accessible name swaps to the pending
+   label at the same time. */
+
+[data-surface="onboarding"] .ob-btn-label {
+  opacity: 1;
+  transition: opacity 0.12s cubic-bezier(0.2, 0, 0, 1);
+}
+[data-surface="onboarding"] .ob-btn-label[data-pending="true"] {
+  opacity: 0;
+}
+
+[data-surface="onboarding"] .ob-spinner {
+  position: absolute;
+  inset: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+[data-surface="onboarding"] .ob-spinner-ring {
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  opacity: 0.85;
+  animation: ob-spin 0.6s linear infinite;
+}
+@keyframes ob-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-surface="onboarding"] .ob-spinner-ring {
+    animation: none;
+  }
+}
+
+/* ---- status: dot + text, wash background by tone, never colour-only ------ */
+
+[data-surface="onboarding"] .ob-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  margin: 0;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink);
+}
+[data-surface="onboarding"] .ob-status[data-tone="risk"] {
+  background: var(--wash-risk);
+}
+[data-surface="onboarding"] .ob-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+}
+[data-surface="onboarding"] .ob-status[data-tone="risk"] .ob-status-dot {
+  background: var(--state-risk);
+}
+
+/* ---- manual step form ------------------------------------------------------ */
+
+[data-surface="onboarding"] .ob-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 420px;
+}
+
+[data-surface="onboarding"] .ob-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+[data-surface="onboarding"] .ob-input {
+  height: 40px;
+  padding: 0 12px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  transition: border-color 0.12s cubic-bezier(0.2, 0, 0, 1);
+}
+[data-surface="onboarding"] .ob-input:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+  border-color: var(--signal);
+}
+[data-surface="onboarding"] .ob-input[aria-invalid="true"] {
+  border-color: var(--state-risk);
+}
+[data-surface="onboarding"] .ob-input:disabled {
+  background: var(--mist);
+  color: var(--slate);
+}
+
+[data-surface="onboarding"] .ob-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+@media (max-width: 480px) {
+  [data-surface="onboarding"] .ob-page {
+    padding: 24px 16px;
+  }
+  [data-surface="onboarding"] .ob-grid {
+    grid-template-columns: 1fr;
+  }
+}
