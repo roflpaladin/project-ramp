@@ -163,8 +163,21 @@ export async function startLiveServer(): Promise<LiveServer> {
   // ordered buffer so the diagnostic message reads as a single transcript
   // rather than two streams a reader has to reconcile by hand.
   const startupOutput: string[] = [];
-  child.stdout?.on("data", (chunk: Buffer) => startupOutput.push(chunk.toString()));
-  child.stderr?.on("data", (chunk: Buffer) => startupOutput.push(chunk.toString()));
+  // T44: with LIVE_SERVER_FORWARD_OUTPUT=1 the server's output is ALSO
+  // forwarded to this process's own streams for the whole run, not just
+  // buffered for startup diagnostics — the Playwright wrapper
+  // (e2e/support/live-server-process.ts) sets it so a runtime server-side
+  // exception (browser shows only a digest) survives into a readable log.
+  // Off by default so the vitest security project's output stays clean.
+  const forwardOutput = process.env.LIVE_SERVER_FORWARD_OUTPUT === "1";
+  child.stdout?.on("data", (chunk: Buffer) => {
+    startupOutput.push(chunk.toString());
+    if (forwardOutput) process.stdout.write(chunk);
+  });
+  child.stderr?.on("data", (chunk: Buffer) => {
+    startupOutput.push(chunk.toString());
+    if (forwardOutput) process.stderr.write(chunk);
+  });
 
   try {
     await waitUntilReady(child);

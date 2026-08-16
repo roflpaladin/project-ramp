@@ -6,9 +6,17 @@
 // server process is spawned or killed.
 
 import { spawn, type ChildProcess } from "node:child_process";
+import { createWriteStream, mkdirSync } from "node:fs";
 import path from "node:path";
 
 const REPO_ROOT = path.join(__dirname, "..", "..");
+// T44: the live server's output is also teed to disk so a failed run leaves
+// the server-side stack behind (a Next prod build only shows a digest in the
+// browser — without this file the actual exception is unrecoverable).
+// Deliberately NOT under test-results/ — Playwright wipes that directory
+// when the run starts, which is after this stream is opened.
+const SERVER_LOG_DIR = path.join(REPO_ROOT, "e2e", ".logs");
+const SERVER_LOG_PATH = path.join(SERVER_LOG_DIR, "live-server.log");
 const READY_TIMEOUT_MS = 5 * 60 * 1000; // startLiveServer() builds the app first — minutes, not seconds.
 const SHUTDOWN_GRACE_MS = 5_000;
 
@@ -30,8 +38,16 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   });
 
   const output: string[] = [];
-  child.stdout?.on("data", (chunk: Buffer) => output.push(chunk.toString()));
-  child.stderr?.on("data", (chunk: Buffer) => output.push(chunk.toString()));
+  mkdirSync(SERVER_LOG_DIR, { recursive: true });
+  const logStream = createWriteStream(SERVER_LOG_PATH, { flags: "w" });
+  child.stdout?.on("data", (chunk: Buffer) => {
+    output.push(chunk.toString());
+    logStream.write(chunk);
+  });
+  child.stderr?.on("data", (chunk: Buffer) => {
+    output.push(chunk.toString());
+    logStream.write(chunk);
+  });
 
   await new Promise<void>((resolve, reject) => {
     const timer = setTimeout(() => {
