@@ -42,18 +42,11 @@ interface AllowlistEntry {
  * that means about the files it currently covers.
  */
 const ALLOWLIST: readonly AllowlistEntry[] = [
-  {
-    file: "app/admin/workspaces/[id]/invite-actions.ts",
-    functionName: "INITIAL_SEND_INVITE_STATE",
-    reason:
-      "T43 (Sprint 8, Ticket 43). A plain exported data constant (React 19 " +
-      "useActionState's initial state value for sendBuyerInvite), not a " +
-      "server action — it has no request/auth boundary to guard. The " +
-      "regex-based extractExportedFunctions probe matches ANY top-level " +
-      "`export const NAME = ...`, not only functions, so a non-function " +
-      "export needs an explicit exemption rather than a requireSeller() " +
-      "call it could never meaningfully make.",
-  },
+  // The former INITIAL_SEND_INVITE_STATE entry is gone: the constant moved
+  // to invite-state.ts (T44 finding — a "use server" file may only export
+  // async functions; the object export crashed every invite submit on
+  // production builds). An action file needing a data-constant exemption
+  // here is now a signal the constant is in the wrong file.
 ];
 
 interface ExportedFunction {
