@@ -72,7 +72,7 @@ describe("issueAccessTokenForInvite (T43)", () => {
 
     const before = await countPendingTokens(seeded.workspaceId, email);
     const result = await issueAccessTokenForInvite(seeded.workspaceId, email, {
-      portalUrl: `https://getbrava.io/portal/${seeded.workspaceId}`,
+      portalUrl: `https://getbrava.tech/portal/${seeded.workspaceId}`,
     });
     const after = await countPendingTokens(seeded.workspaceId, email);
 
@@ -81,7 +81,7 @@ describe("issueAccessTokenForInvite (T43)", () => {
     expect(sendAccessCodeEmail).toHaveBeenCalledTimes(1);
     expect(sendAccessCodeEmail.mock.calls[0][0]).toMatchObject({
       to: email,
-      portalUrl: `https://getbrava.io/portal/${seeded.workspaceId}`,
+      portalUrl: `https://getbrava.tech/portal/${seeded.workspaceId}`,
     });
   });
 

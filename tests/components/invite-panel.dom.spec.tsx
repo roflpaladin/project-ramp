@@ -95,7 +95,7 @@ describe("module boundary — single entry point", () => {
 
 describe("InvitePanel — idle", () => {
   it("renders a labelled email input and exactly one primary Send-invite button, no flip, no status", () => {
-    const { container } = render(<InvitePanel workspaceId={WORKSPACE_ID} sellerEmail="ae@getbrava.io" />);
+    const { container } = render(<InvitePanel workspaceId={WORKSPACE_ID} sellerEmail="ae@getbrava.tech" />);
 
     expect(screen.getByRole("heading", { name: "Invite your buyer" })).toBeInTheDocument();
     expect(screen.getByLabelText("Email")).toBeInTheDocument();
@@ -131,13 +131,13 @@ describe("InvitePanel — idle", () => {
 
 describe("InvitePanel — 'use my email' affordance", () => {
   it("fills the email field with the seller's own address on click, without submitting", () => {
-    render(<InvitePanel workspaceId={WORKSPACE_ID} sellerEmail="ae@getbrava.io" />);
+    render(<InvitePanel workspaceId={WORKSPACE_ID} sellerEmail="ae@getbrava.tech" />);
     const input = screen.getByLabelText("Email") as HTMLInputElement;
     expect(input.value).toBe("");
 
     fireEvent.click(screen.getByRole("button", { name: "Use my email" }));
 
-    expect(input.value).toBe("ae@getbrava.io");
+    expect(input.value).toBe("ae@getbrava.tech");
     expect(mockSendBuyerInvite).not.toHaveBeenCalled();
   });
 });
@@ -174,8 +174,8 @@ describe("InvitePanel — sent to the seller's own inbox", () => {
   // flipToBuyerView's server-side rule. sellerEmail arrives raw from auth —
   // mixed case here on purpose, to pin the case-insensitive comparison
   // against the action's normalized (lowercased) state.email.
-  const SELLER_EMAIL = "AE@getbrava.io";
-  const SELLER_EMAIL_NORMALIZED = "ae@getbrava.io";
+  const SELLER_EMAIL = "AE@getbrava.tech";
+  const SELLER_EMAIL_NORMALIZED = "ae@getbrava.tech";
 
   it("names the invited address, gives the flip button the card's one Signal, and drops Send invite to secondary", async () => {
     mockSendBuyerInvite.mockResolvedValueOnce(sentState(SELLER_EMAIL_NORMALIZED));
@@ -217,7 +217,7 @@ describe("InvitePanel — sent to a real buyer's address (own-inbox rule)", () =
     // server refuses it, so the UI must not render it. The send confirmation
     // itself is unchanged.
     mockSendBuyerInvite.mockResolvedValueOnce(sentState("buyer@acme.example"));
-    const { container } = render(<InvitePanel workspaceId={WORKSPACE_ID} sellerEmail="ae@getbrava.io" />);
+    const { container } = render(<InvitePanel workspaceId={WORKSPACE_ID} sellerEmail="ae@getbrava.tech" />);
 
     await submitInvite("buyer@acme.example");
 
