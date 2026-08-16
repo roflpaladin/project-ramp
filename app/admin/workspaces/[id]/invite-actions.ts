@@ -8,6 +8,7 @@ import { requireSeller } from "@/lib/plans/require-seller";
 import { isEmailApproved } from "@/lib/portal-access";
 import { issueAccessTokenForInvite } from "@/lib/portal-access-token";
 import { createPortalSessionValue, portalCookieName } from "@/lib/portal-session";
+import type { SendInviteState } from "./invite-state";
 
 // T43 (Sprint 8, Ticket 43 — "Own-inbox buyer invite & instant flip"). Lets a
 // seller send a portal invite to ANY email address (including their own
@@ -78,15 +79,10 @@ function sanitizeOrigin(candidate: string): string {
   }
 }
 
-export interface SendInviteState {
-  readonly status: "idle" | "sent" | "cooldown" | "error";
-  /** The invited email, once it has passed validation — null while idle/on a validation or lookup failure. */
-  readonly email: string | null;
-  /** Human-facing copy for the form to render; null only in the initial idle state. */
-  readonly message: string | null;
-}
-
-export const INITIAL_SEND_INVITE_STATE: SendInviteState = { status: "idle", email: null, message: null };
+// SendInviteState / INITIAL_SEND_INVITE_STATE moved to ./invite-state.ts —
+// a "use server" file may only export async functions, and the object export
+// crashed every invite submit at runtime in production builds (T44 finding;
+// see invite-state.ts's header).
 
 /**
  * useActionState-shaped once `workspaceId` is bound: `sendBuyerInvite.bind(null, workspaceId)`

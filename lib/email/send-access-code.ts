@@ -44,11 +44,18 @@ export async function sendAccessCodeEmail({
   }
 
   try {
+    // T44 finding: without explicit timeouts, nodemailer's defaults (minutes)
+    // let an unreachable relay hang the calling server action — the invite
+    // panel freezes in "Sending invite" instead of reaching its recoverable
+    // send-failed state. Fail fast; the caller already handles { ok: false }.
     const transport = nodemailer.createTransport({
       host,
       port: Number(port),
       secure: Number(port) === 465,
       auth: { user, pass: password },
+      connectionTimeout: 10_000,
+      greetingTimeout: 10_000,
+      socketTimeout: 15_000,
     });
 
     // "Brava" is the product's user-facing name (getbrava.io) -- this is a

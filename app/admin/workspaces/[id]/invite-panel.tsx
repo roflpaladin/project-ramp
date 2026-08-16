@@ -2,12 +2,8 @@
 
 import { useActionState, useState, type ReactNode } from "react";
 import { useFormStatus } from "react-dom";
-import {
-  INITIAL_SEND_INVITE_STATE,
-  flipToBuyerView,
-  sendBuyerInvite,
-  type SendInviteState,
-} from "./invite-actions";
+import { flipToBuyerView, sendBuyerInvite } from "./invite-actions";
+import { INITIAL_SEND_INVITE_STATE, type SendInviteState } from "./invite-state";
 import "./invite-panel.css";
 
 export interface InvitePanelProps {

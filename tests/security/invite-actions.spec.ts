@@ -101,9 +101,10 @@ vi.mock("@/lib/plans/require-seller", () => ({
   requireSeller: vi.fn(async () => currentSellerSession.value),
 }));
 
-const { sendBuyerInvite, flipToBuyerView, INITIAL_SEND_INVITE_STATE } = await import(
+const { sendBuyerInvite, flipToBuyerView } = await import(
   "@/app/admin/workspaces/[id]/invite-actions"
 );
+const { INITIAL_SEND_INVITE_STATE } = await import("@/app/admin/workspaces/[id]/invite-state");
 
 async function signInAsSeller(seeded: InviteWorkspace): Promise<SupabaseClient> {
   const client = createClient(env.supabaseUrl, env.anonKey, {
