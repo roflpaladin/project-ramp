@@ -1,11 +1,30 @@
 import { NextResponse } from "next/server";
 import { issueAccessToken } from "@/lib/portal-access-token";
+import { checkRateLimit, SEND_TOKEN_RATE_LIMIT } from "@/lib/rate-limit";
 
 // Thin wrapper over the same issuance logic the portal gate form action
 // uses (app/portal/[id]/gate-actions.ts) -- see lib/portal-access-token.ts.
 // Kept as a documented REST contract per the Technical Source of Truth API
 // surface, without a second implementation of token issuance.
+//
+// Interim rate limit (Sprint 8, Ticket 39, pulled forward from R7): keyed by
+// caller IP, layered on top of issueAccessToken's own per-workspace resend
+// cooldown. Full R7 audit is Ticket 62.
 export async function POST(request: Request) {
+  const callerIp =
+    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  const { allowed, retryAfterSeconds } = checkRateLimit(
+    `send-token:${callerIp}`,
+    SEND_TOKEN_RATE_LIMIT.limit,
+    SEND_TOKEN_RATE_LIMIT.windowMs,
+  );
+  if (!allowed) {
+    return NextResponse.json(
+      { ok: false, error: "Too many requests. Try again in a few minutes." },
+      { status: 429, headers: { "Retry-After": String(retryAfterSeconds) } },
+    );
+  }
+
   let body: unknown;
   try {
     body = await request.json();
