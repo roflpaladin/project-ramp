@@ -17,6 +17,8 @@ playwright-report/
 # Internal working docs — keep out of the public repo
 Project Ramp/
 .claude/
+# Local agent guidance — amended locally only; untracked via `git rm --cached` 2026-08-16.
+/CLAUDE.md
 /ramp-brand-guideline.html
 # Local ECC tooling checkout. Untracked, but tsconfig's "**/*.ts" include still
 # sweeps it into `npm run typecheck`, which fails on its sample assets. CI never
