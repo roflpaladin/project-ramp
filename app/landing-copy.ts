@@ -6,10 +6,14 @@
 // case, no hype, no "!", none of the banned words (leverage, synergy,
 // supercharge, seamless, unlock, empower, effortless, revolutionise).
 
+export const LANDING_KICKER = "For sellers and buyers, together";
+
 export const LANDING_HEADLINE = "One plan, one next move — for you and your buyer.";
 
 export const LANDING_SUBLINE =
   "Brava is the shared workspace where a seller and a buyer commit to a plan and act on it together.";
+
+export const LANDING_HERO_NOTE = "No spam. One email when we launch.";
 
 export interface ValueProp {
   readonly title: string;

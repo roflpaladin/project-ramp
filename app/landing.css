@@ -1,27 +1,37 @@
-/* Public landing page (Sprint 9, Ticket 47 — phase 1: structure + tokens
-   only; a visual/template pass follows in phase 2, so this stays
-   deliberately plain). Same layering choice as every sibling surface
-   (onboarding.css, invite-panel.css): theme layered, utilities unlayered so
-   class specificity beats globals.css's plain element selectors (form,
+/* Public landing page (Sprint 9, Ticket 47). Phase 2 design pass — the
+   founder ruled out a purchased template (this is designed in-house from
+   the brand system below) and, mid-pass, called for restraint over
+   ambition ahead of an accelerated publish date: a clean typographic
+   hero, generous whitespace, a calm value-prop section, one Signal CTA, a
+   solid footer. Same layering choice as every sibling surface
+   (onboarding.css, invite-panel.css): theme layered, utilities unlayered
+   so class specificity beats globals.css's plain element selectors (form,
    label, button, input). Brand colour comes entirely from the Ramp tokens
    defined globally in app/globals.css — everything below only adds layout
-   utilities plus the handful of rules Tailwind utilities can't express with
-   CSS custom properties alone.
+   utilities plus the handful of rules Tailwind utilities can't express
+   with CSS custom properties alone. No raw hex anywhere in this file — see
+   tests/components/waitlist-form.dom.spec.tsx's static grep.
 
    Font family: declared here (not in app/globals.css, which still falls
    back to system-ui — a pre-existing gap this ticket doesn't expand scope
    to fix) because the landing page is the app's most typography-visible
    surface. Stack matches the design guideline's §5 exactly; no font files
    are bundled, so this resolves to the system-ui/-apple-system fallback in
-   every environment until an actual Geist font asset is wired in — a phase-2
-   concern, flagged in the ticket report.
+   every environment until an actual Geist font asset is wired in — flagged
+   in the ticket report, not a token gap (the stack itself is correct).
 
    Dark-mode trap (documented at app/admin/login/page.tsx:19-39 and
    app/admin/onboarding/onboarding.css): the global `button` rule in
    app/globals.css sets background: var(--onyx); color: var(--paper), and
    [data-theme="dark"] maps --onyx and --paper to two near-identical
    near-black values. Every button on this surface is styled explicitly
-   below (.lp-btn-primary / -secondary), never left to inherit it. */
+   below (.lp-btn-primary), never left to inherit it.
+
+   Spacing rhythm: every margin/padding/gap value below is drawn from the
+   guideline's §6 scale (2, 4, 8, 12, 16, 24, 32, 48, 64, 96) — no arbitrary
+   values. Major page sections step by 96px (the top of that scale) for the
+   "generous whitespace" the founder asked for; internal card/section
+   rhythm steps by 24-48px. */
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css";
 
@@ -43,25 +53,73 @@
 /* ---- page shell ------------------------------------------------------- */
 
 [data-surface="landing"] .lp-page {
-  max-width: 960px;
+  max-width: 720px;
   margin: 0 auto;
-  padding: 64px 24px 48px;
+  padding: 64px 24px 64px;
   display: flex;
   flex-direction: column;
-  gap: 64px;
+  gap: 96px;
 }
 
-/* ---- hero --------------------------------------------------------------
-   `display` scale (40/44, 600, -0.03em) per §5 — marketing hero only. */
+/* ---- brand mark ----------------------------------------------------------
+   Wordmark "brava", lowercase, --ink/--paper per §9 ("letters stay --ink
+   (light) or --paper (dark)"). The gesture underline is the ONE part of the
+   mark allowed to carry Signal (§9: "Only the underline carries Signal" /
+   "Reuse the gesture as: logo underline..."). Not a data-signal element —
+   see app/page.tsx's header comment on why this doesn't compete with the
+   page's one action. */
+
+[data-surface="landing"] .lp-header {
+  display: flex;
+}
+
+[data-surface="landing"] .lp-mark {
+  position: relative;
+  display: inline-block;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--ink);
+  padding-bottom: 8px;
+}
+[data-surface="landing"] .lp-mark::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 28px;
+  height: 3px;
+  background: var(--signal);
+  clip-path: polygon(0 100%, 100% 0, 100% 100%);
+}
+
+/* ---- hero ------------------------------------------------------------- */
 
 [data-surface="landing"] .lp-hero {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 24px;
+  /* No align-items override (default stretch): a nested flex-column chain
+     with align-items:flex-start shrink-wraps every descendant to its own
+     max-content width — including .lp-form below, whose max-width:440px
+     percentage-resolves against that shrunk width instead of the hero's
+     actual 640px column, silently wrapping the submit button onto its own
+     line with a large gap. Stretch gives every child a definite width to
+     lay out and wrap text against, matching how these elements already
+     look (block-level text already fills available width either way). */
+  gap: 16px;
   max-width: 640px;
 }
 
+[data-surface="landing"] .lp-kicker {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: var(--slate);
+}
+
+/* `display` scale (40/44, 600, -0.03em) per §5 — marketing hero only. */
 [data-surface="landing"] .lp-headline {
   margin: 0;
   font-size: 40px;
@@ -79,16 +137,45 @@
   max-width: 68ch;
 }
 
-/* ---- value props ---------------------------------------------------------
+[data-surface="landing"] .lp-hero-cta {
+  display: flex;
+  flex-direction: column;
+  /* See .lp-hero's comment above — same reasoning, same fix. */
+  gap: 12px;
+  margin-top: 8px;
+}
+
+[data-surface="landing"] .lp-hero-note {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--slate);
+}
+
+/* ---- value props -----------------------------------------------------
    h2 (24/30, 600) section title, h3 (18/24, 600) card title, body (14/21,
-   400) card copy, per §5. */
+   400) card copy, per §5. The gesture reused as a section marker is the
+   second of §9's explicitly-listed reuses (logo underline, section marker)
+   — see app/page.tsx's header comment. */
 
 [data-surface="landing"] .lp-section-title {
-  margin: 0 0 24px;
+  margin: 0 0 32px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
   font-size: 24px;
   line-height: 30px;
   font-weight: 600;
   letter-spacing: -0.015em;
+}
+
+[data-surface="landing"] .lp-gesture {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  flex: 0 0 auto;
+  background: var(--signal);
+  clip-path: polygon(0 100%, 100% 0, 100% 100%);
 }
 
 [data-surface="landing"] .lp-value-grid {
@@ -96,7 +183,7 @@
   margin: 0;
   padding: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  grid-template-columns: 1fr;
   gap: 24px;
 }
 
@@ -108,6 +195,14 @@
   border: 1px solid var(--line);
   border-radius: 12px;
   background: var(--paper);
+}
+
+[data-surface="landing"] .lp-value-index {
+  font-family: "Geist Mono", "SFMono-Regular", ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  color: var(--slate);
 }
 
 [data-surface="landing"] .lp-value-title {
@@ -122,14 +217,37 @@
   font-size: 14px;
   line-height: 21px;
   color: var(--slate);
+  max-width: 60ch;
 }
 
 /* ---- footer -------------------------------------------------------------
-   `meta` scale (13/18, 400, Slate) for secondary nav text, per §5. */
+   `meta` scale (13/18, 400, Slate) for secondary text, per §5. */
 
 [data-surface="landing"] .lp-footer {
-  padding-top: 24px;
+  padding-top: 32px;
   border-top: 1px solid var(--line);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+[data-surface="landing"] .lp-footer-brand {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+[data-surface="landing"] .lp-mark--footer {
+  padding-bottom: 6px;
+}
+
+[data-surface="landing"] .lp-footer-tagline {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--slate);
 }
 
 [data-surface="landing"] .lp-footer-nav {
@@ -153,8 +271,8 @@
   outline-offset: 2px;
 }
 
-/* ---- buttons: primary / secondary (shared by the waitlist form and the
-   signup-mode CTA link) ------------------------------------------------- */
+/* ---- buttons: primary (shared by the waitlist form and the signup-mode
+   CTA link) --------------------------------------------------------------- */
 
 [data-surface="landing"] .lp-btn {
   position: relative;
@@ -204,7 +322,8 @@
 
 /* ---- pending state: spinner swaps in at the label's own width, no reflow —
    same pattern as onboarding.css's .ob-btn-label / .ob-spinner and
-   invite-panel.css's .ip- equivalents. */
+   invite-panel.css's .ip- equivalents. app/waitlist-form.tsx (untouched
+   this pass) renders exactly these classes. */
 
 [data-surface="landing"] .lp-btn-label {
   opacity: 1;
@@ -241,13 +360,30 @@
   }
 }
 
-/* ---- waitlist form ------------------------------------------------------- */
+/* ---- waitlist form -------------------------------------------------------
+   Same classes app/waitlist-form.tsx already renders (untouched this
+   pass) — only the presentation below changes. On wider viewports the
+   email field and submit button sit in one row (classic email-capture
+   composition); .lp-status is forced to its own full-width line so an
+   error/success message never squeezes awkwardly next to the button.
+
+   flex-direction is explicit here on purpose (not just relying on flex's
+   row default): globals.css's unscoped `form { flex-direction: column }`
+   is unlayered, same as this file's own rules, so the cascade falls
+   through to it per-PROPERTY for any property this ruleset doesn't itself
+   set — .lp-form is rendered on an actual <form> element, so leaving
+   flex-direction undeclared here silently inherited "column" from that
+   global rule (found live in the phase-2 screenshot pass: it turned
+   .lp-field's 220px flex-basis into a height instead of a width, stacking
+   the button 200+px below the input). */
 
 [data-surface="landing"] .lp-form {
   display: flex;
-  flex-direction: column;
-  gap: 16px;
-  max-width: 360px;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  max-width: 440px;
   width: 100%;
 }
 
@@ -258,6 +394,7 @@
   font-size: 13px;
   font-weight: 500;
   color: var(--ink);
+  flex: 1 1 220px;
 }
 
 [data-surface="landing"] .lp-input {
@@ -284,6 +421,10 @@
   color: var(--slate);
 }
 
+[data-surface="landing"] .lp-form .lp-btn {
+  flex: 0 0 auto;
+}
+
 /* ---- status: dot + text, wash background by tone, never colour-only ------ */
 
 [data-surface="landing"] .lp-status {
@@ -297,6 +438,9 @@
   font-size: 12px;
   font-weight: 500;
   color: var(--ink);
+}
+[data-surface="landing"] .lp-form .lp-status {
+  flex: 1 1 100%;
 }
 [data-surface="landing"] .lp-status[data-tone="done"] {
   background: var(--wash-done);
@@ -319,13 +463,28 @@
 
 @media (max-width: 480px) {
   [data-surface="landing"] .lp-page {
-    padding: 32px 16px 32px;
+    padding: 48px 16px 48px;
+    gap: 64px;
   }
   [data-surface="landing"] .lp-headline {
     font-size: 32px;
     line-height: 38px;
   }
-  [data-surface="landing"] .lp-value-grid {
-    grid-template-columns: 1fr;
+  [data-surface="landing"] .lp-form {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  /* .lp-field's 220px flex-basis is a MIN-WIDTH hint for the desktop row
+     layout above — flex-basis applies to whichever axis is "main" for the
+     current flex-direction, so once .lp-form flips to column here it would
+     otherwise become a 220px HEIGHT instead (same bug class as this file's
+     flex-direction comment on .lp-form itself; caught in the same
+     screenshot pass, this time at the 390px viewport). Reset to natural
+     content sizing for the stacked mobile layout. */
+  [data-surface="landing"] .lp-form .lp-field {
+    flex: 0 0 auto;
+  }
+  [data-surface="landing"] .lp-form .lp-btn {
+    width: 100%;
   }
 }
