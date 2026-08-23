@@ -169,6 +169,7 @@ export function InvitePanel({ workspaceId, sellerEmail }: InvitePanelProps) {
             onChange={(event) => setEmailValue(event.target.value)}
             disabled={isSending}
             aria-invalid={state.status === "error"}
+            aria-describedby={state.status === "error" ? "ip-status-message" : undefined}
           />
         </label>
 
@@ -187,7 +188,12 @@ export function InvitePanel({ workspaceId, sellerEmail }: InvitePanelProps) {
         </div>
 
         {tone ? (
-          <p className="ip-status" data-tone={tone} role={state.status === "error" ? "alert" : "status"}>
+          <p
+            className="ip-status"
+            data-tone={tone}
+            role={state.status === "error" ? "alert" : "status"}
+            id="ip-status-message"
+          >
             <span className="ip-status-dot" data-status-dot="" aria-hidden="true" />
             <span>{renderStatusMessage(state)}</span>
           </p>

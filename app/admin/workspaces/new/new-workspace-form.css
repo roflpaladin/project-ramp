@@ -1,0 +1,216 @@
+/* Scoped styles for the manual workspace-creation form (Sprint 9, Ticket 45,
+   Phase 2b). Same layering choice and measurements as every sibling surface
+   (invite-panel.css, onboarding.css): theme layered, utilities unlayered.
+   Brand colour comes entirely from the Ramp tokens in app/globals.css —
+   nothing here hardcodes a hex. Scoped to [data-surface="new-workspace-form"]
+   so nothing else on /admin is affected. */
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css";
+
+@media (prefers-reduced-motion: reduce) {
+  [data-surface="new-workspace-form"] * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+[data-surface="new-workspace-form"] {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 420px;
+  margin: 48px auto;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+[data-surface="new-workspace-form"] .wf-title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+[data-surface="new-workspace-form"] .wf-intro {
+  margin: 0;
+  font-size: 14px;
+  color: var(--slate);
+}
+
+[data-surface="new-workspace-form"] .wf-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* ---- field + input ------------------------------------------------------ */
+
+[data-surface="new-workspace-form"] .wf-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+[data-surface="new-workspace-form"] .wf-input {
+  height: 40px;
+  padding: 0 12px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  transition: border-color 0.12s cubic-bezier(0.2, 0, 0, 1);
+}
+[data-surface="new-workspace-form"] .wf-input:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+  border-color: var(--signal);
+}
+[data-surface="new-workspace-form"] .wf-input[aria-invalid="true"] {
+  border-color: var(--state-risk);
+}
+[data-surface="new-workspace-form"] .wf-input:disabled {
+  background: var(--mist);
+  color: var(--slate);
+}
+
+/* ---- buttons: primary / tertiary ---------------------------------------- */
+
+[data-surface="new-workspace-form"] .wf-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+[data-surface="new-workspace-form"] .wf-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 40px;
+  padding: 0 16px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  text-decoration: none;
+  transition:
+    background-color 0.12s cubic-bezier(0.2, 0, 0, 1),
+    border-color 0.12s cubic-bezier(0.2, 0, 0, 1);
+}
+[data-surface="new-workspace-form"] .wf-btn:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+[data-surface="new-workspace-form"] .wf-btn:disabled {
+  cursor: not-allowed;
+}
+
+[data-surface="new-workspace-form"] .wf-btn-primary {
+  background: var(--signal);
+  border-color: var(--signal);
+  color: var(--signal-fg);
+}
+[data-surface="new-workspace-form"] .wf-btn-primary:hover:not(:disabled) {
+  background: var(--signal-hover);
+  border-color: var(--signal-hover);
+}
+[data-surface="new-workspace-form"] .wf-btn-primary:active:not(:disabled) {
+  background: var(--signal-press);
+  border-color: var(--signal-press);
+}
+[data-surface="new-workspace-form"] .wf-btn-primary:disabled {
+  background: var(--mist);
+  border-color: var(--mist);
+  color: var(--slate);
+}
+
+[data-surface="new-workspace-form"] .wf-btn-tertiary {
+  background: transparent;
+  border-color: transparent;
+  color: var(--ink);
+  padding: 0 12px;
+}
+[data-surface="new-workspace-form"] .wf-btn-tertiary:hover:not(:disabled) {
+  background: var(--mist);
+}
+
+/* ---- pending state: spinner swaps in at the label's own width, no reflow --
+   Copied from invite-panel.css's InviteSubmitButton pattern (T43). */
+
+[data-surface="new-workspace-form"] .wf-btn-label {
+  opacity: 1;
+  transition: opacity 0.12s cubic-bezier(0.2, 0, 0, 1);
+}
+[data-surface="new-workspace-form"] .wf-btn-label[data-pending="true"] {
+  opacity: 0;
+}
+
+[data-surface="new-workspace-form"] .wf-spinner {
+  position: absolute;
+  inset: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+[data-surface="new-workspace-form"] .wf-spinner-ring {
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  opacity: 0.85;
+  animation: wf-spin 0.6s linear infinite;
+}
+@keyframes wf-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-surface="new-workspace-form"] .wf-spinner-ring {
+    animation: none;
+  }
+}
+
+/* ---- status: dot + text, wash background by tone, never colour-only ---- */
+
+[data-surface="new-workspace-form"] .wf-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  margin: 0;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink);
+}
+[data-surface="new-workspace-form"] .wf-status[data-tone="risk"] {
+  background: var(--wash-risk);
+}
+[data-surface="new-workspace-form"] .wf-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+  background: var(--state-risk);
+}
+
+@media (max-width: 480px) {
+  [data-surface="new-workspace-form"] {
+    margin: 24px 16px;
+    padding: 16px;
+  }
+}

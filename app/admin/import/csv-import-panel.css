@@ -1,0 +1,265 @@
+/* Scoped styles for the CSV deal-import upload surface (Sprint 9, Ticket 45,
+   Phase 2b). Same layering choice and measurements as every sibling surface
+   (invite-panel.css, onboarding.css, new-workspace-form.css): theme layered,
+   utilities unlayered. Brand colour comes entirely from the Ramp tokens in
+   app/globals.css — nothing here hardcodes a hex. Scoped to
+   [data-surface="csv-import-panel"] so nothing else on /admin is affected. */
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css";
+
+@media (prefers-reduced-motion: reduce) {
+  [data-surface="csv-import-panel"] * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+[data-surface="csv-import-panel"] {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  max-width: 640px;
+  margin: 48px auto;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+[data-surface="csv-import-panel"] .cip-title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+[data-surface="csv-import-panel"] .cip-intro {
+  margin: 0;
+  font-size: 14px;
+  color: var(--slate);
+}
+
+/* Raw values (byte/row caps) in Geist Mono, matching this codebase's other
+   raw-value treatment (invite-panel.css's ip-status-email,
+   crm-forecast-strip.css's numeric/date fields). */
+[data-surface="csv-import-panel"] .cip-mono {
+  font-family: "Geist Mono", "SFMono-Regular", ui-monospace, monospace;
+}
+
+[data-surface="csv-import-panel"] .cip-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* ---- field + file input -------------------------------------------------- */
+
+[data-surface="csv-import-panel"] .cip-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+[data-surface="csv-import-panel"] .cip-file-input {
+  min-height: 40px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  transition: border-color 0.12s cubic-bezier(0.2, 0, 0, 1);
+}
+[data-surface="csv-import-panel"] .cip-file-input:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+  border-color: var(--signal);
+}
+[data-surface="csv-import-panel"] .cip-file-input[aria-invalid="true"] {
+  border-color: var(--state-risk);
+}
+[data-surface="csv-import-panel"] .cip-file-input:disabled {
+  background: var(--mist);
+  color: var(--slate);
+}
+
+/* ---- buttons: primary / tertiary ---------------------------------------- */
+
+[data-surface="csv-import-panel"] .cip-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  height: 40px;
+  padding: 0 16px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  text-decoration: none;
+  transition:
+    background-color 0.12s cubic-bezier(0.2, 0, 0, 1),
+    border-color 0.12s cubic-bezier(0.2, 0, 0, 1);
+}
+[data-surface="csv-import-panel"] .cip-btn:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+[data-surface="csv-import-panel"] .cip-btn:disabled {
+  cursor: not-allowed;
+}
+
+[data-surface="csv-import-panel"] .cip-btn-primary {
+  background: var(--signal);
+  border-color: var(--signal);
+  color: var(--signal-fg);
+}
+[data-surface="csv-import-panel"] .cip-btn-primary:hover:not(:disabled) {
+  background: var(--signal-hover);
+  border-color: var(--signal-hover);
+}
+[data-surface="csv-import-panel"] .cip-btn-primary:active:not(:disabled) {
+  background: var(--signal-press);
+  border-color: var(--signal-press);
+}
+[data-surface="csv-import-panel"] .cip-btn-primary:disabled {
+  background: var(--mist);
+  border-color: var(--mist);
+  color: var(--slate);
+}
+
+[data-surface="csv-import-panel"] .cip-btn-tertiary {
+  background: transparent;
+  border-color: transparent;
+  color: var(--ink);
+  padding: 0 12px;
+}
+[data-surface="csv-import-panel"] .cip-btn-tertiary:hover:not(:disabled) {
+  background: var(--mist);
+}
+
+/* ---- pending state: spinner swaps in at the label's own width, no reflow --
+   Copied from invite-panel.css's InviteSubmitButton pattern (T43). */
+
+[data-surface="csv-import-panel"] .cip-btn-label {
+  opacity: 1;
+  transition: opacity 0.12s cubic-bezier(0.2, 0, 0, 1);
+}
+[data-surface="csv-import-panel"] .cip-btn-label[data-pending="true"] {
+  opacity: 0;
+}
+
+[data-surface="csv-import-panel"] .cip-spinner {
+  position: absolute;
+  inset: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+[data-surface="csv-import-panel"] .cip-spinner-ring {
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  opacity: 0.85;
+  animation: cip-spin 0.6s linear infinite;
+}
+@keyframes cip-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-surface="csv-import-panel"] .cip-spinner-ring {
+    animation: none;
+  }
+}
+
+/* ---- status: dot + text, wash background by tone, never colour-only ---- */
+
+[data-surface="csv-import-panel"] .cip-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  margin: 0;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink);
+}
+[data-surface="csv-import-panel"] .cip-status[data-tone="done"] {
+  background: var(--wash-done);
+}
+[data-surface="csv-import-panel"] .cip-status[data-tone="risk"] {
+  background: var(--wash-risk);
+}
+
+[data-surface="csv-import-panel"] .cip-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+}
+[data-surface="csv-import-panel"] .cip-status[data-tone="done"] .cip-status-dot {
+  background: var(--state-done);
+}
+[data-surface="csv-import-panel"] .cip-status[data-tone="risk"] .cip-status-dot {
+  background: var(--state-risk);
+}
+
+/* ---- results: full-success follow-up + partial-failure row list -------- */
+
+[data-surface="csv-import-panel"] .cip-results {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+[data-surface="csv-import-panel"] .cip-results-intro {
+  margin: 0;
+  font-size: 14px;
+  color: var(--ink);
+}
+
+[data-surface="csv-import-panel"] .cip-failures-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+[data-surface="csv-import-panel"] .cip-failures-table th,
+[data-surface="csv-import-panel"] .cip-failures-table td {
+  padding: 8px 12px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--line);
+}
+[data-surface="csv-import-panel"] .cip-failures-table th {
+  font-weight: 500;
+  color: var(--slate);
+}
+[data-surface="csv-import-panel"] .cip-failures-table td {
+  color: var(--ink);
+}
+[data-surface="csv-import-panel"] .cip-failures-table td.cip-mono {
+  width: 56px;
+}
+
+@media (max-width: 480px) {
+  [data-surface="csv-import-panel"] {
+    margin: 24px 16px;
+    padding: 16px;
+  }
+}

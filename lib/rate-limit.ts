@@ -26,6 +26,14 @@ export const SEND_TOKEN_RATE_LIMIT: RateLimitBudget = { limit: 8, windowMs: 15 *
 // the sample seed writes ~17 service-role rows per call with no idempotency,
 // so it needs a budget even though the blast radius is the seller's own tenant.
 export const ONBOARDING_RATE_LIMIT: RateLimitBudget = { limit: 5, windowMs: 15 * 60_000 };
+// T45 CSV deal import, keyed per seller — 3 per 15 minutes, actually
+// stricter than ONBOARDING_RATE_LIMIT's 5 per 15 minutes (code review, Phase
+// 2a: an identical {5, 15min} budget wasn't stricter, just relabeled). One
+// call here can write up to MAX_CSV_ROWS (200) workspace+plan pairs, a much
+// larger write amplifier than onboarding's single sample deal or manual
+// workspace, so it earns a tighter budget of its own rather than sharing
+// ONBOARDING_RATE_LIMIT's.
+export const CSV_IMPORT_RATE_LIMIT: RateLimitBudget = { limit: 3, windowMs: 15 * 60_000 };
 
 export interface RateLimitResult {
   readonly allowed: boolean;
