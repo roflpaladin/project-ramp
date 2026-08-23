@@ -28,6 +28,14 @@ import { checkRateLimit, WAITLIST_RATE_LIMIT } from "@/lib/rate-limit";
 const MAX_EMAIL_LENGTH = 254; // RFC 5321 mailbox length ceiling
 const MAX_COMPANY_NAME_LENGTH = 200;
 const MAX_SOURCE_LENGTH = 200;
+// A legitimate signup body (email + companyName + source) is well under
+// 1KB; 4KB is a generous cap that still rejects an oversized payload before
+// it's ever parsed. Content-Length is a caller-supplied header and can lie
+// (omitted, wrong, or spoofed) -- this is a cheap pre-parse gate for the
+// common/honest case, NOT a guarantee. The real bound is the per-field
+// length caps in validateBody below, which apply to whatever request.json()
+// actually parses regardless of what this header claimed.
+const MAX_BODY_BYTES = 4096;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const UNIQUE_VIOLATION_CODE = "23505";
 
@@ -50,6 +58,15 @@ function callerIp(request: Request): string {
   const forwardedFor = request.headers.get("x-forwarded-for");
   const firstEntry = forwardedFor?.split(",")[0]?.trim();
   return firstEntry || "unknown";
+}
+
+/** Cheap pre-parse size gate -- see MAX_BODY_BYTES above for the
+ * untrusted-header caveat. Missing or non-numeric Content-Length is treated
+ * as "unknown," not "too large," so the happy path never regresses just
+ * because a caller omitted the header. */
+function isBodyTooLarge(request: Request): boolean {
+  const contentLength = Number(request.headers.get("content-length"));
+  return Number.isFinite(contentLength) && contentLength > MAX_BODY_BYTES;
 }
 
 interface ParsedSignup {
@@ -127,6 +144,10 @@ export async function POST(request: Request): Promise<Response> {
       { ok: false, error: RATE_LIMITED_MESSAGE },
       { status: 429, headers: { "Retry-After": String(retryAfterSeconds) } },
     );
+  }
+
+  if (isBodyTooLarge(request)) {
+    return NextResponse.json({ ok: false, error: INVALID_BODY_MESSAGE }, { status: 400 });
   }
 
   let body: unknown;

@@ -64,6 +64,29 @@ function postJson(body: unknown, ip = "203.0.113.10"): Promise<Response> {
   );
 }
 
+/** Like postJson, but with an explicit (possibly lying) Content-Length
+ * header -- a constructed Request never sets one on its own (verified: a
+ * plain `new Request(..., { body })` has `headers.get("content-length") ===
+ * null`), so the size-gate tests below set it by hand rather than relying on
+ * whatever a real body's true byte length happens to be. */
+function postJsonWithContentLength(
+  body: unknown,
+  contentLength: string,
+  ip = "203.0.113.10",
+): Promise<Response> {
+  return POST(
+    new Request(ROUTE_URL, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-forwarded-for": ip,
+        "content-length": contentLength,
+      },
+      body: typeof body === "string" ? body : JSON.stringify(body),
+    }),
+  );
+}
+
 function setInsertResult(result: TableResult): void {
   nextResult.value = result;
 }
@@ -173,6 +196,37 @@ describe("POST /api/waitlist — validation", () => {
     const response = await postJson({ email: "ok@example.com", password: "sneaky" });
     expect(response.status).toBe(400);
     expect(insertCalls).toHaveLength(0);
+  });
+});
+
+describe("POST /api/waitlist — Content-Length pre-parse size gate", () => {
+  it("rejects a declared Content-Length over the cap with 400, same envelope as other validation failures, and never calls insert or parses the body", async () => {
+    const response = await postJsonWithContentLength({ email: "ok@example.com" }, "5000");
+
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { ok: boolean; error: string };
+    expect(body.ok).toBe(false);
+    expect(body.error).toBeTruthy();
+    expect(insertCalls).toHaveLength(0);
+  });
+
+  it("a valid, in-budget Content-Length does not regress the happy path", async () => {
+    const response = await postJsonWithContentLength({ email: "in-budget@example.com" }, "512");
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ ok: true });
+    expect(insertCalls).toHaveLength(1);
+  });
+
+  it("a missing Content-Length header does not regress the happy path", async () => {
+    // postJson (used throughout the rest of this file) never sets
+    // Content-Length at all -- every other passing test here already proves
+    // this, but this case pins it explicitly as this ticket's own coverage.
+    const response = await postJson({ email: "no-header@example.com" });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ ok: true });
+    expect(insertCalls).toHaveLength(1);
   });
 });
 
