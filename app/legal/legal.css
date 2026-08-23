@@ -1,0 +1,125 @@
+/* Shared legal-page shell (Sprint 9, Ticket 47 — /terms, /privacy,
+   /refunds). Same layering choice as every sibling surface (landing.css,
+   onboarding.css): theme layered, utilities unlayered so class specificity
+   beats globals.css's plain element selectors. Brand colour comes entirely
+   from the Ramp tokens defined globally in app/globals.css. */
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css";
+
+[data-surface="legal"] {
+  min-height: 100dvh;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: "Geist", "Inter", system-ui, -apple-system, sans-serif;
+}
+
+/* ---- article shell ------------------------------------------------------- */
+
+[data-surface="legal"] .lg-article {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 48px 24px 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+[data-surface="legal"] .lg-title {
+  margin: 0 0 8px;
+  font-size: 32px;
+  line-height: 38px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+[data-surface="legal"] .lg-updated {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--slate);
+}
+
+[data-surface="legal"] .lg-section-title {
+  margin: 16px 0 0;
+  font-size: 18px;
+  line-height: 24px;
+  font-weight: 600;
+}
+
+[data-surface="legal"] .lg-body {
+  margin: 0;
+  font-size: 14px;
+  line-height: 21px;
+  color: var(--ink);
+  max-width: 68ch;
+}
+
+/* ---- lists ----------------------------------------------------------- */
+
+[data-surface="legal"] .lg-list {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+[data-surface="legal"] .lg-list li {
+  font-size: 14px;
+  line-height: 21px;
+  color: var(--ink);
+  max-width: 68ch;
+}
+
+/* ---- inline links ------------------------------------------------------
+   No dedicated "inline text link" token in the live guideline — these are
+   reference links (Paddle's buyer terms), not the page's action, so they
+   stay --ink/underline rather than --signal (Signal is action-only per
+   §3.2). Focus ring matches every other interactive element on this
+   surface (2px solid --signal, 2px offset — see landing.css's
+   .lp-footer-nav a:focus-visible for the same pattern). */
+
+[data-surface="legal"] .lg-body a {
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+[data-surface="legal"] .lg-body a:hover {
+  color: var(--slate);
+}
+[data-surface="legal"] .lg-body a:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+
+/* ---- providers table (privacy page) ------------------------------------ */
+
+[data-surface="legal"] .lg-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  line-height: 21px;
+}
+[data-surface="legal"] .lg-table th,
+[data-surface="legal"] .lg-table td {
+  text-align: left;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+}
+[data-surface="legal"] .lg-table th {
+  font-weight: 600;
+  background: var(--mist);
+}
+
+@media (max-width: 480px) {
+  [data-surface="legal"] .lg-article {
+    padding: 32px 16px 48px;
+  }
+  [data-surface="legal"] .lg-table {
+    font-size: 13px;
+  }
+  [data-surface="legal"] .lg-table th,
+  [data-surface="legal"] .lg-table td {
+    padding: 6px 8px;
+  }
+}
