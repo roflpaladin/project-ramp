@@ -27,6 +27,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath, URL as NodeURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
+import { LEGAL_LAST_UPDATED } from "@/app/legal/legal-last-updated";
 import TermsPage from "@/app/terms/page";
 import PrivacyPage from "@/app/privacy/page";
 import RefundsPage from "@/app/refunds/page";
@@ -73,9 +74,9 @@ describe.each(PAGES)("$name page", ({ Component, headingMatch }) => {
     expect(text).not.toMatch(/draft/i);
   });
 
-  it("renders no 'Last updated' line while LEGAL_LAST_UPDATED is null", () => {
+  it("renders the 'Last updated' line from the shared LEGAL_LAST_UPDATED constant", () => {
     render(<Component />);
-    expect(screen.queryByText(/^Last updated:/)).not.toBeInTheDocument();
+    expect(screen.getByText(`Last updated: ${LEGAL_LAST_UPDATED}`)).toBeInTheDocument();
   });
 
   it("carries the shared data-surface attribute the legal CSS is scoped to", () => {
