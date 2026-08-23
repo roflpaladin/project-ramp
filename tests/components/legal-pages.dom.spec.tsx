@@ -1,19 +1,27 @@
-// T47 (Sprint 9, Ticket 47 — public landing page, phase 1). Component-level
-// DOM assertions for app/legal/legal-page-layout.tsx and the three routes
-// that use it (app/terms/page.tsx, app/privacy/page.tsx,
-// app/refunds/page.tsx). Runs under the "components" Vitest project
-// (happy-dom) — see vitest.config.ts. All three pages are plain,
-// data-free synchronous Server Components, rendered directly as JSX (no
-// `await` needed, matching app/register/page.tsx's precedent for a
-// data-free page rendered synchronously — see landing-page.dom.spec.tsx for
-// the same technique).
+// T47 (Sprint 9, Ticket 47). Component-level DOM assertions for
+// app/legal/legal-page-layout.tsx and the three routes that use it
+// (app/terms/page.tsx, app/privacy/page.tsx, app/refunds/page.tsx). Runs
+// under the "components" Vitest project (happy-dom) — see vitest.config.ts.
+// All three pages are plain, data-free synchronous Server Components,
+// rendered directly as JSX (no `await` needed, matching
+// app/register/page.tsx's precedent for a data-free page rendered
+// synchronously — see landing-page.dom.spec.tsx for the same technique).
 //
-// Coverage per the ticket brief: every legal page renders the shared,
-// unmissable "Draft — pending founder review" banner (dot + text, never
-// colour-only) ahead of its own content; each page has its own distinct
-// title and body copy; the legal entity name is an obvious [PLACEHOLDER],
-// never a guessed real name; a static grep proves the shared CSS carries no
-// hardcoded hex colour (house convention, see stall-alert.dom.spec.tsx).
+// Updated for the founder-approved copy swap: the "Draft — pending founder
+// review" banner and the [PLACEHOLDER] entity/contact text are gone
+// (replaced with real copy — PT Arasaka Global Consulting,
+// dimas@getbrava.tech); "Last updated" now comes from the single shared
+// LEGAL_LAST_UPDATED constant (app/legal/legal-last-updated.ts), which is
+// null until publish day and renders no line at all while it is.
+//
+// Coverage per the ticket brief: the draft banner is gone from all three
+// pages; each page carries the real entity name and contact email, never a
+// placeholder; the Paddle buyer-terms link (terms + refunds) is a real
+// external link with target/rel; the privacy page's providers table
+// renders; no "Last updated" line renders while LEGAL_LAST_UPDATED is
+// null; no "[DATE]"/"[PLACEHOLDER]" scaffolding text survives anywhere; the
+// shared-layout consistency checks (data-surface, distinct content,
+// no-hardcoded-hex CSS) carry over unchanged.
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath, URL as NodeURL } from "node:url";
@@ -27,6 +35,10 @@ afterEach(() => {
   cleanup();
 });
 
+const PADDLE_BUYER_TERMS_URL = "https://www.paddle.com/legal/checkout-buyer-terms";
+const ENTITY_NAME = "PT Arasaka Global Consulting";
+const CONTACT_EMAIL = "dimas@getbrava.tech";
+
 const PAGES = [
   { name: "Terms", Component: TermsPage, headingMatch: /terms/i },
   { name: "Privacy", Component: PrivacyPage, headingMatch: /privacy/i },
@@ -34,29 +46,85 @@ const PAGES = [
 ] as const;
 
 describe.each(PAGES)("$name page", ({ Component, headingMatch }) => {
-  it("renders the unmissable draft-review banner ahead of the page content, as dot + text", () => {
+  it("renders no draft-review banner", () => {
     render(<Component />);
 
-    const banner = screen.getByTestId("legal-draft-banner");
-    expect(banner).toHaveTextContent(/draft/i);
-    expect(banner).toHaveTextContent(/pending founder review/i);
-    expect(banner.querySelector(".lg-banner-dot")).not.toBeNull();
-
-    const heading = screen.getByRole("heading", { level: 1, name: headingMatch });
-    // Banner must precede the title in document order — "unmissable" means
-    // seen before the content it qualifies, not buried after it.
-    expect(banner.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.queryByTestId("legal-draft-banner")).not.toBeInTheDocument();
+    expect(screen.queryByText(/pending founder review/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: headingMatch })).toBeInTheDocument();
   });
 
-  it("marks the legal entity name as an obvious, unresolved placeholder", () => {
+  it("carries no placeholder entity/contact text", () => {
     render(<Component />);
-    const matches = screen.getAllByText(/\[PLACEHOLDER[^\]]*\]/);
-    expect(matches.length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText(/\[PLACEHOLDER[^\]]*\]/)).not.toBeInTheDocument();
+  });
+
+  it("carries the real contact email", () => {
+    render(<Component />);
+    expect(screen.getByTestId("legal-page")).toHaveTextContent(CONTACT_EMAIL);
+  });
+
+  it("renders no leaked scaffolding text ([DATE], [PLACEHOLDER], or a draft banner)", () => {
+    render(<Component />);
+
+    const text = screen.getByTestId("legal-page").textContent ?? "";
+    expect(text).not.toMatch(/\[DATE\]/);
+    expect(text).not.toMatch(/\[PLACEHOLDER/);
+    expect(text).not.toMatch(/draft/i);
+  });
+
+  it("renders no 'Last updated' line while LEGAL_LAST_UPDATED is null", () => {
+    render(<Component />);
+    expect(screen.queryByText(/^Last updated:/)).not.toBeInTheDocument();
   });
 
   it("carries the shared data-surface attribute the legal CSS is scoped to", () => {
     render(<Component />);
     expect(screen.getByTestId("legal-page")).toHaveAttribute("data-surface", "legal");
+  });
+});
+
+describe("Terms + Privacy pages — founder-approved entity name", () => {
+  // Refunds' source copy (brava-legal-pages-draft.md, "Page 3") never names
+  // the entity — it refers only to "Brava"/"us"/Paddle throughout — so this
+  // is scoped to the two pages whose approved text actually names it,
+  // verbatim, rather than asserted across all three.
+  it.each([
+    ["Terms", TermsPage],
+    ["Privacy", PrivacyPage],
+  ] as const)("%s page names the real entity, PT Arasaka Global Consulting", (_name, Component) => {
+    render(<Component />);
+    expect(screen.getByTestId("legal-page")).toHaveTextContent(ENTITY_NAME);
+  });
+});
+
+describe("Terms + Refunds pages — Paddle buyer-terms link", () => {
+  it.each([
+    ["Terms", TermsPage],
+    ["Refunds", RefundsPage],
+  ] as const)("%s page links to Paddle's buyer terms as a real external link", (_name, Component) => {
+    render(<Component />);
+
+    const link = screen.getByRole("link", { name: "buyer terms" });
+    expect(link).toHaveAttribute("href", PADDLE_BUYER_TERMS_URL);
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
+  });
+});
+
+describe("Privacy page — providers table", () => {
+  it("renders the service-providers table with its header and every provider row", () => {
+    render(<PrivacyPage />);
+
+    const table = screen.getByTestId("legal-page").querySelector("table.lg-table");
+    expect(table).not.toBeNull();
+
+    expect(screen.getByRole("columnheader", { name: "Provider" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "What they do for us" })).toBeInTheDocument();
+
+    for (const provider of ["Supabase", "Vercel", "Google Workspace", "Paddle"]) {
+      expect(screen.getByRole("cell", { name: provider })).toBeInTheDocument();
+    }
   });
 });
 

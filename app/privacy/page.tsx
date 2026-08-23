@@ -6,56 +6,125 @@ export const metadata: Metadata = {
 };
 
 /**
- * T47 (Sprint 9, Ticket 47 — public landing page, phase 1). Draft, generic
- * B2B SaaS privacy policy. The legal entity name is an obvious
- * [PLACEHOLDER — legal entity name] rather than a guessed real one: this
- * copy is explicitly unapproved (see the layout's banner) and must never
- * read as if it were finished.
+ * T47 (Sprint 9, Ticket 47). Founder-approved privacy policy — verbatim
+ * from the approved draft (source: coordinator-supplied
+ * brava-legal-pages-draft.md, "Page 2"). No paraphrasing; the providers
+ * table is carried over 1:1 as a real <table> (.lg-table).
  */
 export default function PrivacyPage() {
   return (
-    <LegalPageLayout title="Privacy policy" updatedLabel="Draft — no effective date yet">
+    <LegalPageLayout title="Privacy policy">
       <p className="lg-body">
-        Brava is operated by [PLACEHOLDER — legal entity name] (&quot;Brava&quot;, &quot;we&quot;, &quot;us&quot;).
-        This policy explains what data we collect, why we collect it, and how you can control it.
+        Brava is operated by PT Arasaka Global Consulting. This page explains what we collect, why, and what your
+        rights are — in plain language, because that&apos;s how we build everything.
       </p>
 
       <h2 className="lg-section-title">What we collect</h2>
+      <ul className="lg-list">
+        <li>
+          <strong>Account details</strong> — your email address and password (stored in hashed form), and your
+          company name.
+        </li>
+        <li>
+          <strong>Workspace content</strong> — the deal and plan information you and your invited buyers put into
+          Brava: company names, contact details, plan steps, notes, and files you upload (for example CSV
+          imports).
+        </li>
+        <li>
+          <strong>Buyer portal activity</strong> — when an invited buyer views or completes plan steps, we record
+          that activity so both sides can see progress. Buyers are identified by the email address the seller
+          invited.
+        </li>
+        <li>
+          <strong>Waitlist details</strong> — if you join our waitlist: your email and, optionally, your company
+          name.
+        </li>
+        <li>
+          <strong>Technical basics</strong> — logs and cookies needed to keep you signed in and keep the service
+          secure. We use session cookies for login; we don&apos;t run third-party advertising trackers.
+        </li>
+      </ul>
+
+      <h2 className="lg-section-title">What we use it for</h2>
+      <ul className="lg-list">
+        <li>
+          To provide Brava: storing your plans, showing progress to both sides, sending invitation and login
+          emails.
+        </li>
+        <li>To secure the service: rate limiting, abuse prevention, debugging.</li>
+        <li>
+          To contact you about the product — service messages always; product news only where permitted, and you
+          can opt out.
+        </li>
+        <li>When paid plans launch: to manage your subscription (see &quot;Who else touches your data&quot;).</li>
+      </ul>
       <p className="lg-body">
-        Account details you give us (name, work email, company), the plan and step data you and your buyer
-        create inside a workspace, and basic usage data (like sign-in activity) that helps us keep Brava
-        reliable and secure.
+        We don&apos;t sell your data. We don&apos;t use your workspace content to train AI models.
       </p>
 
-      <h2 className="lg-section-title">How we use it</h2>
+      <h2 className="lg-section-title">Who else touches your data</h2>
+      <p className="lg-body">We use a small number of service providers to run Brava:</p>
+      <table className="lg-table">
+        <thead>
+          <tr>
+            <th scope="col">Provider</th>
+            <th scope="col">What they do for us</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Supabase</td>
+            <td>Database and authentication hosting</td>
+          </tr>
+          <tr>
+            <td>Vercel</td>
+            <td>Application hosting and content delivery</td>
+          </tr>
+          <tr>
+            <td>Google Workspace</td>
+            <td>Sending transactional emails (invitations, login links)</td>
+          </tr>
+          <tr>
+            <td>Paddle</td>
+            <td>Payments and billing, as merchant of record (when paid plans launch)</td>
+          </tr>
+        </tbody>
+      </table>
       <p className="lg-body">
-        To run your workspace, keep your account secure, respond to support requests, and improve Brava. We
-        don&apos;t sell your data.
+        Each processes data only to provide their service to us. Your data may be stored or processed outside
+        your own country by these providers.
       </p>
 
-      <h2 className="lg-section-title">Who can see your data</h2>
-      <p className="lg-body">
-        A workspace&apos;s plan is visible to the seller and buyer on that deal, and to the people they invite
-        into it. We use a small number of service providers (for example, hosting and email delivery) who
-        process data on our behalf, under agreements that limit what they can do with it.
-      </p>
+      <h2 className="lg-section-title">How long we keep it</h2>
+      <ul className="lg-list">
+        <li>
+          Account and workspace data: for as long as your account is active, then deleted on request or within a
+          reasonable period after account closure.
+        </li>
+        <li>Waitlist data: until you sign up, ask to be removed, or the waitlist is retired.</li>
+        <li>Logs: kept briefly for security and debugging, then rotated out.</li>
+      </ul>
 
-      <h2 className="lg-section-title">Your choices</h2>
+      <h2 className="lg-section-title">Your rights</h2>
+      <p className="lg-body">Email dimas@getbrava.tech and we will, subject to applicable law:</p>
+      <ul className="lg-list">
+        <li>show you the personal data we hold about you;</li>
+        <li>correct it or delete it;</li>
+        <li>export your workspace data in a usable format;</li>
+        <li>remove you from the waitlist or marketing emails.</li>
+      </ul>
       <p className="lg-body">
-        You can access, correct, or ask us to delete your account data at any time by contacting us using the
-        details below.
+        If you&apos;re an invited buyer and want your activity removed, you can contact us directly or ask the
+        seller who invited you.
       </p>
 
       <h2 className="lg-section-title">Changes to this policy</h2>
       <p className="lg-body">
-        We may update this policy from time to time. We&apos;ll let you know about material changes before they
-        take effect.
+        If we make meaningful changes, we&apos;ll notify account holders by email before they take effect.
       </p>
 
-      <h2 className="lg-section-title">Contact</h2>
       <p className="lg-body">
-        Questions about this policy or your data? Reach us at{" "}
-        <span className="lg-placeholder">[PLACEHOLDER — legal contact email]</span>.
+        <strong>Privacy questions or requests:</strong> dimas@getbrava.tech
       </p>
     </LegalPageLayout>
   );

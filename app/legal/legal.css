@@ -13,36 +13,6 @@
   font-family: "Geist", "Inter", system-ui, -apple-system, sans-serif;
 }
 
-/* ---- draft-review banner --------------------------------------------------
-   Judgement call (flagged for review — the live design guideline has no
-   dedicated "page notice/warning" component, only the status-badge pattern
-   for milestone/deal status): this reuses the States palette's --state-risk
-   / --wash-risk pair rather than inventing a fifth loud colour. "Unapproved
-   legal copy a visitor should not rely on" reads closer to "at risk" than to
-   any of the other three jobs colour is allowed to do here (identity,
-   waiting, action) — Signal is action-only per §3.2 and cannot be
-   repurposed for a static notice. Still dot + text per the contrast/status
-   rule, never colour-only, and full-width + top-of-page + bold to make it
-   unmissable without leaning on colour alone. */
-[data-surface="legal"] .lg-banner {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 24px;
-  background: var(--wash-risk);
-  color: var(--state-risk);
-  font-size: 14px;
-  font-weight: 600;
-}
-
-[data-surface="legal"] .lg-banner-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
-  background: var(--state-risk);
-  flex: 0 0 auto;
-}
-
 /* ---- article shell ------------------------------------------------------- */
 
 [data-surface="legal"] .lg-article {
@@ -84,13 +54,72 @@
   max-width: 68ch;
 }
 
-[data-surface="legal"] .lg-placeholder {
-  font-weight: 500;
-  color: var(--state-risk);
+/* ---- lists ----------------------------------------------------------- */
+
+[data-surface="legal"] .lg-list {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+[data-surface="legal"] .lg-list li {
+  font-size: 14px;
+  line-height: 21px;
+  color: var(--ink);
+  max-width: 68ch;
+}
+
+/* ---- inline links ------------------------------------------------------
+   No dedicated "inline text link" token in the live guideline — these are
+   reference links (Paddle's buyer terms), not the page's action, so they
+   stay --ink/underline rather than --signal (Signal is action-only per
+   §3.2). Focus ring matches every other interactive element on this
+   surface (2px solid --signal, 2px offset — see landing.css's
+   .lp-footer-nav a:focus-visible for the same pattern). */
+
+[data-surface="legal"] .lg-body a {
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+[data-surface="legal"] .lg-body a:hover {
+  color: var(--slate);
+}
+[data-surface="legal"] .lg-body a:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+
+/* ---- providers table (privacy page) ------------------------------------ */
+
+[data-surface="legal"] .lg-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  line-height: 21px;
+}
+[data-surface="legal"] .lg-table th,
+[data-surface="legal"] .lg-table td {
+  text-align: left;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+}
+[data-surface="legal"] .lg-table th {
+  font-weight: 600;
+  background: var(--mist);
 }
 
 @media (max-width: 480px) {
   [data-surface="legal"] .lg-article {
     padding: 32px 16px 48px;
+  }
+  [data-surface="legal"] .lg-table {
+    font-size: 13px;
+  }
+  [data-surface="legal"] .lg-table th,
+  [data-surface="legal"] .lg-table td {
+    padding: 6px 8px;
   }
 }

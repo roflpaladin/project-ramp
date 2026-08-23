@@ -5,51 +5,62 @@ export const metadata: Metadata = {
   title: "Refund policy — Brava",
 };
 
+const PADDLE_BUYER_TERMS_URL = "https://www.paddle.com/legal/checkout-buyer-terms";
+
 /**
- * T47 (Sprint 9, Ticket 47 — public landing page, phase 1). Draft refund
- * policy aligned with a subscription product (billing-cycle framing, not a
- * one-off purchase). The legal entity name is an obvious
- * [PLACEHOLDER — legal entity name] rather than a guessed real one: this
- * copy is explicitly unapproved (see the layout's banner) and must never
- * read as if it were finished.
+ * T47 (Sprint 9, Ticket 47). Founder-approved refund policy — verbatim from
+ * the approved draft (source: coordinator-supplied
+ * brava-legal-pages-draft.md, "Page 3").
  */
 export default function RefundsPage() {
   return (
-    <LegalPageLayout title="Refund policy" updatedLabel="Draft — no effective date yet">
+    <LegalPageLayout title="Refund policy">
+      <h2 className="lg-section-title">While Brava is free</h2>
       <p className="lg-body">
-        Brava is a subscription product, billed by [PLACEHOLDER — legal entity name] on a recurring billing
-        cycle. This policy explains how refunds and cancellations work.
+        Brava is currently in early access and free of charge, so there&apos;s nothing to refund. This policy
+        takes effect when paid subscriptions launch.
       </p>
 
-      <h2 className="lg-section-title">Cancelling your subscription</h2>
+      <h2 className="lg-section-title">When paid plans launch</h2>
+      <ul className="lg-list">
+        <li>
+          Payments for Brava are processed by <strong>Paddle.com</strong>, our merchant of record. Your invoice
+          and card statement will show Paddle, and refunds are issued through Paddle.
+        </li>
+        <li>
+          <strong>14-day guarantee:</strong> if Brava isn&apos;t right for you, contact us within 14 days of your
+          first purchase and we&apos;ll refund it in full — no questions, no hoops.
+        </li>
+        <li>
+          <strong>Renewals:</strong> we don&apos;t generally refund renewal charges, but if you cancel within 14
+          days of an accidental renewal and haven&apos;t materially used the service in the new period, contact
+          us and we&apos;ll make it right.
+        </li>
+        <li>
+          <strong>Cancelling:</strong> you can cancel any time; your plan stays active until the end of the
+          period you&apos;ve paid for, and you won&apos;t be charged again.
+        </li>
+      </ul>
+
+      <h2 className="lg-section-title">How to ask</h2>
       <p className="lg-body">
-        You can cancel your subscription at any time. Cancelling stops future billing cycles; you keep access
-        to your current billing cycle&apos;s paid features until it ends.
+        Email dimas@getbrava.tech from the address on your account with your invoice number (it&apos;s on the
+        Paddle receipt). We aim to respond within 2 business days. Refunds are returned to your original payment
+        method by Paddle, usually within 5–10 business days.
       </p>
 
-      <h2 className="lg-section-title">Refunds</h2>
+      <h2 className="lg-section-title">The fine print</h2>
       <p className="lg-body">
-        If you believe you were charged in error, contact us within 14 days of the charge and we&apos;ll review
-        it. We don&apos;t offer partial refunds for unused time within an active billing cycle, except where
-        required by law.
+        Refunds under this policy don&apos;t limit any rights you have under the consumer laws of your country,
+        or under Paddle&apos;s own{" "}
+        <a href={PADDLE_BUYER_TERMS_URL} target="_blank" rel="noopener noreferrer">
+          buyer terms
+        </a>
+        .
       </p>
 
-      <h2 className="lg-section-title">Trials</h2>
       <p className="lg-body">
-        If Brava offers a free trial at the time you sign up, you won&apos;t be charged until the trial ends,
-        and you can cancel before then at no cost.
-      </p>
-
-      <h2 className="lg-section-title">Changes to this policy</h2>
-      <p className="lg-body">
-        We may update this policy from time to time. We&apos;ll let you know about material changes before they
-        take effect.
-      </p>
-
-      <h2 className="lg-section-title">Contact</h2>
-      <p className="lg-body">
-        Questions about a charge or a refund? Reach us at{" "}
-        <span className="lg-placeholder">[PLACEHOLDER — legal contact email]</span>.
+        <strong>Questions:</strong> dimas@getbrava.tech
       </p>
     </LegalPageLayout>
   );
