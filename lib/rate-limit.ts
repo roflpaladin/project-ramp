@@ -34,6 +34,10 @@ export const ONBOARDING_RATE_LIMIT: RateLimitBudget = { limit: 5, windowMs: 15 *
 // workspace, so it earns a tighter budget of its own rather than sharing
 // ONBOARDING_RATE_LIMIT's.
 export const CSV_IMPORT_RATE_LIMIT: RateLimitBudget = { limit: 3, windowMs: 15 * 60_000 };
+// T47 public waitlist capture, keyed per caller IP — same threat class as
+// REGISTRATION_RATE_LIMIT (public, unauthenticated, write), so it carries the
+// same budget rather than inventing a separate policy for no reason.
+export const WAITLIST_RATE_LIMIT: RateLimitBudget = { limit: 5, windowMs: 15 * 60_000 };
 
 export interface RateLimitResult {
   readonly allowed: boolean;
