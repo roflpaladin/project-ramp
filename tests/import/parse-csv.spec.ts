@@ -315,7 +315,15 @@ describe("parseCsv", () => {
       expect(results[1]).toEqual({
         rowNumber: 2,
         ok: false,
-        errors: ["company_name: is required.", "plan_title: is required."],
+        errors: [
+          "company_name: is required.",
+          // company_domain is required too (code review, Phase 2a: moved up
+          // from a DB-writer-only check — see validate-rows.ts's
+          // ValidatedImportRow comment) — a fully blank row now fails on it
+          // alongside company_name and plan_title.
+          "company_domain: is required.",
+          "plan_title: is required.",
+        ],
       });
       expect(results[2].ok).toBe(true);
     });

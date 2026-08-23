@@ -13,7 +13,7 @@ function ok(rowNumber: number): RowValidationResult {
     ok: true,
     value: {
       company_name: `Acme ${rowNumber}`,
-      company_domain: null,
+      company_domain: `acme-${rowNumber}.example.com`,
       contact_email: null,
       plan_title: `Plan ${rowNumber}`,
       target_date: null,

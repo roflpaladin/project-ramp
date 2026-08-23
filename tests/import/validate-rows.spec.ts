@@ -43,15 +43,15 @@ describe("validateImportRow", () => {
     });
   });
 
-  it("accepts a row with every optional field blank", () => {
-    const row: CsvRow = { ...VALID_ROW, company_domain: "", contact_email: "", target_date: "" };
+  it("accepts a row with every optional field blank (company_domain is required, not optional)", () => {
+    const row: CsvRow = { ...VALID_ROW, contact_email: "", target_date: "" };
     const result = validateImportRow(row, 1, NOW);
     expect(result).toEqual({
       rowNumber: 1,
       ok: true,
       value: {
         company_name: "Acme Corp",
-        company_domain: null,
+        company_domain: "acme.com",
         contact_email: null,
         plan_title: "Q1 Rollout",
         target_date: null,
@@ -105,10 +105,15 @@ describe("validateImportRow", () => {
     });
   });
 
-  describe("company_domain (optional)", () => {
-    it("accepts a missing company_domain", () => {
+  describe("company_domain (required — code review, Phase 2a: moved up from the DB-writer boundary because workspaces.target_domain is NOT NULL)", () => {
+    it("rejects an empty company_domain", () => {
       const result = validateImportRow({ ...VALID_ROW, company_domain: "" }, 1, NOW);
-      expect(result.ok).toBe(true);
+      expect(result).toEqual({ rowNumber: 1, ok: false, errors: ["company_domain: is required."] });
+    });
+
+    it("rejects a whitespace-only company_domain", () => {
+      const result = validateImportRow({ ...VALID_ROW, company_domain: "   " }, 1, NOW);
+      expect(result).toEqual({ rowNumber: 1, ok: false, errors: ["company_domain: is required."] });
     });
 
     it("accepts a plausible hostname", () => {
@@ -315,15 +320,20 @@ describe("validateImportRow", () => {
     });
 
     it("treats a required field that is ONLY Unicode whitespace as empty, not dangerous", () => {
-      const result = validateImportRow({ ...VALID_ROW, company_name: "﻿  　" }, 1, NOW);
+      const result = validateImportRow({ ...VALID_ROW, company_name: "﻿  　" }, 1, NOW);
       expect(result).toEqual({ rowNumber: 1, ok: false, errors: ["company_name: is required."] });
     });
 
-    it("treats an optional field that is ONLY Unicode whitespace as absent, not dangerous", () => {
-      const result = validateImportRow({ ...VALID_ROW, company_domain: "﻿  　" }, 1, NOW);
+    it("treats another required field (company_domain) that is ONLY Unicode whitespace as empty, not dangerous", () => {
+      const result = validateImportRow({ ...VALID_ROW, company_domain: "﻿  　" }, 1, NOW);
+      expect(result).toEqual({ rowNumber: 1, ok: false, errors: ["company_domain: is required."] });
+    });
+
+    it("treats an optional field (contact_email) that is ONLY Unicode whitespace as absent, not dangerous", () => {
+      const result = validateImportRow({ ...VALID_ROW, contact_email: "﻿  　" }, 1, NOW);
       expect(result.ok).toBe(true);
       if (!result.ok) return;
-      expect(result.value.company_domain).toBeNull();
+      expect(result.value.contact_email).toBeNull();
     });
   });
 });
