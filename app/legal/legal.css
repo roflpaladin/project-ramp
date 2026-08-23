@@ -1,0 +1,96 @@
+/* Shared legal-page shell (Sprint 9, Ticket 47 — /terms, /privacy,
+   /refunds). Same layering choice as every sibling surface (landing.css,
+   onboarding.css): theme layered, utilities unlayered so class specificity
+   beats globals.css's plain element selectors. Brand colour comes entirely
+   from the Ramp tokens defined globally in app/globals.css. */
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css";
+
+[data-surface="legal"] {
+  min-height: 100dvh;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: "Geist", "Inter", system-ui, -apple-system, sans-serif;
+}
+
+/* ---- draft-review banner --------------------------------------------------
+   Judgement call (flagged for review — the live design guideline has no
+   dedicated "page notice/warning" component, only the status-badge pattern
+   for milestone/deal status): this reuses the States palette's --state-risk
+   / --wash-risk pair rather than inventing a fifth loud colour. "Unapproved
+   legal copy a visitor should not rely on" reads closer to "at risk" than to
+   any of the other three jobs colour is allowed to do here (identity,
+   waiting, action) — Signal is action-only per §3.2 and cannot be
+   repurposed for a static notice. Still dot + text per the contrast/status
+   rule, never colour-only, and full-width + top-of-page + bold to make it
+   unmissable without leaning on colour alone. */
+[data-surface="legal"] .lg-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 24px;
+  background: var(--wash-risk);
+  color: var(--state-risk);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+[data-surface="legal"] .lg-banner-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--state-risk);
+  flex: 0 0 auto;
+}
+
+/* ---- article shell ------------------------------------------------------- */
+
+[data-surface="legal"] .lg-article {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 48px 24px 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+[data-surface="legal"] .lg-title {
+  margin: 0 0 8px;
+  font-size: 32px;
+  line-height: 38px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+[data-surface="legal"] .lg-updated {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--slate);
+}
+
+[data-surface="legal"] .lg-section-title {
+  margin: 16px 0 0;
+  font-size: 18px;
+  line-height: 24px;
+  font-weight: 600;
+}
+
+[data-surface="legal"] .lg-body {
+  margin: 0;
+  font-size: 14px;
+  line-height: 21px;
+  color: var(--ink);
+  max-width: 68ch;
+}
+
+[data-surface="legal"] .lg-placeholder {
+  font-weight: 500;
+  color: var(--state-risk);
+}
+
+@media (max-width: 480px) {
+  [data-surface="legal"] .lg-article {
+    padding: 32px 16px 48px;
+  }
+}

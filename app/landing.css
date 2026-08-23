@@ -1,0 +1,331 @@
+/* Public landing page (Sprint 9, Ticket 47 — phase 1: structure + tokens
+   only; a visual/template pass follows in phase 2, so this stays
+   deliberately plain). Same layering choice as every sibling surface
+   (onboarding.css, invite-panel.css): theme layered, utilities unlayered so
+   class specificity beats globals.css's plain element selectors (form,
+   label, button, input). Brand colour comes entirely from the Ramp tokens
+   defined globally in app/globals.css — everything below only adds layout
+   utilities plus the handful of rules Tailwind utilities can't express with
+   CSS custom properties alone.
+
+   Font family: declared here (not in app/globals.css, which still falls
+   back to system-ui — a pre-existing gap this ticket doesn't expand scope
+   to fix) because the landing page is the app's most typography-visible
+   surface. Stack matches the design guideline's §5 exactly; no font files
+   are bundled, so this resolves to the system-ui/-apple-system fallback in
+   every environment until an actual Geist font asset is wired in — a phase-2
+   concern, flagged in the ticket report.
+
+   Dark-mode trap (documented at app/admin/login/page.tsx:19-39 and
+   app/admin/onboarding/onboarding.css): the global `button` rule in
+   app/globals.css sets background: var(--onyx); color: var(--paper), and
+   [data-theme="dark"] maps --onyx and --paper to two near-identical
+   near-black values. Every button on this surface is styled explicitly
+   below (.lp-btn-primary / -secondary), never left to inherit it. */
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css";
+
+[data-surface="landing"] {
+  min-height: 100dvh;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: "Geist", "Inter", system-ui, -apple-system, sans-serif;
+  font-weight: 400;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-surface="landing"] * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+/* ---- page shell ------------------------------------------------------- */
+
+[data-surface="landing"] .lp-page {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 64px 24px 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 64px;
+}
+
+/* ---- hero --------------------------------------------------------------
+   `display` scale (40/44, 600, -0.03em) per §5 — marketing hero only. */
+
+[data-surface="landing"] .lp-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 24px;
+  max-width: 640px;
+}
+
+[data-surface="landing"] .lp-headline {
+  margin: 0;
+  font-size: 40px;
+  line-height: 44px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+
+[data-surface="landing"] .lp-subline {
+  margin: 0;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 400;
+  color: var(--slate);
+  max-width: 68ch;
+}
+
+/* ---- value props ---------------------------------------------------------
+   h2 (24/30, 600) section title, h3 (18/24, 600) card title, body (14/21,
+   400) card copy, per §5. */
+
+[data-surface="landing"] .lp-section-title {
+  margin: 0 0 24px;
+  font-size: 24px;
+  line-height: 30px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+[data-surface="landing"] .lp-value-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 24px;
+}
+
+[data-surface="landing"] .lp-value-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--paper);
+}
+
+[data-surface="landing"] .lp-value-title {
+  margin: 0;
+  font-size: 18px;
+  line-height: 24px;
+  font-weight: 600;
+}
+
+[data-surface="landing"] .lp-value-body {
+  margin: 0;
+  font-size: 14px;
+  line-height: 21px;
+  color: var(--slate);
+}
+
+/* ---- footer -------------------------------------------------------------
+   `meta` scale (13/18, 400, Slate) for secondary nav text, per §5. */
+
+[data-surface="landing"] .lp-footer {
+  padding-top: 24px;
+  border-top: 1px solid var(--line);
+}
+
+[data-surface="landing"] .lp-footer-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+[data-surface="landing"] .lp-footer-nav a {
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--slate);
+  text-decoration: none;
+}
+[data-surface="landing"] .lp-footer-nav a:hover {
+  color: var(--ink);
+  text-decoration: underline;
+}
+[data-surface="landing"] .lp-footer-nav a:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+
+/* ---- buttons: primary / secondary (shared by the waitlist form and the
+   signup-mode CTA link) ------------------------------------------------- */
+
+[data-surface="landing"] .lp-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 40px;
+  padding: 0 16px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  width: fit-content;
+  text-decoration: none;
+  transition:
+    background-color 0.12s cubic-bezier(0.2, 0, 0, 1),
+    border-color 0.12s cubic-bezier(0.2, 0, 0, 1);
+}
+[data-surface="landing"] .lp-btn:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+[data-surface="landing"] .lp-btn:disabled {
+  cursor: not-allowed;
+}
+
+[data-surface="landing"] .lp-btn-primary {
+  background: var(--signal);
+  border-color: var(--signal);
+  color: var(--signal-fg);
+}
+[data-surface="landing"] .lp-btn-primary:hover:not(:disabled) {
+  background: var(--signal-hover);
+  border-color: var(--signal-hover);
+}
+[data-surface="landing"] .lp-btn-primary:active:not(:disabled) {
+  background: var(--signal-press);
+  border-color: var(--signal-press);
+}
+[data-surface="landing"] .lp-btn-primary:disabled {
+  background: var(--mist);
+  border-color: var(--mist);
+  color: var(--slate);
+}
+
+/* ---- pending state: spinner swaps in at the label's own width, no reflow —
+   same pattern as onboarding.css's .ob-btn-label / .ob-spinner and
+   invite-panel.css's .ip- equivalents. */
+
+[data-surface="landing"] .lp-btn-label {
+  opacity: 1;
+  transition: opacity 0.12s cubic-bezier(0.2, 0, 0, 1);
+}
+[data-surface="landing"] .lp-btn-label[data-pending="true"] {
+  opacity: 0;
+}
+
+[data-surface="landing"] .lp-spinner {
+  position: absolute;
+  inset: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+[data-surface="landing"] .lp-spinner-ring {
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  opacity: 0.85;
+  animation: lp-spin 0.6s linear infinite;
+}
+@keyframes lp-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-surface="landing"] .lp-spinner-ring {
+    animation: none;
+  }
+}
+
+/* ---- waitlist form ------------------------------------------------------- */
+
+[data-surface="landing"] .lp-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 360px;
+  width: 100%;
+}
+
+[data-surface="landing"] .lp-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+[data-surface="landing"] .lp-input {
+  height: 40px;
+  padding: 0 12px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  transition: border-color 0.12s cubic-bezier(0.2, 0, 0, 1);
+}
+[data-surface="landing"] .lp-input:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+  border-color: var(--signal);
+}
+[data-surface="landing"] .lp-input[aria-invalid="true"] {
+  border-color: var(--state-risk);
+}
+[data-surface="landing"] .lp-input:disabled {
+  background: var(--mist);
+  color: var(--slate);
+}
+
+/* ---- status: dot + text, wash background by tone, never colour-only ------ */
+
+[data-surface="landing"] .lp-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  margin: 0;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink);
+}
+[data-surface="landing"] .lp-status[data-tone="done"] {
+  background: var(--wash-done);
+}
+[data-surface="landing"] .lp-status[data-tone="risk"] {
+  background: var(--wash-risk);
+}
+[data-surface="landing"] .lp-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+}
+[data-surface="landing"] .lp-status[data-tone="done"] .lp-status-dot {
+  background: var(--state-done);
+}
+[data-surface="landing"] .lp-status[data-tone="risk"] .lp-status-dot {
+  background: var(--state-risk);
+}
+
+@media (max-width: 480px) {
+  [data-surface="landing"] .lp-page {
+    padding: 32px 16px 32px;
+  }
+  [data-surface="landing"] .lp-headline {
+    font-size: 32px;
+    line-height: 38px;
+  }
+  [data-surface="landing"] .lp-value-grid {
+    grid-template-columns: 1fr;
+  }
+}
