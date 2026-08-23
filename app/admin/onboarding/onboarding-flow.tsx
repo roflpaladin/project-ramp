@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
+import Link from "next/link";
 import { createFirstWorkspace, startWithSampleDeal } from "./onboarding-actions";
 import {
   INITIAL_ONBOARDING_STATE,
@@ -16,8 +17,10 @@ import "./onboarding.css";
  *
  *   "choose" — the first-run moment. Five population paths as cards: the
  *   sample deal (this step's one Signal, bound to startWithSampleDeal),
- *   manual (secondary, advances the machine to "manual"), and three honest,
- *   inert placeholders (CSV import / from your website / from your CRM).
+ *   manual (secondary, advances the machine to "manual"), CSV import
+ *   (secondary, a real navigation link to /admin/import — Sprint 9, Ticket
+ *   45, Phase 2b), and two honest, inert placeholders (from your website /
+ *   from your CRM).
  *
  *   "manual" — two labelled fields bound to createFirstWorkspace, with a
  *   tertiary "Back" returning to "choose".
@@ -111,8 +114,9 @@ interface PlaceholderCardProps {
 }
 
 /**
- * The three honest, inert placeholders (CSV import / from your website /
- * from your CRM). A real `disabled` button — not a styled-to-look-disabled
+ * The two remaining honest, inert placeholders (from your website / from
+ * your CRM — CSV import graduated to CsvImportCard below, Sprint 9, Ticket
+ * 45, Phase 2b). A real `disabled` button — not a styled-to-look-disabled
  * `<div>` — for two reasons: it shares the exact same card anatomy as the
  * sample-deal and manual cards (title, body, action element), and native
  * `disabled` semantics already remove the control from the tab order, so it
@@ -127,6 +131,26 @@ function PlaceholderCard({ title, body }: PlaceholderCardProps) {
       <button type="button" className="ob-btn ob-btn-secondary" disabled>
         {title}
       </button>
+    </div>
+  );
+}
+
+/**
+ * Sprint 9, Ticket 45, Phase 2b — the CSV import card, no longer a
+ * placeholder: a real navigation link to /admin/import (csv-import-panel.tsx,
+ * this same phase). Same card anatomy as PlaceholderCard/the manual card
+ * (title, body, action element), secondary weight like "Set up manually" —
+ * never `data-signal`, so "Start with a sample deal" stays this step's one
+ * Signal.
+ */
+function CsvImportCard() {
+  return (
+    <div className="ob-card">
+      <h2 className="ob-card-title">CSV import</h2>
+      <p className="ob-card-body">Bring deal details in from a spreadsheet.</p>
+      <Link href="/admin/import" className="ob-btn ob-btn-secondary">
+        CSV import
+      </Link>
     </div>
   );
 }
@@ -171,10 +195,7 @@ function ChooseStep({ onManual }: { onManual: () => void }) {
           </button>
         </div>
 
-        <PlaceholderCard
-          title="CSV import"
-          body="Bring deal details in from a spreadsheet. Follows CRM import."
-        />
+        <CsvImportCard />
         <PlaceholderCard
           title="From your website"
           body="Pull company details from your buyer's website. Follows CRM import."

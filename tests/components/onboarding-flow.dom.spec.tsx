@@ -100,27 +100,38 @@ describe("OnboardingFlow — choose step", () => {
     expect(container.querySelectorAll('[data-signal="true"]')).toHaveLength(1);
 
     expect(screen.getByRole("button", { name: "Set up manually" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "CSV import" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "CSV import" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "From your website" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "From your CRM" })).toBeInTheDocument();
   });
 
-  it("renders the three placeholder paths as genuinely inert (real disabled semantics, not a focus trap)", () => {
+  it("renders the CSV import card as a real, secondary link to /admin/import (T45 Phase 2b — no longer a placeholder)", () => {
+    const { container } = render(<OnboardingFlow />);
+
+    const csvLink = screen.getByRole("link", { name: "CSV import" });
+    expect(csvLink).toHaveAttribute("href", "/admin/import");
+    expect(csvLink).not.toHaveAttribute("data-signal");
+    // Secondary weight, same as "Set up manually" — never a second Signal.
+    expect(container.querySelectorAll('[data-signal="true"]')).toHaveLength(1);
+
+    expect(screen.getByText(/Bring deal details in from a spreadsheet\./)).toBeInTheDocument();
+  });
+
+  it("renders the two remaining placeholder paths as genuinely inert (real disabled semantics, not a focus trap)", () => {
     render(<OnboardingFlow />);
 
-    const csvButton = screen.getByRole("button", { name: "CSV import" });
     const websiteButton = screen.getByRole("button", { name: "From your website" });
     const crmButton = screen.getByRole("button", { name: "From your CRM" });
 
-    for (const button of [csvButton, websiteButton, crmButton]) {
+    for (const button of [websiteButton, crmButton]) {
       expect(button).toBeDisabled();
     }
 
     // Honest copy naming what arrives, no "coming soon", no apology, no emoji.
-    expect(screen.getAllByText(/Follows CRM import\./)).toHaveLength(2);
+    expect(screen.getAllByText(/Follows CRM import\./)).toHaveLength(1);
     expect(screen.getByText(/Sync deal data directly from your CRM\. Arrives next\./)).toBeInTheDocument();
 
-    fireEvent.click(csvButton);
+    fireEvent.click(websiteButton);
     expect(mockStartWithSampleDeal).not.toHaveBeenCalled();
     expect(mockCreateFirstWorkspace).not.toHaveBeenCalled();
   });
