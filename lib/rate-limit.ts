@@ -38,6 +38,13 @@ export const CSV_IMPORT_RATE_LIMIT: RateLimitBudget = { limit: 3, windowMs: 15 *
 // REGISTRATION_RATE_LIMIT (public, unauthenticated, write), so it carries the
 // same budget rather than inventing a separate policy for no reason.
 export const WAITLIST_RATE_LIMIT: RateLimitBudget = { limit: 5, windowMs: 15 * 60_000 };
+// T52 code review (MEDIUM): HubSpot OAuth start/callback and disconnect,
+// keyed per authenticated seller. A much shorter window than the 15-minute
+// budgets above — connecting/disconnecting a CRM is a rare, occasional
+// action, not something a legitimate seller does repeatedly in a short
+// burst, so a tight per-minute cap catches a scripted replay loop fast
+// without making a genuinely stuck seller wait a quarter hour to retry.
+export const HUBSPOT_OAUTH_RATE_LIMIT: RateLimitBudget = { limit: 10, windowMs: 60_000 };
 
 export interface RateLimitResult {
   readonly allowed: boolean;

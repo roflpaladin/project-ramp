@@ -38,6 +38,29 @@ openssl rand -hex 32   # run once each for dev, once each for prod
   `X-Ramp-Webhook-Secret` header. `lib/crm/ingest.ts` fails **closed**: if it's
   unset, every CRM webhook is rejected 401. The same value must be configured on
   whatever sends the webhook (HubSpot/Salesforce relay).
+- `APP_ENCRYPTION_KEY` (Sprint 10, Ticket 52) — AES-256-GCM key that
+  encrypts the stored HubSpot refresh token at rest (`crm_connections`,
+  `lib/encrypt-secret.ts`) and signs the OAuth `state` param
+  (`lib/hubspot/oauth-state.ts`). **Not** `openssl rand -hex 32`'s general
+  shape by convention only — it's a hard requirement here:
+  `lib/encrypt-secret.ts` refuses to run against anything other than exactly
+  64 hex characters (32 bytes), the AES-256 key length.
+
+  **Known limitation — no rotation path.** Rotating this value makes every
+  existing `crm_connections.encrypted_refresh_token` undecryptable
+  immediately; there is no dual-key/re-encrypt migration. Every tenant with
+  a live HubSpot connection has to reconnect (Settings → Integrations →
+  Disconnect, then Connect again) after a rotation. Acceptable for now — a
+  rotation-safe scheme is a flagged follow-up, not built in T52.
+
+HubSpot OAuth also needs `HUBSPOT_CLIENT_ID` / `HUBSPOT_CLIENT_SECRET` (from
+the HubSpot app's own Auth settings, not generated) and, per environment,
+that HubSpot app's redirect URI registered to exactly
+`${NEXT_PUBLIC_APP_URL}/api/integrations/hubspot/oauth/callback` — dev's
+origin and prod's `https://getbrava.tech` are two separate registrations on
+the same HubSpot app (or two apps, if HubSpot's console requires it); a
+mismatched redirect_uri makes HubSpot reject the callback outright, before
+`lib/hubspot/token-exchange.ts` is ever reached.
 
 Never copy a dev secret into prod or vice-versa — a leaked dev secret must not
 authenticate against prod.
@@ -107,6 +130,8 @@ data), which defeats the whole split.
 | `SUPABASE_SERVICE_ROLE_KEY` | prod service_role | **dev** service_role |
 | `PORTAL_SESSION_SECRET` | prod secret | dev secret |
 | `CRM_WEBHOOK_SECRET` | prod secret | dev secret |
+| `APP_ENCRYPTION_KEY` | prod key | dev key |
+| `HUBSPOT_CLIENT_ID` / `HUBSPOT_CLIENT_SECRET` | prod HubSpot app creds | dev HubSpot app creds |
 | `SMTP_*` | real relay | test inbox (e.g. Mailtrap) or unset |
 
 The Preview/Development values are exactly what's in your local `.env.local`. To
