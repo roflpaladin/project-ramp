@@ -1,0 +1,74 @@
+/* Scoped styles for the HubSpot deal-import page (Sprint 10, Ticket 54,
+   Phase 3). Same layering choice and token discipline as every sibling
+   surface (csv-import-panel.css, crm-deal-picker.css,
+   import-result-summary.css, crm-mapping-preview.css): theme layered,
+   utilities unlayered. Brand colour comes entirely from the Ramp tokens in
+   app/globals.css — nothing here hardcodes a hex.
+
+   Unlike csv-import-panel.css, this surface is a plain vertical layout, not
+   its own bordered card: CrmDealPicker, CrmMappingPreview and
+   ImportResultSummary each already ship their own self-contained,
+   self-centered card (border + background + max-width), so this wrapper
+   only supplies spacing and the page-level heading typography — adding a
+   second border/background here would double-box every child card. Scoped
+   to [data-surface="hubspot-import-panel"] so nothing else on /admin is
+   affected. */
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css";
+
+@media (prefers-reduced-motion: reduce) {
+  [data-surface="hubspot-import-panel"] * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+[data-surface="hubspot-import-panel"] {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  padding: 48px 24px;
+}
+
+[data-surface="hubspot-import-panel"] .hip-header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 720px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+[data-surface="hubspot-import-panel"] .hip-title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+[data-surface="hubspot-import-panel"] .hip-intro {
+  margin: 0;
+  font-size: 14px;
+  color: var(--slate);
+}
+
+[data-surface="hubspot-import-panel"] .hip-mapping {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+[data-surface="hubspot-import-panel"] .hip-section-title {
+  max-width: 720px;
+  margin: 0 auto;
+  width: 100%;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+@media (max-width: 480px) {
+  [data-surface="hubspot-import-panel"] {
+    padding: 24px 16px;
+  }
+}

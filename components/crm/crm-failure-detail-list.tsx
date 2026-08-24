@@ -1,4 +1,4 @@
-import type { CrmImportFailure, CrmImportFailureReason } from "@/lib/crm/import-ui-types";
+import type { CrmImportFailure, CrmImportFailureReason } from "@/lib/crm-import/types";
 
 /**
  * Sprint 10, Ticket 54, Phase 1 — failure detail list for a CRM import

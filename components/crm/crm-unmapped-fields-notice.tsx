@@ -6,7 +6,7 @@
  * unmapped does not mean the import failed, only that that one source field
  * had nowhere to land in Brava.
  */
-import type { CrmUnmappedField } from "@/lib/crm/import-ui-types";
+import type { CrmUnmappedField } from "@/lib/crm-import/types";
 
 export interface CrmUnmappedFieldsNoticeProps {
   readonly fields: readonly CrmUnmappedField[];

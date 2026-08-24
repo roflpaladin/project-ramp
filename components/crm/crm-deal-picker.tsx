@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { CrmDealListResult, CrmDealSummary } from "@/lib/crm/import-ui-types";
+import type { CrmDealListResult, CrmDealSummary } from "@/lib/crm-import/types";
 import { formatCrmAmount } from "@/app/admin/workspaces/[id]/crm-format";
 import { HUBSPOT_OAUTH_START_HREF } from "./crm-retry-reconnect-row";
 import "./crm-deal-picker.css";

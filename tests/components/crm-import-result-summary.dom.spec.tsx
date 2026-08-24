@@ -21,7 +21,7 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import type { CrmImportResult } from "@/lib/crm/import-ui-types";
+import type { CrmImportResult } from "@/lib/crm-import/types";
 import { ImportResultSummary } from "@/components/crm/import-result-summary";
 import { HUBSPOT_OAUTH_START_HREF } from "@/components/crm/crm-retry-reconnect-row";
 
