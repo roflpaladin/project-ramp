@@ -309,6 +309,35 @@
   gap: 8px;
 }
 
+/* ---- scrape-meta "populate from a link" affordance (T46) -----------------
+   Tertiary weight only — reuses .ob-btn-tertiary as-is, never data-signal,
+   so "Create workspace" stays this step's one Signal. The fallback hint
+   below is deliberately NOT a .ob-status: it names no outcome/state (this
+   step never blocks or fails), so no dot, no wash background, no alert
+   tone — just a quiet aside in the same slate the intro copy already uses.
+
+   .ob-scrape-live is the aria-live="polite" wrapper (components/
+   company-name-suggestion.tsx, review finding HIGH — accessibility) that
+   must exist in the DOM from first render, empty, for its later content to
+   be announced. display: contents removes it from the box tree entirely so
+   it never becomes a visible empty flex item inside .ob-form's own `gap`
+   layout — its children (the button/hint below) take the exact slot the
+   two conditionals occupied before this wrapper existed. */
+
+[data-surface="onboarding"] .ob-scrape-live {
+  display: contents;
+}
+
+[data-surface="onboarding"] .ob-scrape-suggestion {
+  align-self: flex-start;
+}
+
+[data-surface="onboarding"] .ob-scrape-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--slate);
+}
+
 @media (max-width: 480px) {
   [data-surface="onboarding"] .ob-page {
     padding: 24px 16px;

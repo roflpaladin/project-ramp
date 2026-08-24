@@ -1,9 +1,11 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState } from "react";
 import Link from "next/link";
 import { createWorkspace } from "./new-workspace-actions";
 import { INITIAL_NEW_WORKSPACE_STATE, INVALID_DOMAIN_MESSAGE, MISSING_NAME_MESSAGE } from "./workspace-form-state";
+import { useCompanyNamePrefill } from "@/lib/use-company-name-prefill";
+import { CompanyNameSuggestion } from "@/components/company-name-suggestion";
 import "./new-workspace-form.css";
 
 /**
@@ -26,8 +28,23 @@ export function NewWorkspaceForm() {
   // field and onboarding-flow.tsx's ManualStep: React resets a form's fields
   // after a Server Action completes, which would otherwise wipe what the
   // seller just typed the instant a validation error comes back.
-  const [companyNameValue, setCompanyNameValue] = useState("");
-  const [domainValue, setDomainValue] = useState("");
+  //
+  // Sprint 9, Ticket 46 — "populate from a link" wiring (both fields'
+  // controlled state, the scrape-meta call, and the suggestion/hint
+  // affordance below) lives in the shared lib/use-company-name-prefill.ts —
+  // see that file's header comment for the full rationale. Same hook as
+  // onboarding-flow.tsx's ManualStep (T46's other call site); extracted post
+  // review (HIGH finding) so neither call site re-implements it.
+  const {
+    companyNameValue,
+    domainValue,
+    suggestedName,
+    scrapeStatus,
+    onCompanyNameChange,
+    onDomainChange,
+    onDomainBlur,
+    applySuggestedName,
+  } = useCompanyNamePrefill();
 
   const invalidField =
     state.error === MISSING_NAME_MESSAGE ? "name" : state.error === INVALID_DOMAIN_MESSAGE ? "domain" : null;
@@ -46,7 +63,7 @@ export function NewWorkspaceForm() {
             name="target_company_name"
             required
             value={companyNameValue}
-            onChange={(event) => setCompanyNameValue(event.target.value)}
+            onChange={onCompanyNameChange}
             disabled={isCreating}
             aria-invalid={invalidField === "name" ? true : undefined}
             aria-describedby={invalidField === "name" ? "wf-error" : undefined}
@@ -61,12 +78,20 @@ export function NewWorkspaceForm() {
             placeholder="acme.com"
             required
             value={domainValue}
-            onChange={(event) => setDomainValue(event.target.value)}
+            onChange={onDomainChange}
+            onBlur={onDomainBlur}
             disabled={isCreating}
             aria-invalid={invalidField === "domain" ? true : undefined}
             aria-describedby={invalidField === "domain" ? "wf-error" : undefined}
           />
         </label>
+
+        <CompanyNameSuggestion
+          classPrefix="wf"
+          suggestedName={suggestedName}
+          scrapeStatus={scrapeStatus}
+          onApply={applySuggestedName}
+        />
 
         {state.error ? (
           <p className="wf-status" data-tone="risk" role="alert" id="wf-error">

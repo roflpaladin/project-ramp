@@ -81,6 +81,36 @@
   color: var(--slate);
 }
 
+/* ---- scrape-meta "populate from a link" affordance (T46) -----------------
+   Tertiary weight only — reuses .wf-btn-tertiary as-is, never data-signal,
+   so "Create workspace" stays this form's one Signal. The fallback hint
+   below is deliberately NOT a .wf-status: it names no outcome/state (this
+   form never blocks or fails because of it), so no dot, no wash background,
+   no alert tone — just a quiet aside in the same slate the intro copy
+   already uses.
+
+   .wf-scrape-live is the aria-live="polite" wrapper (components/
+   company-name-suggestion.tsx, review finding HIGH — accessibility) that
+   must exist in the DOM from first render, empty, for its later content to
+   be announced. display: contents removes it from the box tree entirely so
+   it never becomes a visible empty flex item inside .wf-form's own `gap`
+   layout — its children (the button/hint below) take the exact slot the
+   two conditionals occupied before this wrapper existed. */
+
+[data-surface="new-workspace-form"] .wf-scrape-live {
+  display: contents;
+}
+
+[data-surface="new-workspace-form"] .wf-scrape-suggestion {
+  align-self: flex-start;
+}
+
+[data-surface="new-workspace-form"] .wf-scrape-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--slate);
+}
+
 /* ---- buttons: primary / tertiary ---------------------------------------- */
 
 [data-surface="new-workspace-form"] .wf-actions {
