@@ -25,10 +25,17 @@
 // swap); error tone (role="alert", field-level aria-invalid mapped from the
 // server's own error constant, typed values preserved); keyboard
 // focusability.
+//
+// T46 addendum (Sprint 9, Ticket 46 — scrape-meta population wiring): the
+// domain field wires to the EXISTING Sprint 2 scrape-meta endpoint
+// (app/api/scrape-meta/route.ts) via lib/use-scrape-meta-prefill.ts on blur,
+// same behaviour/wiring as onboarding-flow.tsx's ManualStep (T46's other
+// call site) — see that file's own T46 addendum comment for the full
+// rationale. `global.fetch` is stubbed for this block only.
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath, URL as NodeURL } from "node:url";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import {
   INITIAL_NEW_WORKSPACE_STATE,
@@ -200,6 +207,184 @@ describe("NewWorkspaceForm — validation error", () => {
 
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("Couldn't create the workspace. Try again in a moment.");
+  });
+});
+
+describe("NewWorkspaceForm — scrape-meta prefill (T46)", () => {
+  const mockFetch = vi.fn();
+
+  beforeEach(() => {
+    vi.stubGlobal("fetch", mockFetch);
+  });
+
+  afterEach(() => {
+    mockFetch.mockReset();
+    vi.unstubAllGlobals();
+  });
+
+  function okResponse(body: unknown) {
+    return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
+  }
+
+  it("renders the suggestion/hint live region on first render, empty, before any blur (accessibility review finding)", () => {
+    const { container } = render(<NewWorkspaceForm />);
+
+    const liveRegion = container.querySelector('[aria-live="polite"]');
+    expect(liveRegion).not.toBeNull();
+    expect(liveRegion).toBeEmptyDOMElement();
+    expect(screen.queryByRole("button", { name: /use ".*" as the company name/i })).not.toBeInTheDocument();
+  });
+
+  it("prefills company name on a successful fetch when the seller hasn't typed one yet", async () => {
+    mockFetch.mockReturnValueOnce(okResponse({ title: "Acme Inc", desc: null, favicon: null }));
+    render(<NewWorkspaceForm />);
+
+    const domain = screen.getByLabelText("Their website domain");
+    fireEvent.change(domain, { target: { value: "acme.com" } });
+    fireEvent.blur(domain);
+
+    await screen.findByDisplayValue("Acme Inc");
+    expect(mockFetch).toHaveBeenCalledWith(
+      "/api/scrape-meta",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ url: "https://acme.com" }),
+      }),
+    );
+  });
+
+  it("never silently overwrites a company name the seller already typed — offers an explicit 'use this' affordance instead", async () => {
+    mockFetch.mockReturnValueOnce(okResponse({ title: "Acme Inc", desc: null, favicon: null }));
+    const { container } = render(<NewWorkspaceForm />);
+    fireEvent.change(screen.getByLabelText("Company name"), { target: { value: "My own name" } });
+
+    const domain = screen.getByLabelText("Their website domain");
+    fireEvent.change(domain, { target: { value: "acme.com" } });
+    fireEvent.blur(domain);
+
+    const useSuggestion = await screen.findByRole("button", { name: 'Use "Acme Inc" as the company name' });
+    expect((screen.getByLabelText("Company name") as HTMLInputElement).value).toBe("My own name");
+    expect(useSuggestion).not.toHaveAttribute("data-signal");
+    expect(container.querySelectorAll('[data-signal="true"]')).toHaveLength(1);
+
+    fireEvent.click(useSuggestion);
+    expect((screen.getByLabelText("Company name") as HTMLInputElement).value).toBe("Acme Inc");
+  });
+
+  it("clears a pending suggestion once the seller edits the company name themselves (review finding, MEDIUM)", async () => {
+    // A non-empty company name at scrape-response time is what produces the
+    // "use this" suggestion instead of a silent prefill (see the test above).
+    mockFetch.mockReturnValueOnce(okResponse({ title: "Acme Inc", desc: null, favicon: null }));
+    render(<NewWorkspaceForm />);
+    fireEvent.change(screen.getByLabelText("Company name"), { target: { value: "My own name" } });
+
+    const domain = screen.getByLabelText("Their website domain");
+    fireEvent.change(domain, { target: { value: "acme.com" } });
+    fireEvent.blur(domain);
+
+    await screen.findByRole("button", { name: 'Use "Acme Inc" as the company name' });
+
+    // The seller keeps typing their own name instead of using the offered
+    // suggestion — the suggestion must disappear so it can never overwrite
+    // whatever they type next.
+    fireEvent.change(screen.getByLabelText("Company name"), { target: { value: "Something else" } });
+
+    expect(screen.queryByRole("button", { name: /use ".*" as the company name/i })).not.toBeInTheDocument();
+    expect((screen.getByLabelText("Company name") as HTMLInputElement).value).toBe("Something else");
+  });
+
+  it("degrades quietly on a non-OK response — no alert tone, no blocking, manual entry still works", async () => {
+    mockFetch.mockReturnValueOnce(Promise.resolve({ ok: false, json: () => Promise.resolve({ error: "nope" }) }));
+    render(<NewWorkspaceForm />);
+
+    const domain = screen.getByLabelText("Their website domain");
+    fireEvent.change(domain, { target: { value: "acme.com" } });
+    fireEvent.blur(domain);
+
+    await screen.findByText("Couldn't fetch details — enter them manually.");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+
+    const companyName = screen.getByLabelText("Company name") as HTMLInputElement;
+    fireEvent.change(companyName, { target: { value: "Typed by hand" } });
+    expect(companyName.value).toBe("Typed by hand");
+  });
+
+  it("degrades quietly on a network error/timeout — no alert, no retry loop", async () => {
+    // Created lazily inside mockImplementationOnce, not mockReturnValueOnce,
+    // so the rejected promise isn't constructed — and left unhandled — until
+    // the component actually calls fetch() and immediately attaches .catch.
+    mockFetch.mockImplementationOnce(() => Promise.reject(new DOMException("The operation timed out.", "TimeoutError")));
+    render(<NewWorkspaceForm />);
+
+    const domain = screen.getByLabelText("Their website domain");
+    fireEvent.change(domain, { target: { value: "acme.com" } });
+    fireEvent.blur(domain);
+
+    await screen.findByText("Couldn't fetch details — enter them manually.");
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("submits identically whether or not the scrape ever ran", async () => {
+    mockCreateWorkspace.mockResolvedValueOnce(INITIAL_NEW_WORKSPACE_STATE);
+    render(<NewWorkspaceForm />);
+
+    fireEvent.change(screen.getByLabelText("Company name"), { target: { value: "Acme Inc" } });
+    fireEvent.change(screen.getByLabelText("Their website domain"), { target: { value: "acme.com" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create workspace" }));
+
+    await waitFor(() => expect(mockCreateWorkspace).toHaveBeenCalled());
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("only applies the latest domain's suggestion when an earlier request resolves after a later one (race guard)", async () => {
+    // Deferred, not mockReturnValueOnce(okResponse(...)) — this test needs to
+    // control exactly WHEN each fetch settles, resolving domain A's response
+    // after domain B's despite A being requested first.
+    const deferredA = createDeferred<{ title: string }>();
+    const deferredB = createDeferred<{ title: string }>();
+    mockFetch.mockReturnValueOnce(deferredA.promise.then((body) => ({ ok: true, json: () => Promise.resolve(body) })));
+    mockFetch.mockReturnValueOnce(deferredB.promise.then((body) => ({ ok: true, json: () => Promise.resolve(body) })));
+    render(<NewWorkspaceForm />);
+
+    const domain = screen.getByLabelText("Their website domain");
+    fireEvent.change(domain, { target: { value: "acme.com" } });
+    fireEvent.blur(domain);
+
+    // Before A's fetch resolves, the seller changes their mind and blurs a
+    // second domain.
+    fireEvent.change(domain, { target: { value: "beta.com" } });
+    fireEvent.blur(domain);
+
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+
+    // B settles first, then the stale A response lands after it.
+    deferredB.resolve({ title: "Beta Co" });
+    await screen.findByDisplayValue("Beta Co");
+
+    deferredA.resolve({ title: "Acme Inc" });
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2));
+
+    // A's stale title must never land, before or after B's.
+    expect(screen.queryByDisplayValue("Acme Inc")).not.toBeInTheDocument();
+    expect((screen.getByLabelText("Company name") as HTMLInputElement).value).toBe("Beta Co");
+  });
+
+  it("does not throw when the component unmounts while a scrape request is still in flight", async () => {
+    const deferred = createDeferred<{ title: string }>();
+    mockFetch.mockReturnValueOnce(deferred.promise.then((body) => ({ ok: true, json: () => Promise.resolve(body) })));
+    const { unmount } = render(<NewWorkspaceForm />);
+
+    const domain = screen.getByLabelText("Their website domain");
+    fireEvent.change(domain, { target: { value: "acme.com" } });
+    fireEvent.blur(domain);
+
+    expect(() => unmount()).not.toThrow();
+
+    // Resolving after unmount must not throw — a stale setState call on an
+    // already-unmounted fiber is a silent no-op in React 19, never an error.
+    expect(() => deferred.resolve({ title: "Acme Inc" })).not.toThrow();
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1));
   });
 });
 
