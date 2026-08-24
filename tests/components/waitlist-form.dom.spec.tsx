@@ -75,7 +75,7 @@ describe("module boundary — single entry point", () => {
 
 describe("WaitlistForm — idle", () => {
   it("renders a labelled email input and exactly one Signal submit button, no status", () => {
-    const { container } = render(<WaitlistForm />);
+    const { container } = render(<WaitlistForm headlineVariant="control" />);
 
     const input = screen.getByLabelText("Work email");
     expect(input).toHaveAttribute("type", "email");
@@ -95,7 +95,7 @@ describe("WaitlistForm — submitting presentation", () => {
   it("disables the input and swaps the button's label for a spinner at the button's own width, with no layout shift", async () => {
     const deferred = createDeferred<Response>();
     mockFetch.mockReturnValueOnce(deferred.promise);
-    render(<WaitlistForm />);
+    render(<WaitlistForm headlineVariant="control" />);
 
     fireEvent.change(screen.getByLabelText("Work email"), { target: { value: "ae@acme.example" } });
     const submit = screen.getByRole("button", { name: "Join the waitlist" });
@@ -118,7 +118,7 @@ describe("WaitlistForm — submitting presentation", () => {
 describe("WaitlistForm — success", () => {
   it("replaces the form with a dot+text confirmation on any 2xx response", async () => {
     mockFetch.mockResolvedValueOnce(new Response(JSON.stringify({ success: true }), { status: 200 }));
-    render(<WaitlistForm />);
+    render(<WaitlistForm headlineVariant="control" />);
 
     await submitWaitlist("buyer@acme.example");
 
@@ -135,7 +135,7 @@ describe("WaitlistForm — success", () => {
 
   it("also treats a bare 201/204-style 2xx as success (defensive envelope handling)", async () => {
     mockFetch.mockResolvedValueOnce(new Response(null, { status: 204 }));
-    render(<WaitlistForm />);
+    render(<WaitlistForm headlineVariant="control" />);
 
     await submitWaitlist("buyer@acme.example");
 
@@ -146,7 +146,7 @@ describe("WaitlistForm — success", () => {
 describe("WaitlistForm — 429 (recoverable)", () => {
   it("renders a 'too many attempts' dot+text alert and leaves the form resubmittable", async () => {
     mockFetch.mockResolvedValueOnce(new Response(JSON.stringify({ error: "rate_limited" }), { status: 429 }));
-    render(<WaitlistForm />);
+    render(<WaitlistForm headlineVariant="control" />);
 
     await submitWaitlist("buyer@acme.example");
 
@@ -165,7 +165,7 @@ describe("WaitlistForm — 429 (recoverable)", () => {
 describe("WaitlistForm — other server error (recoverable)", () => {
   it("renders a generic recoverable alert on a non-2xx, non-429 response, never a raw status/body", async () => {
     mockFetch.mockResolvedValueOnce(new Response(JSON.stringify({ error: "boom" }), { status: 500 }));
-    render(<WaitlistForm />);
+    render(<WaitlistForm headlineVariant="control" />);
 
     await submitWaitlist("buyer@acme.example");
 
@@ -181,7 +181,7 @@ describe("WaitlistForm — other server error (recoverable)", () => {
 describe("WaitlistForm — network failure (recoverable)", () => {
   it("renders the same generic recoverable alert when fetch itself throws", async () => {
     mockFetch.mockRejectedValueOnce(new TypeError("Failed to fetch"));
-    render(<WaitlistForm />);
+    render(<WaitlistForm headlineVariant="control" />);
 
     await submitWaitlist("buyer@acme.example");
 
@@ -197,7 +197,7 @@ describe("WaitlistForm — retry after an error", () => {
     mockFetch
       .mockResolvedValueOnce(new Response(JSON.stringify({ error: "boom" }), { status: 500 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ success: true }), { status: 200 }));
-    render(<WaitlistForm />);
+    render(<WaitlistForm headlineVariant="control" />);
 
     await submitWaitlist("buyer@acme.example");
     await screen.findByRole("alert");
@@ -211,9 +211,9 @@ describe("WaitlistForm — retry after an error", () => {
 });
 
 describe("WaitlistForm — request contract", () => {
-  it("POSTs { email } as JSON to /api/waitlist", async () => {
+  it("POSTs { email, source } as JSON to /api/waitlist, source tagged with the control variant", async () => {
     mockFetch.mockResolvedValueOnce(new Response(JSON.stringify({ success: true }), { status: 200 }));
-    render(<WaitlistForm />);
+    render(<WaitlistForm headlineVariant="control" />);
 
     await submitWaitlist("buyer@acme.example");
 
@@ -221,7 +221,23 @@ describe("WaitlistForm — request contract", () => {
       "/api/waitlist",
       expect.objectContaining({
         method: "POST",
-        body: JSON.stringify({ email: "buyer@acme.example" }),
+        body: JSON.stringify({ email: "buyer@acme.example", source: "headline:control" }),
+      }),
+    );
+  });
+
+  // T48: source must reflect whichever variant the page actually assigned
+  // this visit, not just whatever the other tests in this file default to.
+  it("tags source with the assigned variant when it's the candidate headline", async () => {
+    mockFetch.mockResolvedValueOnce(new Response(JSON.stringify({ success: true }), { status: 200 }));
+    render(<WaitlistForm headlineVariant="with-not-at" />);
+
+    await submitWaitlist("buyer@acme.example");
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      "/api/waitlist",
+      expect.objectContaining({
+        body: JSON.stringify({ email: "buyer@acme.example", source: "headline:with-not-at" }),
       }),
     );
   });

@@ -1,13 +1,16 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { getLandingMode } from "@/lib/landing/mode";
+import { HEADLINE_VARIANT_COOKIE_NAME, resolveHeadlineVariant } from "@/lib/landing/headline-variant";
 import {
-  LANDING_HEADLINE,
   LANDING_HERO_NOTE,
   LANDING_KICKER,
   LANDING_SUBLINE,
   LANDING_VALUE_PROPS,
 } from "./landing-copy";
+import { HEADLINE_VARIANTS } from "./landing-variants";
+import { HeadlineImpressionPing } from "./headline-impression";
 import { WaitlistForm } from "./waitlist-form";
 import "./landing.css";
 
@@ -55,9 +58,20 @@ export const metadata: Metadata = {
  * count against "one Signal element per decision scope" — that rule is
  * about the action, asserted here by the data-signal attribute staying
  * singular (tests/components/landing-page.dom.spec.tsx pins this).
+ *
+ * T48: async now (was a plain sync Server Component) because it reads the
+ * `brava_hl` headline-variant cookie via next/headers `cookies()` below.
+ * That read is a deliberate trade-off, not an oversight: it forces this
+ * page out of static generation (a client-assigned variant would have kept
+ * it static, but flashes the control headline at every candidate-group
+ * visitor on first paint) in exchange for a correct, flash-free A/B test —
+ * middleware.ts assigns the cookie before this render, and the value is
+ * still re-validated with isHeadlineVariantId here (never trusted blindly).
  */
-export default function Home() {
+export default async function Home() {
   const mode = getLandingMode();
+  const cookieStore = await cookies();
+  const headlineVariant = resolveHeadlineVariant(cookieStore.get(HEADLINE_VARIANT_COOKIE_NAME)?.value);
 
   return (
     <main data-surface="landing" data-testid="landing-page" className="lp-page">
@@ -67,12 +81,12 @@ export default function Home() {
 
       <section className="lp-hero">
         <p className="lp-kicker">{LANDING_KICKER}</p>
-        <h1 className="lp-headline">{LANDING_HEADLINE}</h1>
+        <h1 className="lp-headline">{HEADLINE_VARIANTS[headlineVariant]}</h1>
         <p className="lp-subline">{LANDING_SUBLINE}</p>
 
         <div className="lp-hero-cta">
           {mode === "waitlist" ? (
-            <WaitlistForm />
+            <WaitlistForm headlineVariant={headlineVariant} />
           ) : (
             <Link href="/register" className="lp-btn lp-btn-primary" data-signal="true">
               Create your account
@@ -81,6 +95,8 @@ export default function Home() {
           <p className="lp-hero-note">{LANDING_HERO_NOTE}</p>
         </div>
       </section>
+
+      <HeadlineImpressionPing variant={headlineVariant} />
 
       <section aria-labelledby="lp-value-props-heading">
         <h2 id="lp-value-props-heading" className="lp-section-title">
