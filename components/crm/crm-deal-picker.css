@@ -1,0 +1,187 @@
+/* Scoped styles for the CRM deal picker (Sprint 10, Ticket 54, Phase 2).
+   Same layering choice and token discipline as every sibling surface
+   (import-result-summary.css, csv-import-panel.css): theme layered,
+   utilities unlayered. Brand colour comes entirely from the Ramp tokens in
+   app/globals.css — nothing here hardcodes a hex. Scoped to
+   [data-surface="crm-deal-picker"] so nothing else on the page is
+   affected. */
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css";
+
+@media (prefers-reduced-motion: reduce) {
+  [data-surface="crm-deal-picker"] * {
+    transition: none !important;
+  }
+}
+
+[data-surface="crm-deal-picker"] {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+[data-surface="crm-deal-picker"] .cdp-mono {
+  font-family: "Geist Mono", "SFMono-Regular", ui-monospace, monospace;
+}
+
+/* ---- status: dot + text, wash background by tone, never colour-only ---- */
+
+[data-surface="crm-deal-picker"] .cdp-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  margin: 0;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+}
+[data-surface="crm-deal-picker"] .cdp-status[data-tone="wait"] {
+  background: var(--mist);
+}
+[data-surface="crm-deal-picker"] .cdp-status[data-tone="risk"] {
+  background: var(--wash-risk);
+}
+
+[data-surface="crm-deal-picker"] .cdp-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+}
+[data-surface="crm-deal-picker"] .cdp-status[data-tone="wait"] .cdp-status-dot {
+  background: var(--state-wait);
+}
+[data-surface="crm-deal-picker"] .cdp-status[data-tone="risk"] .cdp-status-dot {
+  background: var(--state-risk);
+}
+
+/* ---- empty state: calm/neutral, no button either branch --------------- */
+
+[data-surface="crm-deal-picker"] .cdp-empty {
+  margin: 0;
+  font-size: 14px;
+  color: var(--slate);
+}
+
+/* ---- deal list: wide content scrolls in its own container, never the
+   page ---------------------------------------------------------------- */
+
+[data-surface="crm-deal-picker"] .cdp-list-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+[data-surface="crm-deal-picker"] .cdp-table-scroll {
+  overflow-x: auto;
+}
+
+[data-surface="crm-deal-picker"] .cdp-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  min-width: 480px;
+  display: flex;
+  flex-direction: column;
+}
+
+[data-surface="crm-deal-picker"] .cdp-row {
+  display: grid;
+  grid-template-columns: 2fr 1.5fr 1fr 1fr;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 4px;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+  color: var(--ink);
+}
+[data-surface="crm-deal-picker"] .cdp-row:last-child {
+  border-bottom: none;
+}
+[data-surface="crm-deal-picker"] .cdp-row-header {
+  font-weight: 500;
+  color: var(--slate);
+}
+
+[data-surface="crm-deal-picker"] .cdp-row-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+[data-surface="crm-deal-picker"] .cdp-row-label input[type="checkbox"] {
+  accent-color: var(--signal);
+}
+
+[data-surface="crm-deal-picker"] .cdp-amount {
+  color: var(--ink);
+}
+
+/* ---- actions: import / reconnect / retry, one Signal per decision
+   scope ------------------------------------------------------------------- */
+
+[data-surface="crm-deal-picker"] .cdp-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+[data-surface="crm-deal-picker"] .cdp-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 40px;
+  padding: 0 16px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  text-decoration: none;
+  transition:
+    background-color 0.12s cubic-bezier(0.2, 0, 0, 1),
+    border-color 0.12s cubic-bezier(0.2, 0, 0, 1);
+}
+[data-surface="crm-deal-picker"] .cdp-btn:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+[data-surface="crm-deal-picker"] .cdp-btn:disabled {
+  cursor: not-allowed;
+}
+
+[data-surface="crm-deal-picker"] .cdp-btn-primary {
+  background: var(--signal);
+  border-color: var(--signal);
+  color: var(--signal-fg);
+}
+[data-surface="crm-deal-picker"] .cdp-btn-primary:hover:not(:disabled) {
+  background: var(--signal-hover);
+  border-color: var(--signal-hover);
+}
+[data-surface="crm-deal-picker"] .cdp-btn-primary:active:not(:disabled) {
+  background: var(--signal-press);
+  border-color: var(--signal-press);
+}
+[data-surface="crm-deal-picker"] .cdp-btn-primary:disabled {
+  background: var(--mist);
+  border-color: var(--mist);
+  color: var(--slate);
+}
+
+@media (max-width: 480px) {
+  [data-surface="crm-deal-picker"] {
+    margin: 0 16px;
+    padding: 16px;
+  }
+}
