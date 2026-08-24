@@ -180,7 +180,13 @@ function dealDetail(externalId: string, overrides: Partial<CrmDealDetail> = {}):
     stage: "appointmentscheduled",
     closeDate: "2099-01-01",
     companyName: `T53 action co ${externalId} — ${runId}`,
-    companyDomain: `t53-action-${externalId}-${runId}.example.com`,
+    // externalId already carries this file's full runId (every call site
+    // below embeds it), so appending -${runId} again duplicated the UUID
+    // within the leading DNS label, pushing it past the real 63-char label
+    // limit lib/domain.ts's isValidDomain correctly enforces — every "good"
+    // deal in this file was silently invalid_data as a result. Fixed by not
+    // doubling it.
+    companyDomain: `t53-action-${externalId}.example.com`,
     contactEmail: `buyer-${externalId}-${runId}@example.com`,
     ...overrides,
   };

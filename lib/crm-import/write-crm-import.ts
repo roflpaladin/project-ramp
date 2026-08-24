@@ -161,9 +161,12 @@ export async function writeCrmImport(
   let outcomes: readonly CrmDealWriteResult[] = [];
 
   for (const result of results) {
-    const outcome: CrmDealWriteResult = result.ok
-      ? await writeDeal(result.value, context, client)
-      : { externalId: result.externalId, ok: false, reason: result.reason, message: result.message };
+    // An already-failed result's shape ({ externalId, ok: false, reason,
+    // message }) already matches CrmDealWriteResult's failure branch exactly
+    // — returned as the same reference (not a rebuilt copy), same as
+    // lib/import/import-deals.ts's importDeals() passes an already-failed
+    // RowValidationResult through as `result` itself.
+    const outcome: CrmDealWriteResult = result.ok ? await writeDeal(result.value, context, client) : result;
     outcomes = [...outcomes, outcome];
   }
 
