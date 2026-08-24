@@ -45,6 +45,17 @@ export const WAITLIST_RATE_LIMIT: RateLimitBudget = { limit: 5, windowMs: 15 * 6
 // burst, so a tight per-minute cap catches a scripted replay loop fast
 // without making a genuinely stuck seller wait a quarter hour to retry.
 export const HUBSPOT_OAUTH_RATE_LIMIT: RateLimitBudget = { limit: 10, windowMs: 60_000 };
+// T48 landing-page headline impression events, keyed per caller IP — same
+// public/unauthenticated/write threat class as WAITLIST_RATE_LIMIT, but
+// deliberately a bit looser (10 vs 5 per 15 minutes): a waitlist signup is a
+// deliberate one-time action per visitor, while an impression fires
+// automatically on page load and legitimately recurs more than once per IP
+// within a window (reloads, back-button navigation, multiple tabs/devices
+// behind the same NAT/office IP, or a visitor loading both variants across a
+// couple of retries). The event itself carries no PII and writes one tiny
+// row, so the abuse cost of a slightly looser budget is low, while still
+// bounding write volume from any single IP.
+export const LANDING_EVENT_RATE_LIMIT: RateLimitBudget = { limit: 10, windowMs: 15 * 60_000 };
 
 export interface RateLimitResult {
   readonly allowed: boolean;

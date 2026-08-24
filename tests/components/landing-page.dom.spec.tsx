@@ -2,26 +2,52 @@
 // DOM assertions for app/page.tsx. Runs under the "components" Vitest
 // project (happy-dom) — see vitest.config.ts.
 //
-// app/page.tsx is a synchronous Server Component with no data fetching, so
-// it's called directly and rendered, matching the "render the async server
-// component's JSX with RTL" technique used for app/register/page.tsx (this
-// one just doesn't need the `await` — see register-page.dom.spec.tsx for
-// the async variant). getLandingMode (lib/landing/mode.ts) is exercised via
-// process.env directly, since app/page.tsx calls the real
+// app/page.tsx is now (T48) an async Server Component — it reads the
+// `brava_hl` headline-variant cookie via next/headers `cookies()`, so it's
+// awaited for its JSX before being handed to RTL's render(), matching the
+// technique register-page.dom.spec.tsx uses for RegisterPage. next/headers
+// is mocked wholesale (house style: mocking a "use server"/framework
+// boundary module wholesale, same as onboarding-flow.dom.spec.tsx mocks its
+// action module) so each test can control exactly what cookie value the
+// page sees, via setHeadlineCookie below. getLandingMode (lib/landing/mode.ts)
+// is exercised via process.env directly, since app/page.tsx calls the real
 // getLandingMode() (no injected env) — restored after every test so one
 // test's stub can never leak into another.
 //
 // Coverage per the ticket brief: headline/subline render as swappable copy
-// slots; the "what is Brava" section names 2-3 value props in sentence
-// case; waitlist mode renders the WaitlistForm as the page's one Signal;
-// signup mode renders a plain /register link as the page's one Signal
-// instead, with no waitlist form in the DOM at all; the footer links to
-// /terms, /privacy and /refunds; exactly one data-signal="true" element
+// slots; the assigned headline variant renders (sticky cookie + invalid-
+// cookie fallback, T48); the "what is Brava" section names 2-3 value props
+// in sentence case; waitlist mode renders the WaitlistForm as the page's one
+// Signal; signup mode renders a plain /register link as the page's one
+// Signal instead, with no waitlist form in the DOM at all; the footer links
+// to /terms, /privacy and /refunds; exactly one data-signal="true" element
 // exists in either mode.
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
-import Home from "@/app/page";
+import { HEADLINE_VARIANT_COOKIE_NAME } from "@/lib/landing/headline-variant";
+import { HEADLINE_VARIANTS } from "@/app/landing-variants";
+
+let mockHeadlineCookieValue: string | undefined;
+
+function setHeadlineCookie(value: string | undefined) {
+  mockHeadlineCookieValue = value;
+}
+
+vi.mock("next/headers", () => ({
+  cookies: async () => ({
+    get: (name: string) =>
+      name === HEADLINE_VARIANT_COOKIE_NAME && mockHeadlineCookieValue !== undefined
+        ? { name, value: mockHeadlineCookieValue }
+        : undefined,
+  }),
+}));
+
+const { default: Home } = await import("@/app/page");
+
+async function renderHome() {
+  return render(await Home());
+}
 
 const ENV_VAR_NAME = "NEXT_PUBLIC_LANDING_MODE";
 const originalEnvValue = process.env[ENV_VAR_NAME];
@@ -34,23 +60,34 @@ function setLandingModeEnv(value: string | undefined) {
   }
 }
 
+// T48's HeadlineImpressionPing fires a fetch on every Home mount below —
+// stubbed here (never a real network call from a component test) purely to
+// keep these T47 tests isolated; HeadlineImpressionPing's own behaviour is
+// covered in headline-impression.dom.spec.tsx.
+const mockFetch = vi.fn();
+
 afterEach(() => {
   cleanup();
   setLandingModeEnv(originalEnvValue);
+  setHeadlineCookie(undefined);
+  mockFetch.mockReset();
+  vi.unstubAllGlobals();
 });
 
 describe("Home — headline and value props", () => {
-  it("renders a headline and subline as the page's h1/intro", () => {
+  it("renders a headline and subline as the page's h1/intro", async () => {
+    vi.stubGlobal("fetch", mockFetch.mockResolvedValue(new Response(null, { status: 200 })));
     setLandingModeEnv(undefined);
-    render(<Home />);
+    await renderHome();
 
     const heading = screen.getByRole("heading", { level: 1 });
     expect(heading.textContent?.trim().length).toBeGreaterThan(0);
   });
 
-  it("names 2-3 value props for what Brava is, in sentence case (no Title Case, no ALL CAPS)", () => {
+  it("names 2-3 value props for what Brava is, in sentence case (no Title Case, no ALL CAPS)", async () => {
+    vi.stubGlobal("fetch", mockFetch.mockResolvedValue(new Response(null, { status: 200 })));
     setLandingModeEnv(undefined);
-    render(<Home />);
+    await renderHome();
 
     const section = screen.getByRole("heading", { name: "What Brava is" }).closest("section");
     expect(section).not.toBeNull();
@@ -68,9 +105,10 @@ describe("Home — headline and value props", () => {
 });
 
 describe("Home — waitlist mode (default)", () => {
-  it("renders the waitlist form as the page's one Signal, no /register link", () => {
+  it("renders the waitlist form as the page's one Signal, no /register link", async () => {
+    vi.stubGlobal("fetch", mockFetch.mockResolvedValue(new Response(null, { status: 200 })));
     setLandingModeEnv("waitlist");
-    const { container } = render(<Home />);
+    const { container } = await renderHome();
 
     expect(screen.getByLabelText("Work email")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Join the waitlist" })).toHaveAttribute("data-signal", "true");
@@ -78,18 +116,20 @@ describe("Home — waitlist mode (default)", () => {
     expect(screen.queryByRole("link", { name: /create your account/i })).not.toBeInTheDocument();
   });
 
-  it("falls back to waitlist mode for an unrecognised NEXT_PUBLIC_LANDING_MODE value", () => {
+  it("falls back to waitlist mode for an unrecognised NEXT_PUBLIC_LANDING_MODE value", async () => {
+    vi.stubGlobal("fetch", mockFetch.mockResolvedValue(new Response(null, { status: 200 })));
     setLandingModeEnv("something-unexpected");
-    render(<Home />);
+    await renderHome();
 
     expect(screen.getByLabelText("Work email")).toBeInTheDocument();
   });
 });
 
 describe("Home — signup mode", () => {
-  it("renders a single /register link as the page's one Signal, no waitlist form", () => {
+  it("renders a single /register link as the page's one Signal, no waitlist form", async () => {
+    vi.stubGlobal("fetch", mockFetch.mockResolvedValue(new Response(null, { status: 200 })));
     setLandingModeEnv("signup");
-    const { container } = render(<Home />);
+    const { container } = await renderHome();
 
     expect(screen.queryByLabelText("Work email")).not.toBeInTheDocument();
 
@@ -101,12 +141,43 @@ describe("Home — signup mode", () => {
 });
 
 describe("Home — footer legal links", () => {
-  it("links to /terms, /privacy and /refunds", () => {
+  it("links to /terms, /privacy and /refunds", async () => {
+    vi.stubGlobal("fetch", mockFetch.mockResolvedValue(new Response(null, { status: 200 })));
     setLandingModeEnv(undefined);
-    render(<Home />);
+    await renderHome();
 
     expect(screen.getByRole("link", { name: /terms/i })).toHaveAttribute("href", "/terms");
     expect(screen.getByRole("link", { name: /privacy/i })).toHaveAttribute("href", "/privacy");
     expect(screen.getByRole("link", { name: /refunds/i })).toHaveAttribute("href", "/refunds");
+  });
+});
+
+describe("Home — headline variant assignment (T48)", () => {
+  it("renders the control headline when the cookie is 'control'", async () => {
+    vi.stubGlobal("fetch", mockFetch.mockResolvedValue(new Response(null, { status: 200 })));
+    setLandingModeEnv(undefined);
+    setHeadlineCookie("control");
+    await renderHome();
+
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(HEADLINE_VARIANTS.control);
+  });
+
+  it("renders the candidate headline when the cookie is 'with-not-at' (sticky assignment)", async () => {
+    vi.stubGlobal("fetch", mockFetch.mockResolvedValue(new Response(null, { status: 200 })));
+    setLandingModeEnv(undefined);
+    setHeadlineCookie("with-not-at");
+    await renderHome();
+
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(HEADLINE_VARIANTS["with-not-at"]);
+  });
+
+  it("falls back to a fresh (still valid) variant when the cookie is missing or malformed, never throwing", async () => {
+    vi.stubGlobal("fetch", mockFetch.mockResolvedValue(new Response(null, { status: 200 })));
+    setLandingModeEnv(undefined);
+    setHeadlineCookie("not-a-real-variant");
+
+    await expect(renderHome()).resolves.toBeDefined();
+    const heading = screen.getByRole("heading", { level: 1 });
+    expect([HEADLINE_VARIANTS.control, HEADLINE_VARIANTS["with-not-at"]]).toContain(heading.textContent);
   });
 });

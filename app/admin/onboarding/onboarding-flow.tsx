@@ -8,6 +8,8 @@ import {
   INVALID_DOMAIN_MESSAGE,
   MISSING_NAME_MESSAGE,
 } from "./onboarding-state";
+import { useCompanyNamePrefill } from "@/lib/use-company-name-prefill";
+import { CompanyNameSuggestion } from "@/components/company-name-suggestion";
 import "./onboarding.css";
 
 /**
@@ -225,8 +227,23 @@ function ManualStep({ onBack }: { onBack: () => void }) {
   // which would otherwise wipe what the seller just typed the instant a
   // validation error comes back — the same reason invite-panel.tsx controls
   // its own email field via useState rather than leaving it uncontrolled.
-  const [companyNameValue, setCompanyNameValue] = useState("");
-  const [domainValue, setDomainValue] = useState("");
+  //
+  // Sprint 9, Ticket 46 — "populate from a link" wiring (both fields'
+  // controlled state, the scrape-meta call, and the suggestion/hint
+  // affordance below) lives in the shared lib/use-company-name-prefill.ts —
+  // see that file's header comment for the full rationale. Extracted post
+  // review (HIGH finding): this was previously duplicated near-verbatim in
+  // new-workspace-form.tsx.
+  const {
+    companyNameValue,
+    domainValue,
+    suggestedName,
+    scrapeStatus,
+    onCompanyNameChange,
+    onDomainChange,
+    onDomainBlur,
+    applySuggestedName,
+  } = useCompanyNamePrefill();
 
   return (
     <>
@@ -244,7 +261,7 @@ function ManualStep({ onBack }: { onBack: () => void }) {
             name="target_company_name"
             required
             value={companyNameValue}
-            onChange={(event) => setCompanyNameValue(event.target.value)}
+            onChange={onCompanyNameChange}
             disabled={isManualPending}
             aria-invalid={invalid === "name" ? true : undefined}
           />
@@ -258,11 +275,19 @@ function ManualStep({ onBack }: { onBack: () => void }) {
             placeholder="acme.com"
             required
             value={domainValue}
-            onChange={(event) => setDomainValue(event.target.value)}
+            onChange={onDomainChange}
+            onBlur={onDomainBlur}
             disabled={isManualPending}
             aria-invalid={invalid === "domain" ? true : undefined}
           />
         </label>
+
+        <CompanyNameSuggestion
+          classPrefix="ob"
+          suggestedName={suggestedName}
+          scrapeStatus={scrapeStatus}
+          onApply={applySuggestedName}
+        />
 
         {manualState.error ? <ErrorStatus message={manualState.error} /> : null}
 
