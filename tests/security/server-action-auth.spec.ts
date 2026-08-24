@@ -25,7 +25,13 @@ import { describe, expect, it } from "vitest";
 import { listActionFiles } from "./support/route-probe";
 
 const REPO_ROOT = fileURLToPath(new URL("../../", import.meta.url));
-const ACTION_GLOB_ROOT = "app/admin";
+// Sprint 10, Ticket 52: widened from "app/admin" alone to also cover
+// "app/settings" — the new HubSpot disconnect action
+// (app/settings/integrations/hubspot-actions.ts) lives there, and a probe
+// that only ever looked at app/admin would never have caught it (or any
+// future app/settings/**/*-actions.ts file) missing its requireSeller()
+// guard.
+const ACTION_GLOB_ROOTS = ["app/admin", "app/settings"] as const;
 
 interface AllowlistEntry {
   /** Repo-root-relative, e.g. "app/admin/workspaces/[id]/links-actions.ts". */
@@ -37,9 +43,7 @@ interface AllowlistEntry {
 
 /**
  * Every entry here is a DELIBERATE, reviewed exception, never a place to
- * quiet a failing probe. Deliberately empty: nothing found so far earns an
- * exemption from requireSeller() — see this file's own test run for what
- * that means about the files it currently covers.
+ * quiet a failing probe.
  */
 const ALLOWLIST: readonly AllowlistEntry[] = [
   // The former INITIAL_SEND_INVITE_STATE entry is gone: the constant moved
@@ -47,6 +51,27 @@ const ALLOWLIST: readonly AllowlistEntry[] = [
   // async functions; the object export crashed every invite submit on
   // production builds). An action file needing a data-constant exemption
   // here is now a signal the constant is in the wrong file.
+
+  // 2026-08-24 (Sprint 10, Ticket 52 — widening this probe to app/settings
+  // surfaced this pre-existing gap; not otherwise touched by this ticket).
+  // saveTriggerStage predates require-seller.ts's extraction (T28-9) and
+  // still uses the inline equivalent that comment itself names as this
+  // file's own established pattern ("mirrors app/admin/workspaces/new/
+  // actions.ts and app/settings/integrations/actions.ts already use inline
+  // (createClient -> auth.getUser() -> bail if absent)"): createClient(),
+  // auth.getUser(), and an explicit `if (!user) redirect("/admin/login")`
+  // bail-out, immediately as its first two statements. Functionally
+  // equivalent auth coverage to requireSeller() — allowlisted rather than
+  // refactored to keep this ticket's diff to what it actually needs to
+  // touch; a real refactor to requireSeller() is a fine, low-risk follow-up
+  // but is out of scope here.
+  {
+    file: "app/settings/integrations/actions.ts",
+    functionName: "saveTriggerStage",
+    reason:
+      "Pre-existing inline auth.getUser() + redirect guard (predates requireSeller()'s T28-9 extraction) — " +
+      "functionally equivalent coverage, not an omission. See dated comment above.",
+  },
 ];
 
 interface ExportedFunction {
@@ -87,16 +112,20 @@ function findAllowlistEntry(file: string, functionName: string): AllowlistEntry 
   return ALLOWLIST.find((entry) => entry.file === file && entry.functionName === functionName);
 }
 
-describe("server-action auth coverage — app/admin/**/*-actions.ts (T28-13)", () => {
-  const actionFiles = listActionFiles(ACTION_GLOB_ROOT);
+describe("server-action auth coverage — app/admin/**/*-actions.ts + app/settings/**/*-actions.ts (T28-13, widened T52)", () => {
+  // Flattened, de-duplicated across both roots — a file glob-matched by
+  // both would otherwise get double describe/it blocks below.
+  const actionFiles = Array.from(new Set(ACTION_GLOB_ROOTS.flatMap((root) => listActionFiles(root))));
 
   it("finds every action file this probe is meant to cover", () => {
     // Re-derived from the filesystem, not hardcoded — a regression here means
-    // the glob itself broke, not that the file list changed. Names the two
-    // files known to exist at the time this probe was written so a silent
-    // "found zero files" is caught rather than passing vacuously.
+    // the glob itself broke, not that the file list changed. Names files
+    // known to exist at the time this probe (T28-13) and its T52 widening
+    // were written so a silent "found zero files" is caught rather than
+    // passing vacuously.
     expect(actionFiles).toContain("app/admin/workspaces/[id]/plan/plan-actions.ts");
     expect(actionFiles).toContain("app/admin/workspaces/[id]/links-actions.ts");
+    expect(actionFiles).toContain("app/settings/integrations/hubspot-actions.ts");
   });
 
   it("registers no manual enable/disable override that could desync the allowlist from its own reasons", () => {

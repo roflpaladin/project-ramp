@@ -6,39 +6,66 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { DEFAULT_TRIGGER_STAGE } from "@/lib/crm/trigger-stage";
 import { MOCK_PIPELINE_STAGES } from "@/lib/crm/stages";
-import { createClient } from "@/lib/supabase/server";
+import { isTenantConnected } from "@/lib/hubspot/token-store";
+import { requireSeller } from "@/lib/plans/require-seller";
 import { saveTriggerStage } from "./actions";
+import { HubSpotConnectionCard } from "./hubspot-card";
+import { mapHubSpotErrorMessage } from "./hubspot-messages";
 
 // CRM Custom Stage Mapping (Sprint 3, Ticket 16). Static component shell —
 // the pipeline dropdown is seeded from the mock stage array, not a live CRM
 // handshake (no OAuth in v1.2). Reads/writes go through the RLS-scoped
 // client, so everything here is tenant-bounded at the DB layer.
+//
+// Sprint 10, Ticket 52 added the HubSpot connection card below — that is a
+// real OAuth handshake (see app/api/integrations/hubspot/oauth/*), the CRM
+// stage mapping above still isn't.
 export default async function IntegrationsSettingsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ saved?: string; error?: string }>;
+  searchParams: Promise<{
+    saved?: string;
+    error?: string;
+    connected?: string;
+    disconnected?: string;
+    warning?: string;
+  }>;
 }) {
-  const { saved, error } = await searchParams;
+  const { saved, error, connected, disconnected, warning } = await searchParams;
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
+  // requireSeller() (T28-9) replaces this page's own inline
+  // auth.getUser()-and-redirect (Sprint 3 shape) — same underlying check,
+  // but also hands back tenantId, which the HubSpot card needs for
+  // isTenantConnected below.
+  const seller = await requireSeller();
+  if (!seller) {
     redirect("/admin/login"); // middleware already enforces this; defense in depth
   }
+  const supabase = seller.client;
 
   // Any of the tenant's workspaces is representative — Save keeps them
   // tenant-consistent (see actions.ts). No workspaces yet → DB default.
-  const { data: workspace } = await supabase
-    .from("workspaces")
-    .select("trigger_stage")
-    .limit(1)
-    .maybeSingle();
+  // A tenant-less account (provisioning never completed) can't have a
+  // HubSpot connection either, so isTenantConnected is skipped rather than
+  // called with a null id.
+  const [{ data: workspace }, isHubSpotConnected] = await Promise.all([
+    supabase.from("workspaces").select("trigger_stage").limit(1).maybeSingle(),
+    seller.tenantId ? isTenantConnected(seller.tenantId) : Promise.resolve(false),
+  ]);
   const currentStage = workspace?.trigger_stage ?? DEFAULT_TRIGGER_STAGE;
   const selectedStage =
     MOCK_PIPELINE_STAGES.find((stage) => stage.toLowerCase() === currentStage.toLowerCase()) ??
     MOCK_PIPELINE_STAGES[2];
+
+  // The HubSpot OAuth routes and disconnectHubSpot (hubspot-actions.ts)
+  // redirect back to this same page with `?error=<code>` from a small closed
+  // set — the SAME query param the CRM trigger-stage save action below
+  // already uses for its own free-text error sentences (see
+  // hubspot-messages.ts's header for the full reasoning). hubspotErrorMessage
+  // is non-null only when `error` is a recognized HubSpot code, so the CRM
+  // card's own error paragraph is suppressed in that case rather than
+  // showing the raw code a second time.
+  const hubspotErrorMessage = mapHubSpotErrorMessage(error);
 
   return (
     <main className="mx-auto flex w-full max-w-xl flex-col gap-6 px-4 py-10 sm:px-6">
@@ -53,6 +80,14 @@ export default async function IntegrationsSettingsPage({
           Align automated workspace provisioning with your CRM pipeline.
         </p>
       </div>
+
+      <HubSpotConnectionCard
+        isConnected={isHubSpotConnected}
+        justConnected={connected === "1"}
+        justDisconnected={disconnected === "1"}
+        revokeFailedWarning={warning === "revoke_failed"}
+        errorMessage={hubspotErrorMessage}
+      />
 
       <Card>
         <form action={saveTriggerStage} className="m-0 flex max-w-none flex-col gap-0 p-0">
@@ -83,7 +118,7 @@ export default async function IntegrationsSettingsPage({
                 Trigger stage saved.
               </p>
             ) : null}
-            {error ? (
+            {error && !hubspotErrorMessage ? (
               <p className="m-0 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">
                 {error}
               </p>
