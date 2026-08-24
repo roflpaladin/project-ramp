@@ -56,6 +56,17 @@ export const HUBSPOT_OAUTH_RATE_LIMIT: RateLimitBudget = { limit: 10, windowMs: 
 // row, so the abuse cost of a slightly looser budget is low, while still
 // bounding write volume from any single IP.
 export const LANDING_EVENT_RATE_LIMIT: RateLimitBudget = { limit: 10, windowMs: 15 * 60_000 };
+// T53 HubSpot deal import, keyed per seller (list and import calls each get
+// their own counter under this same budget — see hubspot-import-actions.ts).
+// Looser than CSV_IMPORT_RATE_LIMIT's 3 per 15 minutes: a HubSpot import
+// call writes one workspace+plan pair per deal the seller explicitly
+// selected from the picker, not an arbitrary-sized CSV batch (up to
+// MAX_CSV_ROWS = 200 rows) — its typical write amplification per call is
+// smaller. It is still the same write-amplifying class of action (unbounded
+// by this budget alone, since the picker's own selection size is the real
+// cap), so it earns its own budget rather than sharing
+// ONBOARDING_RATE_LIMIT's 5.
+export const HUBSPOT_IMPORT_RATE_LIMIT: RateLimitBudget = { limit: 5, windowMs: 15 * 60_000 };
 
 export interface RateLimitResult {
   readonly allowed: boolean;
