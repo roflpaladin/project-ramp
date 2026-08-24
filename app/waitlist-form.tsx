@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { headlineSourceTag, type HeadlineVariantId } from "./landing-variants";
 
 /**
  * T47 (Sprint 9, Ticket 47 — public landing page, phase 1). The landing
@@ -25,6 +26,14 @@ import { useState, type FormEvent } from "react";
  * stays in the DOM at opacity:0 while submitting rather than being removed,
  * so the button never changes width, and the spinner is aria-hidden since
  * aria-busy + the accessible-name swap already say what's happening.
+ *
+ * T48: `headlineVariant` (the id the page's headline A/B test assigned this
+ * visit, resolved server-side in app/page.tsx) is required, not optional —
+ * every render of this form has an assigned variant by the time it mounts,
+ * so there is no meaningful default to fall back to. It's turned into the
+ * `source` field via headlineSourceTag (app/landing-variants.ts, the shared
+ * T48 contract) so a conversion can be attributed to the headline the buyer
+ * actually saw.
  */
 type SubmitStatus = "idle" | "submitting" | "success" | "error";
 
@@ -33,7 +42,11 @@ const GENERIC_ERROR_MESSAGE = "Something went wrong. Try again.";
 const SUCCESS_MESSAGE = "You're on the list — we'll email you when Brava is ready.";
 const RATE_LIMIT_STATUS = 429;
 
-export function WaitlistForm() {
+interface WaitlistFormProps {
+  readonly headlineVariant: HeadlineVariantId;
+}
+
+export function WaitlistForm({ headlineVariant }: WaitlistFormProps) {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<SubmitStatus>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -47,7 +60,7 @@ export function WaitlistForm() {
       const response = await fetch("/api/waitlist", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email, source: headlineSourceTag(headlineVariant) }),
       });
 
       if (response.ok) {
