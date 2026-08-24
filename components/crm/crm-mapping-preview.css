@@ -1,0 +1,87 @@
+/* Scoped styles for the CRM field-mapping preview (Sprint 10, Ticket 54,
+   Phase 2). Same layering choice and token discipline as every sibling
+   surface (crm-deal-picker.css, import-result-summary.css): theme layered,
+   utilities unlayered. Brand colour comes entirely from the Ramp tokens in
+   app/globals.css — nothing here hardcodes a hex. Scoped to
+   [data-surface="crm-mapping-preview"] so nothing else on the page is
+   affected. */
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css";
+
+@media (prefers-reduced-motion: reduce) {
+  [data-surface="crm-mapping-preview"] * {
+    transition: none !important;
+  }
+}
+
+[data-surface="crm-mapping-preview"] {
+  display: flex;
+  flex-direction: column;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+[data-surface="crm-mapping-preview"] .cmp-mono {
+  font-family: "Geist Mono", "SFMono-Regular", ui-monospace, monospace;
+}
+
+/* Wide content scrolls in its own container, never the page. */
+[data-surface="crm-mapping-preview"] .cmp-table-scroll {
+  overflow-x: auto;
+}
+
+[data-surface="crm-mapping-preview"] .cmp-table {
+  width: 100%;
+  min-width: 480px;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+[data-surface="crm-mapping-preview"] .cmp-table th,
+[data-surface="crm-mapping-preview"] .cmp-table td {
+  padding: 8px 12px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--line);
+}
+[data-surface="crm-mapping-preview"] .cmp-table th {
+  font-weight: 500;
+  color: var(--slate);
+}
+[data-surface="crm-mapping-preview"] .cmp-table td {
+  color: var(--ink);
+}
+
+/* ---- unmapped marker: dot + text, neutral/wait tone, never risk -------- */
+
+[data-surface="crm-mapping-preview"] .cmp-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: var(--mist);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+[data-surface="crm-mapping-preview"] .cmp-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+  background: var(--state-wait);
+}
+
+@media (max-width: 480px) {
+  [data-surface="crm-mapping-preview"] {
+    margin: 0 16px;
+    padding: 16px;
+  }
+}
