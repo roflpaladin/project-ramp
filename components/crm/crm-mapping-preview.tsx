@@ -1,4 +1,4 @@
-import type { CrmFieldMapping } from "@/lib/crm/import-ui-types";
+import type { CrmFieldMapping } from "@/lib/crm-import/types";
 import "./crm-mapping-preview.css";
 
 /**

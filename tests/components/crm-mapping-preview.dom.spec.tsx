@@ -14,7 +14,7 @@
 
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
-import type { CrmFieldMapping } from "@/lib/crm/import-ui-types";
+import type { CrmFieldMapping } from "@/lib/crm-import/types";
 import { CrmMappingPreview } from "@/components/crm/crm-mapping-preview";
 
 afterEach(() => {

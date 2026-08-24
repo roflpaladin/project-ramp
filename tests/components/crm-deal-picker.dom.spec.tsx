@@ -20,7 +20,7 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import type { CrmDealListResult, CrmDealSummary } from "@/lib/crm/import-ui-types";
+import type { CrmDealListResult, CrmDealSummary } from "@/lib/crm-import/types";
 import { CrmDealPicker } from "@/components/crm/crm-deal-picker";
 import { HUBSPOT_OAUTH_START_HREF } from "@/components/crm/crm-retry-reconnect-row";
 

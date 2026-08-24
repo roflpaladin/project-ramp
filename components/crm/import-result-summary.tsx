@@ -1,4 +1,4 @@
-import type { CrmImportResult } from "@/lib/crm/import-ui-types";
+import type { CrmImportResult } from "@/lib/crm-import/types";
 import { CrmFailureDetailList } from "./crm-failure-detail-list";
 import { CrmUnmappedFieldsNotice } from "./crm-unmapped-fields-notice";
 import { CrmRetryReconnectRow } from "./crm-retry-reconnect-row";
