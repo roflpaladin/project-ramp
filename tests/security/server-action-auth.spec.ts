@@ -131,6 +131,11 @@ describe("server-action auth coverage — app/admin/**/*-actions.ts + app/settin
     // that file's own header) — this assertion is the explicit proof the
     // probe actually sees it, not just a hope that the glob does.
     expect(actionFiles).toContain("app/settings/integrations/salesforce-actions.ts");
+    // Sprint 11, Ticket 56 — same reasoning for
+    // salesforce-import-actions.ts's listSalesforceDeals()/
+    // importSalesforceDeals()/submitSalesforceImport(): named this way (not
+    // actions.ts) specifically so this probe covers it from day one.
+    expect(actionFiles).toContain("app/admin/import/salesforce/salesforce-import-actions.ts");
   });
 
   it("registers no manual enable/disable override that could desync the allowlist from its own reasons", () => {

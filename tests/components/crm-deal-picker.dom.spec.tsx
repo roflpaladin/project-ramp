@@ -255,6 +255,58 @@ describe("CrmDealPicker — loading", () => {
   });
 });
 
+describe("CrmDealPicker — provider awareness (Sprint 11, Ticket 56)", () => {
+  const SALESFORCE_OAUTH_START_HREF = "/api/integrations/salesforce/oauth/start";
+
+  it("defaults to HubSpot copy and the HubSpot oauth href when no provider props are given (backward-safe default)", () => {
+    const result: CrmDealListResult = { ok: true, deals: [], alreadyImportedCount: 0 };
+    render(<CrmDealPicker result={result} isLoading onImport={vi.fn()} onRetry={vi.fn()} />);
+
+    expect(screen.getByRole("status")).toHaveTextContent("Loading deals from HubSpot");
+  });
+
+  it("renders Salesforce copy in the loading state when providerLabel='Salesforce'", () => {
+    const result: CrmDealListResult = { ok: true, deals: [], alreadyImportedCount: 0 };
+    render(
+      <CrmDealPicker result={result} isLoading providerLabel="Salesforce" onImport={vi.fn()} onRetry={vi.fn()} />,
+    );
+
+    expect(screen.getByRole("status")).toHaveTextContent("Loading deals from Salesforce");
+  });
+
+  it("renders the Salesforce empty-state copy when providerLabel='Salesforce'", () => {
+    const result: CrmDealListResult = { ok: true, deals: [], alreadyImportedCount: 0 };
+    render(<CrmDealPicker result={result} providerLabel="Salesforce" onImport={vi.fn()} onRetry={vi.fn()} />);
+
+    const empty = screen.getByTestId("crm-deal-picker-empty");
+    expect(empty).toHaveTextContent("Nothing to import yet");
+    expect(empty).toHaveTextContent("no deals found in Salesforce");
+  });
+
+  it("renders 'Reconnect Salesforce' with the Salesforce oauth href when both provider props are given", () => {
+    const result: CrmDealListResult = {
+      ok: false,
+      reason: "token_expired",
+      message: "The Salesforce connection has expired.",
+      reconnectRequired: true,
+    };
+    const { container } = render(
+      <CrmDealPicker
+        result={result}
+        providerLabel="Salesforce"
+        reconnectHref={SALESFORCE_OAUTH_START_HREF}
+        onImport={vi.fn()}
+        onRetry={vi.fn()}
+      />,
+    );
+
+    const reconnectLink = screen.getByRole("link", { name: "Reconnect Salesforce" });
+    expect(reconnectLink).toHaveAttribute("href", SALESFORCE_OAUTH_START_HREF);
+    expect(reconnectLink).toHaveAttribute("data-signal", "true");
+    expect(container.querySelectorAll('[data-signal="true"]')).toHaveLength(1);
+  });
+});
+
 describe("CrmDealPicker — CSS carries no hardcoded colours", () => {
   it("uses design tokens only, never a raw hex value", async () => {
     const { readFileSync } = await import("node:fs");

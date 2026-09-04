@@ -1,0 +1,74 @@
+/* Scoped styles for the Salesforce deal-import page (Sprint 11, Ticket 56).
+   Byte-for-byte the same layering choice and token discipline as
+   app/admin/import/hubspot/hubspot-import-panel.css (s/hip-/sip-/,
+   s/hubspot-import-panel/salesforce-import-panel/) — see that file's own
+   header for the full reasoning, unchanged here. Theme layered, utilities
+   unlayered. Brand colour comes entirely from the Ramp tokens in
+   app/globals.css — nothing here hardcodes a hex.
+
+   Like hubspot-import-panel.css, this surface is a plain vertical layout,
+   not its own bordered card: CrmDealPicker, CrmMappingPreview and
+   ImportResultSummary each already ship their own self-contained,
+   self-centered card (border + background + max-width), so this wrapper
+   only supplies spacing and the page-level heading typography. Scoped to
+   [data-surface="salesforce-import-panel"] so nothing else on /admin is
+   affected. */
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css";
+
+@media (prefers-reduced-motion: reduce) {
+  [data-surface="salesforce-import-panel"] * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+[data-surface="salesforce-import-panel"] {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  padding: 48px 24px;
+}
+
+[data-surface="salesforce-import-panel"] .sip-header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 720px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+[data-surface="salesforce-import-panel"] .sip-title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+[data-surface="salesforce-import-panel"] .sip-intro {
+  margin: 0;
+  font-size: 14px;
+  color: var(--slate);
+}
+
+[data-surface="salesforce-import-panel"] .sip-mapping {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+[data-surface="salesforce-import-panel"] .sip-section-title {
+  max-width: 720px;
+  margin: 0 auto;
+  width: 100%;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+@media (max-width: 480px) {
+  [data-surface="salesforce-import-panel"] {
+    padding: 24px 16px;
+  }
+}

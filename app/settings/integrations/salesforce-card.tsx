@@ -77,13 +77,25 @@ export function SalesforceConnectionCard({
           </p>
         ) : null}
       </CardContent>
-      <CardFooter>
+      <CardFooter className="flex items-center gap-4">
         {isConnected ? (
-          <form action={disconnectSalesforce} className="m-0">
-            <Button type="submit" variant="outline">
-              Disconnect
-            </Button>
-          </form>
+          <>
+            <form action={disconnectSalesforce} className="m-0">
+              <Button type="submit" variant="outline">
+                Disconnect
+              </Button>
+            </form>
+            {/* Sprint 11, Ticket 56 (founder-approved navigation) — mirrors
+                hubspot-card.tsx's identical Import deals link 1:1: plain
+                link styling, deliberately NOT the design system's amber
+                Signal (same reasoning as that file's own comment). */}
+            <a
+              href="/admin/import/salesforce"
+              className="text-sm text-neutral-500 no-underline hover:underline dark:text-neutral-400"
+            >
+              Import deals
+            </a>
+          </>
         ) : (
           // Plain <a>, not <Button> — this navigates a GET route rather than
           // submitting a form, same reasoning as hubspot-card.tsx's identical

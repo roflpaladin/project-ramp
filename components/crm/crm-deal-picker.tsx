@@ -19,27 +19,37 @@ import "./crm-deal-picker.css";
  * when both would apply, same ruling as crm-retry-reconnect-row.tsx).
  *
  * The "no deals" case is genuinely ambiguous from a bare empty array alone
- * (nothing in HubSpot vs. everything already imported), so the contract
+ * (nothing in the CRM vs. everything already imported), so the contract
  * carries `alreadyImportedCount` (amended 2026-08-24, binding) and this
  * component renders one of two calm, neutral copy states off of it — never
  * a single blended message.
+ *
+ * PROVIDER AWARENESS (Sprint 11, Ticket 56): `providerLabel` and
+ * `reconnectHref` de-hardcode this component's three "HubSpot" literals
+ * (loading copy, empty-list copy, and the reconnect link's text + href) so
+ * the same component serves both the HubSpot and Salesforce import pages.
+ * Both are optional and default to the original HubSpot values — a
+ * backward-safe default so any caller that predates this ticket keeps
+ * rendering exactly as before without a code change.
  */
 export interface CrmDealPickerProps {
   readonly result: CrmDealListResult;
   readonly isLoading?: boolean;
   readonly onImport: (externalIds: readonly string[]) => void;
   readonly onRetry: () => void;
+  readonly providerLabel?: "HubSpot" | "Salesforce";
+  readonly reconnectHref?: string;
 }
 
 function formatDealCount(count: number, singular: string, plural: string): string {
   return count === 1 ? singular : plural;
 }
 
-function CrmDealPickerLoading() {
+function CrmDealPickerLoading({ providerLabel }: { providerLabel: string }) {
   return (
     <p className="cdp-status" data-tone="wait" role="status">
       <span className="cdp-status-dot" aria-hidden="true" />
-      <span>Loading deals from HubSpot…</span>
+      <span>Loading deals from {providerLabel}…</span>
     </p>
   );
 }
@@ -47,13 +57,15 @@ function CrmDealPickerLoading() {
 interface CrmDealPickerErrorProps {
   readonly result: Extract<CrmDealListResult, { readonly ok: false }>;
   readonly onRetry: () => void;
+  readonly providerLabel: string;
+  readonly reconnectHref: string;
 }
 
 /** rate_limited reads as Slate/wait (a transient condition to wait out),
  * mirroring crm-failure-detail-list.tsx's reasoning; token_expired and
  * unknown read as risk. Reconnect (when required) is always the Signal,
  * retry only stands in as the Signal when reconnect is not required. */
-function CrmDealPickerError({ result, onRetry }: CrmDealPickerErrorProps) {
+function CrmDealPickerError({ result, onRetry, providerLabel, reconnectHref }: CrmDealPickerErrorProps) {
   const tone = result.reason === "rate_limited" ? "wait" : "risk";
 
   return (
@@ -64,8 +76,8 @@ function CrmDealPickerError({ result, onRetry }: CrmDealPickerErrorProps) {
       </p>
       <div className="cdp-actions">
         {result.reconnectRequired ? (
-          <a href={HUBSPOT_OAUTH_START_HREF} className="cdp-btn cdp-btn-primary" data-signal="true">
-            Reconnect HubSpot
+          <a href={reconnectHref} className="cdp-btn cdp-btn-primary" data-signal="true">
+            Reconnect {providerLabel}
           </a>
         ) : (
           <button type="button" onClick={onRetry} className="cdp-btn cdp-btn-primary" data-signal="true">
@@ -84,7 +96,13 @@ function CrmDealPickerError({ result, onRetry }: CrmDealPickerErrorProps) {
  * HubSpot yet" apart from "already fully imported" at a glance. Both
  * branches stay calm/neutral (not an error, not a Slate waiting state).
  */
-function CrmDealPickerEmpty({ alreadyImportedCount }: { alreadyImportedCount: number }) {
+function CrmDealPickerEmpty({
+  alreadyImportedCount,
+  providerLabel,
+}: {
+  readonly alreadyImportedCount: number;
+  readonly providerLabel: string;
+}) {
   if (alreadyImportedCount > 0) {
     const noun = formatDealCount(alreadyImportedCount, "deal", "deals");
     return (
@@ -96,7 +114,7 @@ function CrmDealPickerEmpty({ alreadyImportedCount }: { alreadyImportedCount: nu
 
   return (
     <p className="cdp-empty" data-testid="crm-deal-picker-empty">
-      Nothing to import yet — no deals found in HubSpot.
+      Nothing to import yet — no deals found in {providerLabel}.
     </p>
   );
 }
@@ -207,15 +225,24 @@ function CrmDealList({ deals, onImport }: CrmDealListProps) {
   );
 }
 
-export function CrmDealPicker({ result, isLoading = false, onImport, onRetry }: CrmDealPickerProps) {
+export function CrmDealPicker({
+  result,
+  isLoading = false,
+  onImport,
+  onRetry,
+  providerLabel = "HubSpot",
+  reconnectHref = HUBSPOT_OAUTH_START_HREF,
+}: CrmDealPickerProps) {
   const deals = useMemo(() => (result.ok ? result.deals : []), [result]);
 
   return (
     <section className="cdp-card" data-surface="crm-deal-picker" data-testid="crm-deal-picker">
-      {isLoading ? <CrmDealPickerLoading /> : null}
-      {!isLoading && !result.ok ? <CrmDealPickerError result={result} onRetry={onRetry} /> : null}
+      {isLoading ? <CrmDealPickerLoading providerLabel={providerLabel} /> : null}
+      {!isLoading && !result.ok ? (
+        <CrmDealPickerError result={result} onRetry={onRetry} providerLabel={providerLabel} reconnectHref={reconnectHref} />
+      ) : null}
       {!isLoading && result.ok && deals.length === 0 ? (
-        <CrmDealPickerEmpty alreadyImportedCount={result.alreadyImportedCount} />
+        <CrmDealPickerEmpty alreadyImportedCount={result.alreadyImportedCount} providerLabel={providerLabel} />
       ) : null}
       {!isLoading && result.ok && deals.length > 0 ? <CrmDealList deals={deals} onImport={onImport} /> : null}
     </section>

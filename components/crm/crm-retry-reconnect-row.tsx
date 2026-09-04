@@ -16,6 +16,13 @@ import type { CrmImportResult } from "@/lib/crm-import/types";
  * NOT required. When neither is true there is nothing actionable to offer,
  * so this renders nothing — the failure detail list is what surfaces the
  * "why" in that case, never a dead button.
+ *
+ * PROVIDER AWARENESS (Sprint 11, Ticket 56): `providerLabel` and
+ * `reconnectHref` de-hardcode the "Reconnect HubSpot" text and its href so
+ * this row also serves the Salesforce import page. Both default to the
+ * original HubSpot values — backward-safe for any caller that predates this
+ * ticket. HUBSPOT_OAUTH_START_HREF stays exported here for those callers
+ * (and this file's own default) to keep pointing at explicitly.
  */
 export const HUBSPOT_OAUTH_START_HREF = "/api/integrations/hubspot/oauth/start";
 
@@ -23,16 +30,24 @@ export interface CrmRetryReconnectRowProps {
   readonly retryable: CrmImportResult["retryable"];
   readonly reconnectRequired: CrmImportResult["reconnectRequired"];
   readonly onRetry: () => void;
+  readonly providerLabel?: "HubSpot" | "Salesforce";
+  readonly reconnectHref?: string;
 }
 
-export function CrmRetryReconnectRow({ retryable, reconnectRequired, onRetry }: CrmRetryReconnectRowProps) {
+export function CrmRetryReconnectRow({
+  retryable,
+  reconnectRequired,
+  onRetry,
+  providerLabel = "HubSpot",
+  reconnectHref = HUBSPOT_OAUTH_START_HREF,
+}: CrmRetryReconnectRowProps) {
   if (!retryable && !reconnectRequired) return null;
 
   return (
     <div className="cir-actions">
       {reconnectRequired ? (
-        <a href={HUBSPOT_OAUTH_START_HREF} className="cir-btn cir-btn-primary" data-signal="true">
-          Reconnect HubSpot
+        <a href={reconnectHref} className="cir-btn cir-btn-primary" data-signal="true">
+          Reconnect {providerLabel}
         </a>
       ) : null}
       {retryable ? (

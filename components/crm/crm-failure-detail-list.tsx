@@ -23,19 +23,27 @@ interface FailureReasonMeta {
  * comment, which names this switch as the contract's one required update
  * point when T53 adds a reason).
  *
- * rate_limited reads as Slate ("wait"), never the loud risk red: a HubSpot
+ * rate_limited reads as Slate ("wait"), never the loud risk red: a CRM
  * rate limit is a transient, self-resolving condition the seller waits out
  * and retries, not an error to alarm over — the design system's
  * "waiting/pending states render in Slate" rule. The other three reasons
  * (a stale token, bad data, or an unexplained failure) are durable and need
  * the seller's attention, so they read as risk.
+ *
+ * PROVIDER AWARENESS (Sprint 11, Ticket 56): `providerLabel` de-hardcodes
+ * the "HubSpot" wording baked into the rate_limited/token_expired labels so
+ * this also serves the Salesforce import page. Defaults to "HubSpot" —
+ * backward-safe for any caller that predates this ticket.
  */
-export function describeFailureReason(reason: CrmImportFailureReason): FailureReasonMeta {
+export function describeFailureReason(
+  reason: CrmImportFailureReason,
+  providerLabel: "HubSpot" | "Salesforce" = "HubSpot",
+): FailureReasonMeta {
   switch (reason) {
     case "rate_limited":
-      return { tone: "wait", label: "Rate limited by HubSpot" };
+      return { tone: "wait", label: `Rate limited by ${providerLabel}` };
     case "token_expired":
-      return { tone: "risk", label: "HubSpot connection expired" };
+      return { tone: "risk", label: `${providerLabel} connection expired` };
     case "invalid_data":
       return { tone: "risk", label: "Invalid data" };
     case "unknown":
@@ -61,15 +69,16 @@ function groupFailuresByReason(failures: readonly CrmImportFailure[]): readonly 
 
 export interface CrmFailureDetailListProps {
   readonly failures: readonly CrmImportFailure[];
+  readonly providerLabel?: "HubSpot" | "Salesforce";
 }
 
-export function CrmFailureDetailList({ failures }: CrmFailureDetailListProps) {
+export function CrmFailureDetailList({ failures, providerLabel = "HubSpot" }: CrmFailureDetailListProps) {
   if (failures.length === 0) return null;
 
   return (
     <div className="cir-failures" data-testid="crm-failure-detail-list">
       {groupFailuresByReason(failures).map((group) => {
-        const meta = describeFailureReason(group.reason);
+        const meta = describeFailureReason(group.reason, providerLabel);
         return (
           <div key={group.reason} className="cir-failure-group">
             <p className="cir-status" data-tone={meta.tone}>

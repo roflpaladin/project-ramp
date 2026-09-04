@@ -69,6 +69,25 @@ describe("getSalesforceClientForTenant", () => {
     expect(refreshAccessToken).not.toHaveBeenCalled();
   });
 
+  it.each(["@evil.example/x", "https://evil.example/x", "//evil.example/x", "no-leading-slash"])(
+    "rejects a non-host-relative fetch path %s without issuing a request (SSRF guard, T56 security review)",
+    async (hostilePath) => {
+      getTenantConnection.mockResolvedValue(connection());
+      refreshAccessToken.mockResolvedValue(tokenSet());
+      const fetchImpl = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
+
+      const client = await getSalesforceClientForTenant(TENANT_ID, fetchImpl);
+      expect(client).not.toBeNull();
+      await expect(client!.fetch(hostilePath)).rejects.toThrow();
+
+      // The refresh call is legitimate; the hostile path must never reach the transport.
+      const requestedUrls = fetchImpl.mock.calls.map((call) => String(call[0]));
+      expect(requestedUrls.every((url) => url.startsWith(INSTANCE_URL) || url.includes("login.salesforce.com"))).toBe(
+        true,
+      );
+    },
+  );
+
   it("refreshes on a cache miss, then issues the Bearer-authed request against the stored instance_url", async () => {
     getTenantConnection.mockResolvedValue(connection());
     refreshAccessToken.mockResolvedValue(tokenSet());
