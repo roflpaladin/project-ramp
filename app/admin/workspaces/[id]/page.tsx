@@ -6,6 +6,8 @@ import { getPlanForSeller } from "@/lib/plans/queries";
 import type { PlanStepRow } from "@/lib/plans/types";
 import { computeEngagementSignal, type EngagementEventInput } from "@/lib/plans/engagement";
 import { getStallThresholdDays } from "@/lib/plans/stall-threshold";
+import { computeActivationState } from "@/lib/plans/activation";
+import { hasSentInviteForWorkspace } from "@/lib/plans/invite-status";
 import { getCrmForecastForWorkspace } from "@/lib/crm/forecast";
 import { requireSeller } from "@/lib/plans/require-seller";
 import { addLink } from "./links-actions";
@@ -16,6 +18,7 @@ import { ChatPresence } from "./chat-presence";
 import { ChatUrlForm } from "./chat-url-form";
 import { StallAlert } from "./stall-alert";
 import { InvitePanel } from "./invite-panel";
+import { ActivationChecklist } from "./activation-checklist";
 import "./workspace-links.css";
 
 /** Flattens the plan tree's stages into a single ordered step list — the
@@ -35,9 +38,21 @@ export default async function WorkspaceDetailPage({
   const { id } = await params;
   const supabase = await createClient();
 
+  // Sprint 11, Ticket 58 — activation_checklist_dismissed_at (migration 0012)
+  // is named explicitly rather than relying on `select('*')`, matching this
+  // query's existing style. DEPENDS ON that migration having been applied to
+  // whichever Supabase project this page's env points at — if it hasn't yet,
+  // this select errors and the page 404s (the `if (!workspace) notFound()`
+  // guard below can't tell "no such workspace" apart from "unknown column").
+  // Written this way anyway rather than defensively catching that case: a
+  // loud, page-wide 404 surfaces a missing migration immediately, instead of
+  // a checklist that silently never shows and looks like a feature that was
+  // never built.
   const { data: workspace } = await supabase
     .from("workspaces")
-    .select("id, target_company_name, target_domain, chat_url, internal_chat_url")
+    .select(
+      "id, target_company_name, target_domain, chat_url, internal_chat_url, activation_checklist_dismissed_at",
+    )
     .eq("id", id)
     .single();
 
@@ -60,7 +75,7 @@ export default async function WorkspaceDetailPage({
   //   1. the cached crm_* fields (lib/crm/forecast.ts, T31-2 — not modified here)
   //   2. the plan tree, for step owner_side/status (lib/plans/queries.ts, Ticket 28)
   //   3. workspace_analytics events, for real buyer engagement (T31-1's input)
-  const [crmForecast, plan, { data: analyticsRows }, seller] = await Promise.all([
+  const [crmForecast, plan, { data: analyticsRows }, seller, hasSentInvite] = await Promise.all([
     getCrmForecastForWorkspace(id, supabase),
     getPlanForSeller(id, supabase),
     supabase
@@ -73,6 +88,13 @@ export default async function WorkspaceDetailPage({
     // rather than reusing the `supabase` client already in scope (T28-9's
     // contract: no caller passes in an unverified client).
     requireSeller(),
+    // T58: no client argument on purpose — hasSentInviteForWorkspace reads
+    // portal_access_tokens with its own service-role client (that table
+    // ships zero RLS policies, so the seller-scoped `supabase` client above
+    // would always see zero rows). Safe here specifically because `id` was
+    // already resolved through the RLS-scoped `workspace` read above — this
+    // function's own contract requires that ordering.
+    hasSentInviteForWorkspace(id),
   ]);
 
   const engagementEvents: EngagementEventInput[] = (analyticsRows ?? []).map((row) => ({
@@ -87,6 +109,11 @@ export default async function WorkspaceDetailPage({
     // T36-4: configurable, not hardcoded here — see lib/plans/stall-threshold.ts.
     getStallThresholdDays(),
   );
+
+  // T58: the pure decision (lib/plans/activation.ts) fed by this page's own
+  // reads — plan and hasSentInvite are already resolved above, nothing new
+  // to fetch here.
+  const activation = computeActivationState({ plan, hasSentInvite });
 
   return (
     <main data-surface="workspace-links">
@@ -117,6 +144,20 @@ export default async function WorkspaceDetailPage({
           </details>
         </div>
       </div>
+
+      {/* T58: the onboarding activation checklist — owns its own auto-hide
+          rule (dismissed OR complete), so it's always mounted here rather
+          than gated by a page-level ternary; see activation-checklist.tsx's
+          own header comment. Renders above the stall alert so a brand-new,
+          not-yet-activated workspace leads with "what to do next" rather
+          than an engagement read that has nothing to say yet. */}
+      <ActivationChecklist
+        workspaceId={id}
+        plan={plan ? { id: plan.id, status: plan.status } : null}
+        activation={activation}
+        isDismissed={workspace.activation_checklist_dismissed_at !== null}
+        planHref={`/admin/workspaces/${id}/plan`}
+      />
 
       {/* T36-5: always-visible stall alert — independent of whether the CRM
           strip below is even mounted (it hides entirely without CRM sync,

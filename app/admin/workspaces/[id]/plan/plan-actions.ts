@@ -129,6 +129,31 @@ export async function deletePlanAction(
   return result;
 }
 
+/**
+ * Sprint 11, Ticket 58 — "In-App Onboarding Checklist"'s "plan live" step
+ * needs a way to flip a plan's status to 'active' without a full patch form.
+ * A minimal, explicit wrapper around the same validate -> write -> revalidate
+ * path updatePlanAction already takes for a `status` patch — status: 'active'
+ * is already a legal PlanPatch value there (validatePlanPatch checks it
+ * against PLAN_STATUSES), so this adds no new write behaviour, only a
+ * narrower, button-bindable entry point (`markPlanLiveAction.bind(null,
+ * workspaceId, planId)`) that never needs a FormData at all.
+ */
+export async function markPlanLiveAction(
+  workspaceId: string,
+  planId: string,
+): Promise<PlanActionResult<SuccessPlanRow>> {
+  const session = await requireSeller();
+  if (!session) return { ok: false, code: "UNAUTHENTICATED" };
+
+  const validated = validatePlanPatch({ status: "active" });
+  if (!validated.ok) return validated;
+
+  const result = await updatePlan(planId, validated.data, session.client);
+  if (result.ok) revalidatePath(planPath(workspaceId));
+  return result;
+}
+
 // --- stages ------------------------------------------------------------
 
 export async function createStageAction(

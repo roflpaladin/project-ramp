@@ -1,0 +1,197 @@
+/* Scoped styles for the seller-dashboard activation checklist (Sprint 11,
+   Ticket 58 — "In-App Onboarding Checklist"). Same layering choice as every
+   sibling surface on this page (invite-panel.css, stall-alert.css,
+   workspace-links.css): theme layered, utilities unlayered. Brand colour
+   comes entirely from the Ramp tokens in app/globals.css — nothing here
+   hardcodes a hex. Scoped to [data-surface="activation-checklist"] so
+   nothing else on /admin is affected.
+
+   No --signal anywhere in this file, by design: every CTA here (the two
+   nav links and the "Make it live" button) is plain/secondary — the page
+   this mounts on already spends its one-Signal-per-scope budget elsewhere
+   (stall-alert.css's .wsa-cta, invite-panel.css's .ip-btn-primary). */
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css";
+
+@media (prefers-reduced-motion: reduce) {
+  [data-surface="activation-checklist"] * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+[data-surface="activation-checklist"] {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin: 0 0 24px;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--paper);
+}
+
+[data-surface="activation-checklist"] .ac-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+[data-surface="activation-checklist"] .ac-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* ---- the quiet dismiss control — never Signal, never destructive-coloured ---- */
+
+[data-surface="activation-checklist"] .ac-dismiss {
+  flex: 0 0 auto;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 4px 10px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--slate);
+  cursor: pointer;
+  transition: background-color 0.12s cubic-bezier(0.2, 0, 0, 1);
+}
+[data-surface="activation-checklist"] .ac-dismiss:hover:not(:disabled) {
+  background: var(--mist);
+  color: var(--ink);
+}
+[data-surface="activation-checklist"] .ac-dismiss:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+[data-surface="activation-checklist"] .ac-dismiss:disabled {
+  cursor: not-allowed;
+}
+
+/* ---- rows: dot + text status, never colour-only ------------------------ */
+
+[data-surface="activation-checklist"] .ac-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+[data-surface="activation-checklist"] .ac-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--mist);
+}
+
+[data-surface="activation-checklist"] .ac-row-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+[data-surface="activation-checklist"] .ac-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+  background: var(--state-wait);
+}
+[data-surface="activation-checklist"] .ac-row[data-tone="done"] .ac-dot {
+  background: var(--state-done);
+}
+
+[data-surface="activation-checklist"] .ac-row-text {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink);
+}
+/* De-emphasized once done — the copy itself already says "done" (see
+   CHECKLIST_ROWS' doneLabel in activation-checklist.tsx), so this is a
+   secondary reinforcement of the same state, never the only signal. */
+[data-surface="activation-checklist"] .ac-row[data-tone="done"] .ac-row-text {
+  color: var(--slate);
+}
+
+/* ---- CTAs: plain link / secondary button, never Signal ------------------ */
+
+[data-surface="activation-checklist"] .ac-link {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  white-space: nowrap;
+}
+[data-surface="activation-checklist"] .ac-link:hover {
+  color: var(--slate);
+}
+[data-surface="activation-checklist"] .ac-link:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+
+[data-surface="activation-checklist"] .ac-live-cta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+[data-surface="activation-checklist"] .ac-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.12s cubic-bezier(0.2, 0, 0, 1);
+}
+[data-surface="activation-checklist"] .ac-btn:hover:not(:disabled) {
+  background: var(--mist);
+}
+[data-surface="activation-checklist"] .ac-btn:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+[data-surface="activation-checklist"] .ac-btn:disabled {
+  cursor: not-allowed;
+  color: var(--slate);
+  background: var(--mist);
+}
+
+/* ---- inline error: recoverable, never a thrown/blocking failure --------- */
+
+[data-surface="activation-checklist"] .ac-inline-error {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--state-risk);
+}
+
+@media (max-width: 480px) {
+  [data-surface="activation-checklist"] {
+    padding: 16px;
+  }
+  [data-surface="activation-checklist"] .ac-row {
+    align-items: flex-start;
+  }
+}
