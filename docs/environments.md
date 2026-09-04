@@ -38,10 +38,13 @@ openssl rand -hex 32   # run once each for dev, once each for prod
   `X-Ramp-Webhook-Secret` header. `lib/crm/ingest.ts` fails **closed**: if it's
   unset, every CRM webhook is rejected 401. The same value must be configured on
   whatever sends the webhook (HubSpot/Salesforce relay).
-- `APP_ENCRYPTION_KEY` (Sprint 10, Ticket 52) — AES-256-GCM key that
-  encrypts the stored HubSpot refresh token at rest (`crm_connections`,
-  `lib/encrypt-secret.ts`) and signs the OAuth `state` param
-  (`lib/hubspot/oauth-state.ts`). **Not** `openssl rand -hex 32`'s general
+- `APP_ENCRYPTION_KEY` (Sprint 10, Ticket 52; extended to Salesforce in
+  Sprint 11, Ticket 55) — AES-256-GCM key that encrypts every stored CRM
+  refresh token at rest (`crm_connections`, `lib/encrypt-secret.ts` via
+  `lib/crm-connections/token-store.ts`) and signs each provider's own OAuth
+  `state` param (`lib/hubspot/oauth-state.ts`, `lib/salesforce/oauth-state.ts`
+  — independently keyed HKDF subkeys per provider and per purpose, see
+  `lib/app-encryption-key.ts`). **Not** `openssl rand -hex 32`'s general
   shape by convention only — it's a hard requirement here:
   `lib/encrypt-secret.ts` refuses to run against anything other than exactly
   64 hex characters (32 bytes), the AES-256 key length.
@@ -49,9 +52,10 @@ openssl rand -hex 32   # run once each for dev, once each for prod
   **Known limitation — no rotation path.** Rotating this value makes every
   existing `crm_connections.encrypted_refresh_token` undecryptable
   immediately; there is no dual-key/re-encrypt migration. Every tenant with
-  a live HubSpot connection has to reconnect (Settings → Integrations →
-  Disconnect, then Connect again) after a rotation. Acceptable for now — a
-  rotation-safe scheme is a flagged follow-up, not built in T52.
+  a live HubSpot or Salesforce connection has to reconnect (Settings →
+  Integrations → Disconnect, then Connect again) after a rotation.
+  Acceptable for now — a rotation-safe scheme is a flagged follow-up, not
+  built in T52 or T55.
 
 HubSpot OAuth also needs `HUBSPOT_CLIENT_ID` / `HUBSPOT_CLIENT_SECRET` (from
 the HubSpot app's own Auth settings, not generated) and, per environment,
@@ -61,6 +65,27 @@ origin and prod's `https://getbrava.tech` are two separate registrations on
 the same HubSpot app (or two apps, if HubSpot's console requires it); a
 mismatched redirect_uri makes HubSpot reject the callback outright, before
 `lib/hubspot/token-exchange.ts` is ever reached.
+
+Salesforce OAuth (Sprint 11, Ticket 55) needs `SALESFORCE_CLIENT_ID` /
+`SALESFORCE_CLIENT_SECRET` (from the Salesforce External Client App's
+connected-app settings, not generated) and, per environment, that app's
+callback URL registered to exactly
+`${NEXT_PUBLIC_APP_URL}/api/integrations/salesforce/oauth/callback` — same
+byte-for-byte-match-or-reject rule as HubSpot's redirect_uri above. Prod's
+registration (`https://getbrava.tech/api/integrations/salesforce/oauth/callback`)
+was confirmed 2026-09-04; **the dev origin's own callback still needs
+registering on the same External Client App** — flagged as a human
+follow-up, not yet done as of T55.
+
+The live External Client App (founder-configured, 2026-09-04) forces **PKCE**
+on — `lib/salesforce/pkce.ts` implements this unconditionally, no env var
+controls it — and grants only the `api` + `refresh_token` scopes
+(`lib/salesforce/env.ts`'s `SALESFORCE_SCOPES`; refresh-token policy on that
+app is "expire if unused for a long window", IP relaxation "relaxed"). The
+dev org is a Developer Edition, authenticating against the standard
+`https://login.salesforce.com` — optionally overridable per environment via
+`SALESFORCE_LOGIN_BASE_URL` (e.g. `https://test.salesforce.com` for a
+sandbox org).
 
 Transactional email (`lib/email/send-access-code.ts`) sends through
 **Resend** (T57, Sprint 11, Ticket 57 — replaces the Google Workspace SMTP
@@ -142,6 +167,8 @@ data), which defeats the whole split.
 | `CRM_WEBHOOK_SECRET` | prod secret | dev secret |
 | `APP_ENCRYPTION_KEY` | prod key | dev key |
 | `HUBSPOT_CLIENT_ID` / `HUBSPOT_CLIENT_SECRET` | prod HubSpot app creds | dev HubSpot app creds |
+| `SALESFORCE_CLIENT_ID` / `SALESFORCE_CLIENT_SECRET` | prod Salesforce ECA creds | dev Salesforce ECA creds |
+| `SALESFORCE_LOGIN_BASE_URL` | unset (defaults to login.salesforce.com) | unset, unless dev points at a sandbox |
 | `RESEND_API_KEY` | prod Resend API key | dev/test Resend API key (or unset) |
 | `RESEND_FROM` | prod verified sender | dev/test verified sender (or unset) |
 | ~~`SMTP_*`~~ | retired (T57) — no longer read | retired (T57) — no longer read |

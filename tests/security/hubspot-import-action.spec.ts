@@ -15,7 +15,7 @@
 //   behaviour, not HubSpot's own HTTP surface (that is
 //   tests/hubspot/hubspot-adapter.spec.ts's job) — a fake adapter returning
 //   fixed CrmDealDetail/CrmDealSummary values stands in for it here.
-// - @/lib/hubspot/token-store's isTenantConnected is mocked directly rather
+// - @/lib/crm-connections/token-store's isTenantConnected is mocked directly rather
 //   than provisioning a real crm_connections row — connection state is a
 //   simple boolean gate this suite needs to flip per test, not something
 //   worth a real OAuth fixture for.
@@ -61,7 +61,7 @@ const { listDealsMock, getDealDetailMock } = vi.hoisted(() => ({
 vi.mock("@/lib/plans/require-seller", () => ({
   requireSeller: vi.fn(async () => currentSellerSession.value),
 }));
-vi.mock("@/lib/hubspot/token-store", () => ({ isTenantConnected: isTenantConnectedMock }));
+vi.mock("@/lib/crm-connections/token-store", () => ({ isTenantConnected: isTenantConnectedMock }));
 vi.mock("@/lib/crm-import/hubspot-adapter", () => ({
   createHubSpotAdapter: () => ({
     provider: "hubspot" as const,

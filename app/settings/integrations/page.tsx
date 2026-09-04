@@ -6,11 +6,13 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { DEFAULT_TRIGGER_STAGE } from "@/lib/crm/trigger-stage";
 import { MOCK_PIPELINE_STAGES } from "@/lib/crm/stages";
-import { isTenantConnected } from "@/lib/hubspot/token-store";
+import { isTenantConnected } from "@/lib/crm-connections/token-store";
 import { requireSeller } from "@/lib/plans/require-seller";
 import { saveTriggerStage } from "./actions";
 import { HubSpotConnectionCard } from "./hubspot-card";
 import { mapHubSpotErrorMessage } from "./hubspot-messages";
+import { SalesforceConnectionCard } from "./salesforce-card";
+import { mapSalesforceErrorMessage } from "./salesforce-messages";
 
 // CRM Custom Stage Mapping (Sprint 3, Ticket 16). Static component shell —
 // the pipeline dropdown is seeded from the mock stage array, not a live CRM
@@ -19,7 +21,8 @@ import { mapHubSpotErrorMessage } from "./hubspot-messages";
 //
 // Sprint 10, Ticket 52 added the HubSpot connection card below — that is a
 // real OAuth handshake (see app/api/integrations/hubspot/oauth/*), the CRM
-// stage mapping above still isn't.
+// stage mapping above still isn't. Sprint 11, Ticket 55 added the Salesforce
+// connection card the same way (see app/api/integrations/salesforce/oauth/*).
 export default async function IntegrationsSettingsPage({
   searchParams,
 }: {
@@ -35,8 +38,8 @@ export default async function IntegrationsSettingsPage({
 
   // requireSeller() (T28-9) replaces this page's own inline
   // auth.getUser()-and-redirect (Sprint 3 shape) — same underlying check,
-  // but also hands back tenantId, which the HubSpot card needs for
-  // isTenantConnected below.
+  // but also hands back tenantId, which the HubSpot/Salesforce cards need
+  // for isTenantConnected below.
   const seller = await requireSeller();
   if (!seller) {
     redirect("/admin/login"); // middleware already enforces this; defense in depth
@@ -46,11 +49,12 @@ export default async function IntegrationsSettingsPage({
   // Any of the tenant's workspaces is representative — Save keeps them
   // tenant-consistent (see actions.ts). No workspaces yet → DB default.
   // A tenant-less account (provisioning never completed) can't have a
-  // HubSpot connection either, so isTenantConnected is skipped rather than
-  // called with a null id.
-  const [{ data: workspace }, isHubSpotConnected] = await Promise.all([
+  // HubSpot or Salesforce connection either, so isTenantConnected is skipped
+  // rather than called with a null id.
+  const [{ data: workspace }, isHubSpotConnected, isSalesforceConnected] = await Promise.all([
     supabase.from("workspaces").select("trigger_stage").limit(1).maybeSingle(),
     seller.tenantId ? isTenantConnected(seller.tenantId) : Promise.resolve(false),
+    seller.tenantId ? isTenantConnected(seller.tenantId, "salesforce") : Promise.resolve(false),
   ]);
   const currentStage = workspace?.trigger_stage ?? DEFAULT_TRIGGER_STAGE;
   const selectedStage =
@@ -64,8 +68,13 @@ export default async function IntegrationsSettingsPage({
   // hubspot-messages.ts's header for the full reasoning). hubspotErrorMessage
   // is non-null only when `error` is a recognized HubSpot code, so the CRM
   // card's own error paragraph is suppressed in that case rather than
-  // showing the raw code a second time.
+  // showing the raw code a second time. salesforceErrorMessage is the same
+  // idea for the Salesforce routes' own `sf_`-prefixed closed set (see
+  // app/api/integrations/salesforce/oauth/callback/route.ts's header) — the
+  // two sets are disjoint by construction, so at most one of these two is
+  // ever non-null for a given `?error=` value.
   const hubspotErrorMessage = mapHubSpotErrorMessage(error);
+  const salesforceErrorMessage = mapSalesforceErrorMessage(error);
 
   return (
     <main className="mx-auto flex w-full max-w-xl flex-col gap-6 px-4 py-10 sm:px-6">
@@ -87,6 +96,15 @@ export default async function IntegrationsSettingsPage({
         justDisconnected={disconnected === "1"}
         revokeFailedWarning={warning === "revoke_failed"}
         errorMessage={hubspotErrorMessage}
+      />
+
+      <SalesforceConnectionCard
+        isConnected={isSalesforceConnected}
+        justConnected={connected === "salesforce"}
+        justDisconnected={disconnected === "salesforce"}
+        revokeFailedWarning={warning === "sf_revoke_failed"}
+        reauthRequiredWarning={error === "sf_reauth_required"}
+        errorMessage={salesforceErrorMessage}
       />
 
       <Card>
@@ -118,7 +136,7 @@ export default async function IntegrationsSettingsPage({
                 Trigger stage saved.
               </p>
             ) : null}
-            {error && !hubspotErrorMessage ? (
+            {error && !hubspotErrorMessage && !salesforceErrorMessage ? (
               <p className="m-0 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">
                 {error}
               </p>

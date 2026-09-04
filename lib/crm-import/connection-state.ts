@@ -1,4 +1,4 @@
-// Sprint 10, Ticket 53 — thin wrapper over lib/hubspot/token-store.ts's
+// Sprint 10, Ticket 53 — thin wrapper over lib/crm-connections/token-store.ts's
 // isTenantConnected(), turning its boolean into this ticket's binding
 // CrmConnectionState shape. No new logic: hubspot-import-actions.ts's
 // listHubSpotDeals() and importHubSpotDeals() both need "is this tenant
@@ -8,7 +8,7 @@
 
 import "server-only";
 
-import { isTenantConnected } from "@/lib/hubspot/token-store";
+import { isTenantConnected } from "@/lib/crm-connections/token-store";
 import type { CrmConnectionState } from "./types";
 
 export async function getHubSpotConnectionState(tenantId: string): Promise<CrmConnectionState> {

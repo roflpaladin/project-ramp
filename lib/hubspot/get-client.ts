@@ -2,9 +2,9 @@ import {
   clearCachedAccessToken,
   getCachedAccessToken,
   setCachedAccessToken,
-} from "@/lib/hubspot/access-token-cache";
+} from "@/lib/crm-connections/access-token-cache";
 import { refreshAccessToken } from "@/lib/hubspot/token-exchange";
-import { getTenantRefreshToken, saveTenantTokens } from "@/lib/hubspot/token-store";
+import { getTenantRefreshToken, saveTenantTokens } from "@/lib/crm-connections/token-store";
 
 // Sprint 10, Ticket 52 — the one place a caller (a future CRM read path)
 // gets an authenticated HubSpot client for a tenant. Owns the full
@@ -35,7 +35,7 @@ export interface HubSpotClient {
 // refresh token on every refresh call: two concurrent callers that both
 // miss the cache and each called refreshAccessToken independently would
 // both hand HubSpot the SAME stored refresh token, each get back a
-// DIFFERENT rotated token, and lib/hubspot/token-store.ts's upsert is
+// DIFFERENT rotated token, and lib/crm-connections/token-store.ts's upsert is
 // last-write-wins — silently discarding whichever caller's rotated token
 // lost the race, even though HubSpot has already invalidated the shared old
 // one. The next refresh attempt (this instance or another) then has no
@@ -75,7 +75,7 @@ async function refreshAndCache(
 
 /**
  * Cache-miss path: refreshes (or discovers "never connected", or propagates
- * a genuine token-store/HubSpot failure — see lib/hubspot/token-store.ts's
+ * a genuine token-store/HubSpot failure — see lib/crm-connections/token-store.ts's
  * T52 error-vs-absent-row fix) for (tenantId, provider), single-flighted
  * per this module's header. The in-flight entry is always cleared on
  * settle, success OR failure (`.finally`) — a failed refresh must not
@@ -122,7 +122,7 @@ function buildRequest(path: string, accessToken: string, init?: RequestInit): [s
  * disconnected — deleteTenantTokens removes the row entirely, so this and
  * getTenantRefreshToken agree on "no row = not connected"). A genuine
  * token-store query failure (DB outage, etc.) throws instead of returning
- * `null` here — see lib/hubspot/token-store.ts's T52 fix; this function
+ * `null` here — see lib/crm-connections/token-store.ts's T52 fix; this function
  * deliberately does not catch it, so a caller can't mistake "we couldn't
  * find out" for "definitely never connected".
  *

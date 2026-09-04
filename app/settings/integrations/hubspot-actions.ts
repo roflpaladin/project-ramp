@@ -3,9 +3,9 @@
 import { redirect } from "next/navigation";
 
 import { revokeRefreshToken } from "@/lib/hubspot/token-exchange";
-import { deleteTenantTokens, getTenantRefreshToken } from "@/lib/hubspot/token-store";
+import { deleteTenantTokens, getTenantRefreshToken } from "@/lib/crm-connections/token-store";
 import { requireSeller } from "@/lib/plans/require-seller";
-import { checkRateLimit, HUBSPOT_OAUTH_RATE_LIMIT } from "@/lib/rate-limit";
+import { checkRateLimit, CRM_OAUTH_RATE_LIMIT } from "@/lib/rate-limit";
 
 // Sprint 10, Ticket 52 — disconnects the tenant's HubSpot connection.
 // Named hubspot-actions.ts, not appended to the existing actions.ts (T45's
@@ -41,8 +41,8 @@ export async function disconnectHubSpot(_formData: FormData): Promise<void> {
   // local delete).
   const limit = checkRateLimit(
     `hubspot-disconnect:${seller.userId}`,
-    HUBSPOT_OAUTH_RATE_LIMIT.limit,
-    HUBSPOT_OAUTH_RATE_LIMIT.windowMs,
+    CRM_OAUTH_RATE_LIMIT.limit,
+    CRM_OAUTH_RATE_LIMIT.windowMs,
   );
   if (!limit.allowed) {
     redirect(`/settings/integrations?error=${encodeURIComponent("rate_limited")}`);
@@ -50,7 +50,7 @@ export async function disconnectHubSpot(_formData: FormData): Promise<void> {
 
   // T52 code review (MEDIUM) — getTenantRefreshToken now throws on a real
   // query error rather than folding it into "no stored token"
-  // (lib/hubspot/token-store.ts). Left uncaught, that would previously have
+  // (lib/crm-connections/token-store.ts). Left uncaught, that would previously have
   // meant a transient DB read failure silently skipped the HubSpot-side
   // revoke below (read the comment on the ordering above: revoke-then-
   // delete is deliberate specifically so a failure never leaves a live
