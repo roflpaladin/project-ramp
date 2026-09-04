@@ -1,7 +1,7 @@
 // Sprint 10, Ticket 52 code-review fix (MEDIUM) — server-side rate limiting
 // on disconnectHubSpot. DB-FREE, matching
 // tests/security/onboarding-rate-limit.spec.ts's convention: requireSeller,
-// lib/hubspot/token-store, and lib/hubspot/token-exchange are all mocked, so
+// lib/crm-connections/token-store, and lib/hubspot/token-exchange are all mocked, so
 // only the checkRateLimit branch inside the action is under test. The
 // limiter itself (lib/rate-limit.ts) is NOT mocked. Budgets are keyed per
 // seller userId, so each test uses its own unique userId to keep windows
@@ -12,7 +12,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { SellerSession } from "@/lib/plans/require-seller";
-import { HUBSPOT_OAUTH_RATE_LIMIT } from "@/lib/rate-limit";
+import { CRM_OAUTH_RATE_LIMIT } from "@/lib/rate-limit";
 
 const { redirectSentinel, redirectCalls, currentSession, getTenantRefreshToken, deleteTenantTokens, revokeRefreshToken } =
   vi.hoisted(() => ({
@@ -35,7 +35,7 @@ vi.mock("@/lib/plans/require-seller", () => ({
   requireSeller: vi.fn(async () => currentSession.value),
 }));
 
-vi.mock("@/lib/hubspot/token-store", () => ({
+vi.mock("@/lib/crm-connections/token-store", () => ({
   getTenantRefreshToken: (...args: unknown[]) => getTenantRefreshToken(...args),
   deleteTenantTokens: (...args: unknown[]) => deleteTenantTokens(...args),
 }));
@@ -62,10 +62,10 @@ describe("disconnectHubSpot — per-seller rate limiting (T52 code review)", () 
     deleteTenantTokens.mockResolvedValue(undefined);
     redirectCalls.length = 0;
 
-    for (let call = 0; call < HUBSPOT_OAUTH_RATE_LIMIT.limit; call += 1) {
+    for (let call = 0; call < CRM_OAUTH_RATE_LIMIT.limit; call += 1) {
       await expect(disconnectHubSpot(new FormData())).rejects.toBe(redirectSentinel);
     }
-    expect(deleteTenantTokens).toHaveBeenCalledTimes(HUBSPOT_OAUTH_RATE_LIMIT.limit);
+    expect(deleteTenantTokens).toHaveBeenCalledTimes(CRM_OAUTH_RATE_LIMIT.limit);
 
     const callsBeforeOverBudget = deleteTenantTokens.mock.calls.length;
     await expect(disconnectHubSpot(new FormData())).rejects.toBe(redirectSentinel);
@@ -81,7 +81,7 @@ describe("disconnectHubSpot — per-seller rate limiting (T52 code review)", () 
     deleteTenantTokens.mockResolvedValue(undefined);
 
     currentSession.value = makeSession("rate-limit-disconnect-capped");
-    for (let call = 0; call < HUBSPOT_OAUTH_RATE_LIMIT.limit; call += 1) {
+    for (let call = 0; call < CRM_OAUTH_RATE_LIMIT.limit; call += 1) {
       await expect(disconnectHubSpot(new FormData())).rejects.toBe(redirectSentinel);
     }
     await expect(disconnectHubSpot(new FormData())).rejects.toBe(redirectSentinel);

@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { HUBSPOT_SCOPE_STRING, getHubSpotClientId, getHubSpotRedirectUri } from "@/lib/hubspot/env";
 import { signOAuthState } from "@/lib/hubspot/oauth-state";
 import { requireSeller } from "@/lib/plans/require-seller";
-import { checkRateLimit, HUBSPOT_OAUTH_RATE_LIMIT } from "@/lib/rate-limit";
+import { checkRateLimit, CRM_OAUTH_RATE_LIMIT } from "@/lib/rate-limit";
 
 // Sprint 10, Ticket 52 — begins the HubSpot OAuth flow. Redirects an
 // authenticated seller's browser straight to HubSpot's own authorize screen
@@ -34,8 +34,8 @@ export async function GET(request: Request): Promise<NextResponse> {
   // URL and handing the browser off to HubSpot).
   const limit = checkRateLimit(
     `hubspot-oauth-start:${seller.userId}`,
-    HUBSPOT_OAUTH_RATE_LIMIT.limit,
-    HUBSPOT_OAUTH_RATE_LIMIT.windowMs,
+    CRM_OAUTH_RATE_LIMIT.limit,
+    CRM_OAUTH_RATE_LIMIT.windowMs,
   );
   if (!limit.allowed) {
     return NextResponse.redirect(

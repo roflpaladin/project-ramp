@@ -13,11 +13,11 @@ const { refreshAccessToken } = vi.hoisted(() => ({
   refreshAccessToken: vi.fn(),
 }));
 
-vi.mock("@/lib/hubspot/token-store", () => ({ getTenantRefreshToken, saveTenantTokens }));
+vi.mock("@/lib/crm-connections/token-store", () => ({ getTenantRefreshToken, saveTenantTokens }));
 vi.mock("@/lib/hubspot/token-exchange", () => ({ refreshAccessToken }));
 
 const { getHubSpotClientForTenant } = await import("@/lib/hubspot/get-client");
-const { resetAccessTokenCacheForTests } = await import("@/lib/hubspot/access-token-cache");
+const { resetAccessTokenCacheForTests } = await import("@/lib/crm-connections/access-token-cache");
 
 const TENANT_ID = "tenant-1";
 

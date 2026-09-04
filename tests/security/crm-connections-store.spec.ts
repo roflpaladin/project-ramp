@@ -1,5 +1,7 @@
 // Sprint 10, Ticket 52 — live-DB coverage for crm_connections (0010) and
-// lib/hubspot/token-store.ts's CRUD over it. Mirrors
+// lib/crm-connections/token-store.ts's CRUD over it (moved from
+// lib/hubspot/token-store.ts, Sprint 11 Ticket 55 — pure move, generalized
+// for Salesforce reuse). Mirrors
 // tests/security/tenant-isolation-matrix.spec.ts's "admin sees the row ->
 // owning tenant's scoped client sees ZERO rows (no seller policy exists by
 // design) -> foreign tenant's scoped client also sees ZERO rows" structure
@@ -7,7 +9,7 @@
 // shape — the boundary crm_connections is meant to prove is exactly that no
 // authenticated seller session, not even the owning tenant's own, can read
 // this table directly; only the service-role client (i.e.
-// lib/hubspot/token-store.ts) can.
+// lib/crm-connections/token-store.ts) can.
 //
 // 2026-08-24: 0010_crm_connections.sql has already been applied to the dev
 // Supabase project this suite's env points at — no self-provisioning DDL
@@ -18,7 +20,9 @@
 // WRITTEN BUT NOT RUN in this session (same reason as csv-import-action.spec.ts's
 // header): the shared dev Supabase project is under CI right now. Run with
 // `npx vitest run tests/security/crm-connections-store.spec.ts` in a
-// coordinated slot.
+// coordinated slot. The new instance_url-specific `describe` block below is
+// ADDITIONALLY blocked on 0013_crm_connections_instance_url.sql (Sprint 11,
+// Ticket 55) being applied — see that block's own header.
 //
 // Own dedicated fixture tenant (provisioned inline below), not a shared
 // one — afterAll deletes only rows tagged with this run's own tenantId(s).
@@ -31,10 +35,11 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { provisionSeller } from "@/lib/auth/provision-seller";
 import {
   deleteTenantTokens,
+  getTenantConnection,
   getTenantRefreshToken,
   isTenantConnected,
   saveTenantTokens,
-} from "@/lib/hubspot/token-store";
+} from "@/lib/crm-connections/token-store";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireTestEnv } from "../fixtures/env";
 
@@ -106,7 +111,7 @@ afterAll(async () => {
   await sellerA?.scoped.auth.signOut().catch(() => undefined);
 }, 60_000);
 
-describe("lib/hubspot/token-store.ts — round trip against the real crm_connections table", () => {
+describe("lib/crm-connections/token-store.ts — round trip against the real crm_connections table", () => {
   it("isTenantConnected is false before any row exists", async () => {
     expect(await isTenantConnected(sellerA.tenantId)).toBe(false);
   });
@@ -196,5 +201,61 @@ describe("crm_connections — RLS enabled, zero policies (0010, service-role onl
     const { data, error } = await anonClient.from("crm_connections").select("id").eq("tenant_id", sellerA.tenantId);
     expect(error).toBeNull();
     expect(data).toHaveLength(0);
+  });
+});
+
+// Sprint 11, Ticket 55 — live-DB coverage for crm_connections.instance_url
+// (0013_crm_connections_instance_url.sql), the Salesforce-only column
+// lib/salesforce/get-client.ts uses as every request's base URL. Applied to
+// dev on 2026-09-04 (founder, via SQL Editor) — no longer blocked.
+describe("crm_connections.instance_url (0013) — Salesforce-only column, round trip via getTenantConnection", () => {
+  it("getTenantConnection returns null instanceUrl for a HubSpot row (column never set for that provider)", async () => {
+    await saveTenantTokens({
+      tenantId: sellerA.tenantId,
+      provider: "hubspot",
+      refreshToken: "hubspot-instance-url-check",
+      scope: "crm.objects.deals.read",
+      connectedBy: sellerA.userId,
+    });
+
+    const connection = await getTenantConnection(sellerA.tenantId, "hubspot");
+    expect(connection).toEqual({ refreshToken: "hubspot-instance-url-check", instanceUrl: null });
+  });
+
+  it("saveTenantTokens + getTenantConnection round-trip instance_url for a Salesforce row", async () => {
+    await saveTenantTokens({
+      tenantId: sellerA.tenantId,
+      provider: "salesforce",
+      refreshToken: "salesforce-refresh-token",
+      scope: "api refresh_token",
+      connectedBy: sellerA.userId,
+      instanceUrl: "https://my-dev-org.my.salesforce.com",
+    });
+
+    const connection = await getTenantConnection(sellerA.tenantId, "salesforce");
+    expect(connection).toEqual({
+      refreshToken: "salesforce-refresh-token",
+      instanceUrl: "https://my-dev-org.my.salesforce.com",
+    });
+  });
+
+  it("a rotated-refresh-token-only re-persist (no instanceUrl in the payload) leaves the stored instance_url untouched", async () => {
+    await saveTenantTokens({
+      tenantId: sellerA.tenantId,
+      provider: "salesforce",
+      refreshToken: "rotated-salesforce-refresh-token",
+      // No `instanceUrl` key at all — mirrors lib/salesforce/get-client.ts's
+      // own re-persist call when Salesforce doesn't rotate instance_url.
+    });
+
+    const connection = await getTenantConnection(sellerA.tenantId, "salesforce");
+    expect(connection).toEqual({
+      refreshToken: "rotated-salesforce-refresh-token",
+      instanceUrl: "https://my-dev-org.my.salesforce.com", // unchanged from the previous test
+    });
+  });
+
+  afterAll(async () => {
+    await admin.from("crm_connections").delete().eq("tenant_id", sellerA.tenantId).eq("provider", "salesforce");
   });
 });

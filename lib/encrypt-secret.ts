@@ -4,7 +4,7 @@ import { deriveSubkey } from "@/lib/app-encryption-key";
 
 // Sprint 10, Ticket 52 — AES-256-GCM helpers for at-rest encryption of the
 // HubSpot refresh token before it's written to crm_connections
-// (lib/hubspot/token-store.ts). GCM (not CBC) so tampering with the
+// (lib/crm-connections/token-store.ts). GCM (not CBC) so tampering with the
 // ciphertext is detected on decrypt rather than silently producing garbage
 // plaintext — decryptSecret throws on any modification to iv/tag/data.
 //

@@ -20,8 +20,9 @@ const HUBSPOT_ERROR_MESSAGES: Record<string, string> = {
   unauthenticated: "You need to be signed in to connect HubSpot.",
   missing_tenant: "Your account has no tenant assigned yet, so it can't connect to HubSpot.",
   // T52 code review (MEDIUM) — emitted by the OAuth start/callback routes
-  // and disconnectHubSpot when lib/rate-limit.ts's HUBSPOT_OAUTH_RATE_LIMIT
-  // is exceeded for this seller.
+  // and disconnectHubSpot when lib/rate-limit.ts's CRM_OAUTH_RATE_LIMIT
+  // (renamed from HUBSPOT_OAUTH_RATE_LIMIT, T55 — Salesforce shares it) is
+  // exceeded for this seller.
   rate_limited: "Too many requests. Wait a minute and try again.",
   denied: "HubSpot authorization was cancelled.",
   invalid_state: "That HubSpot connection request expired or was invalid. Try connecting again.",

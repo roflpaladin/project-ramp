@@ -126,6 +126,11 @@ describe("server-action auth coverage — app/admin/**/*-actions.ts + app/settin
     expect(actionFiles).toContain("app/admin/workspaces/[id]/plan/plan-actions.ts");
     expect(actionFiles).toContain("app/admin/workspaces/[id]/links-actions.ts");
     expect(actionFiles).toContain("app/settings/integrations/hubspot-actions.ts");
+    // Sprint 11, Ticket 55 — salesforce-actions.ts's disconnectSalesforce()
+    // named this way specifically so this probe covers it from day one (see
+    // that file's own header) — this assertion is the explicit proof the
+    // probe actually sees it, not just a hope that the glob does.
+    expect(actionFiles).toContain("app/settings/integrations/salesforce-actions.ts");
   });
 
   it("registers no manual enable/disable override that could desync the allowlist from its own reasons", () => {

@@ -3,9 +3,9 @@ import { NextResponse } from "next/server";
 import { HUBSPOT_SCOPE_STRING } from "@/lib/hubspot/env";
 import { verifyOAuthState } from "@/lib/hubspot/oauth-state";
 import { exchangeCodeForTokens } from "@/lib/hubspot/token-exchange";
-import { saveTenantTokens } from "@/lib/hubspot/token-store";
+import { saveTenantTokens } from "@/lib/crm-connections/token-store";
 import { requireSeller } from "@/lib/plans/require-seller";
-import { checkRateLimit, HUBSPOT_OAUTH_RATE_LIMIT } from "@/lib/rate-limit";
+import { checkRateLimit, CRM_OAUTH_RATE_LIMIT } from "@/lib/rate-limit";
 
 // Sprint 10, Ticket 52 — completes the HubSpot OAuth flow started by
 // .../oauth/start/route.ts. Every failure mode redirects to
@@ -47,8 +47,8 @@ export async function GET(request: Request): Promise<NextResponse> {
   // the token exchange, or the DB write).
   const limit = checkRateLimit(
     `hubspot-oauth-callback:${seller.userId}`,
-    HUBSPOT_OAUTH_RATE_LIMIT.limit,
-    HUBSPOT_OAUTH_RATE_LIMIT.windowMs,
+    CRM_OAUTH_RATE_LIMIT.limit,
+    CRM_OAUTH_RATE_LIMIT.windowMs,
   );
   if (!limit.allowed) {
     return redirectWithError(request, "rate_limited");

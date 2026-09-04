@@ -13,7 +13,7 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { HUBSPOT_OAUTH_RATE_LIMIT } from "@/lib/rate-limit";
+import { CRM_OAUTH_RATE_LIMIT } from "@/lib/rate-limit";
 import type { SellerSession } from "@/lib/plans/require-seller";
 
 const { currentSession, exchangeCodeForTokens, saveTenantTokens } = vi.hoisted(() => ({
@@ -28,7 +28,7 @@ vi.mock("@/lib/plans/require-seller", () => ({
 vi.mock("@/lib/hubspot/token-exchange", () => ({
   exchangeCodeForTokens: (...args: unknown[]) => exchangeCodeForTokens(...args),
 }));
-vi.mock("@/lib/hubspot/token-store", () => ({
+vi.mock("@/lib/crm-connections/token-store", () => ({
   saveTenantTokens: (...args: unknown[]) => saveTenantTokens(...args),
 }));
 
@@ -66,7 +66,7 @@ describe("GET /api/integrations/hubspot/oauth/start — per-seller rate limiting
   it("allows the budgeted calls, then redirects with ?error=rate_limited", async () => {
     currentSession.value = makeSession("rate-limit-oauth-start-user");
 
-    for (let call = 0; call < HUBSPOT_OAUTH_RATE_LIMIT.limit; call += 1) {
+    for (let call = 0; call < CRM_OAUTH_RATE_LIMIT.limit; call += 1) {
       const response = await startGET(new Request("https://getbrava.tech/api/integrations/hubspot/oauth/start"));
       expect(response.headers.get("location")).toContain("app.hubspot.com/oauth/authorize");
     }
@@ -79,7 +79,7 @@ describe("GET /api/integrations/hubspot/oauth/start — per-seller rate limiting
 
   it("budgets are per seller: one seller at the cap does not throttle another", async () => {
     currentSession.value = makeSession("rate-limit-oauth-start-capped");
-    for (let call = 0; call < HUBSPOT_OAUTH_RATE_LIMIT.limit; call += 1) {
+    for (let call = 0; call < CRM_OAUTH_RATE_LIMIT.limit; call += 1) {
       await startGET(new Request("https://getbrava.tech/api/integrations/hubspot/oauth/start"));
     }
     const cappedOverBudget = await startGET(
@@ -114,15 +114,15 @@ describe("GET /api/integrations/hubspot/oauth/callback — per-seller rate limit
     });
     saveTenantTokens.mockResolvedValue(undefined);
 
-    for (let call = 0; call < HUBSPOT_OAUTH_RATE_LIMIT.limit; call += 1) {
+    for (let call = 0; call < CRM_OAUTH_RATE_LIMIT.limit; call += 1) {
       const response = await callbackGET(callbackRequest(seller));
       expect(response.headers.get("location")).toContain("connected=1");
     }
-    expect(exchangeCodeForTokens).toHaveBeenCalledTimes(HUBSPOT_OAUTH_RATE_LIMIT.limit);
+    expect(exchangeCodeForTokens).toHaveBeenCalledTimes(CRM_OAUTH_RATE_LIMIT.limit);
 
     const overBudget = await callbackGET(callbackRequest(seller));
     expect(locationErrorCode(overBudget)).toBe("rate_limited");
     // The refusal happens before the token exchange — no extra call burned.
-    expect(exchangeCodeForTokens).toHaveBeenCalledTimes(HUBSPOT_OAUTH_RATE_LIMIT.limit);
+    expect(exchangeCodeForTokens).toHaveBeenCalledTimes(CRM_OAUTH_RATE_LIMIT.limit);
   });
 });

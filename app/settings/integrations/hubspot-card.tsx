@@ -9,7 +9,7 @@ import { REVOKE_FAILED_WARNING_MESSAGE } from "./hubspot-messages";
 // down as props, which also keeps this file renderable in an RTL test
 // without a Next server runtime behind it.
 export interface HubSpotConnectionCardProps {
-  /** lib/hubspot/token-store.ts's isTenantConnected() result for this seller's tenant. */
+  /** lib/crm-connections/token-store.ts's isTenantConnected() result for this seller's tenant. */
   readonly isConnected: boolean;
   /** ?connected=1 — the OAuth callback route just finished successfully. */
   readonly justConnected: boolean;
