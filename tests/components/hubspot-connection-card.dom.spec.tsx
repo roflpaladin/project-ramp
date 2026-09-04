@@ -81,6 +81,22 @@ describe("HubSpotConnectionCard — connected", () => {
 
     expect(screen.queryByRole("link", { name: "Connect HubSpot" })).not.toBeInTheDocument();
   });
+
+  it("renders an 'Import deals' link to the HubSpot import page (Sprint 11, Ticket 56), plain styling not Signal", () => {
+    render(<HubSpotConnectionCard {...BASE_PROPS} isConnected />);
+
+    const importLink = screen.getByRole("link", { name: "Import deals" });
+    expect(importLink).toHaveAttribute("href", "/admin/import/hubspot");
+    expect(importLink).not.toHaveAttribute("data-signal");
+  });
+});
+
+describe("HubSpotConnectionCard — not connected shows no Import deals link", () => {
+  it("renders no 'Import deals' link when not connected", () => {
+    render(<HubSpotConnectionCard {...BASE_PROPS} />);
+
+    expect(screen.queryByRole("link", { name: "Import deals" })).not.toBeInTheDocument();
+  });
 });
 
 describe("HubSpotConnectionCard — redirect-driven notices", () => {

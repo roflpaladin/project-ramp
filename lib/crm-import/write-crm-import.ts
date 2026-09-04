@@ -31,7 +31,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { PostgrestErrorLike } from "@/lib/plans/errors";
 import { createPlan, type PlanWriteClient } from "@/lib/plans/write";
 import type { MapDealResult, ValidatedCrmDeal } from "./map-deal-to-workspace";
-import type { CrmImportFailureReason } from "./types";
+import type { CrmImportFailureReason, CrmProvider } from "./types";
 
 const GENERIC_WRITE_FAILURE_MESSAGE = "This deal could not be imported. Please try again.";
 /**
@@ -43,11 +43,18 @@ const GENERIC_WRITE_FAILURE_MESSAGE = "This deal could not be imported. Please t
 export const ALREADY_IMPORTED_MESSAGE = "This deal has already been imported.";
 const ALREADY_IMPORTED_LOOKUP_FAILURE_MESSAGE = "Could not check which deals were already imported. Please try again.";
 const ALREADY_IMPORTED_INDEX = "idx_workspaces_tenant_crm";
-const CRM_SOURCE = "hubspot";
 
 export interface WriteCrmImportContext {
   readonly tenantId: string;
   readonly userId: string;
+  /**
+   * Sprint 11, Ticket 56: parameterized out of a hardcoded "hubspot" literal
+   * so this same writer serves both hubspot-import-actions.ts and
+   * salesforce-import-actions.ts — persisted as-is to workspaces.crm_source
+   * and used to scope getAlreadyImportedExternalIds() below to the calling
+   * provider's own already-imported set (never cross-provider).
+   */
+  readonly crmSource: CrmProvider;
 }
 
 /** A per-deal fetch failure from upstream (hubspot-adapter.ts's getDealDetail) — passed straight through by writeCrmImport, never re-attempted. */
@@ -101,7 +108,7 @@ async function createWorkspaceForDeal(
       target_domain: deal.companyDomain,
       created_by: context.userId,
       approved_emails: deal.contactEmail ? [deal.contactEmail] : [],
-      crm_source: CRM_SOURCE,
+      crm_source: context.crmSource,
       crm_object_id: deal.externalId,
       crm_stage: deal.stage,
       crm_amount: deal.amount,
@@ -191,20 +198,24 @@ export type AlreadyImportedLookupResult =
  * — the primary already-imported defence (see this module's header); the
  * writer's own 23505 handling above is the backstop for the race this
  * pre-check cannot close by itself. Used both by hubspot-import-actions.ts's
- * listHubSpotDeals() (to filter the picker) and importHubSpotDeals() (to
- * dedupe before writing) — both callers fold an `ok: false` result into
- * their own typed error path (an "unknown" failure) rather than letting a
- * query error surface as an uncaught exception.
+ * and salesforce-import-actions.ts's own list/import pairs (to filter the
+ * picker and to dedupe before writing) — every caller folds an `ok: false`
+ * result into their own typed error path (an "unknown" failure) rather than
+ * letting a query error surface as an uncaught exception. `crmSource` scopes
+ * the lookup to the calling provider's own already-imported set — a
+ * HubSpot-imported deal must never suppress a Salesforce deal that happens
+ * to share an externalId, and vice versa.
  */
 export async function getAlreadyImportedExternalIds(
   tenantId: string,
+  crmSource: CrmProvider,
   client: SupabaseClient,
 ): Promise<AlreadyImportedLookupResult> {
   const { data, error } = await client
     .from("workspaces")
     .select("crm_object_id")
     .eq("tenant_id", tenantId)
-    .eq("crm_source", CRM_SOURCE);
+    .eq("crm_source", crmSource);
 
   if (error) {
     // Logged with full context server-side, never surfaced to the caller —

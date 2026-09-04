@@ -6,7 +6,7 @@
 // The useActionState state type + its initial value, and the fixed
 // error-copy constants the UI phase (T54) will match on, live here instead.
 
-import { MAX_HUBSPOT_IMPORT_DEALS } from "@/lib/crm-import/import-limits";
+import { MAX_CRM_IMPORT_DEALS } from "@/lib/crm-import/import-limits";
 import type { CrmImportResult } from "@/lib/crm-import/types";
 
 /**
@@ -38,7 +38,7 @@ export const NO_DEALS_SELECTED_MESSAGE = "Choose at least one deal to import.";
 // Code review (HIGH, security): server-side batch-size cap, mirroring
 // import-state.ts's FILE_TOO_LARGE_MESSAGE — a clear, cap-naming message
 // rather than a bare rejection.
-export const TOO_MANY_DEALS_SELECTED_MESSAGE = `You can import at most ${MAX_HUBSPOT_IMPORT_DEALS} deals at a time. Select fewer deals and try again.`;
+export const TOO_MANY_DEALS_SELECTED_MESSAGE = `You can import at most ${MAX_CRM_IMPORT_DEALS} deals at a time. Select fewer deals and try again.`;
 // Code review (HIGH, code): page.tsx's initial listHubSpotDeals() load
 // renders this if that promise ever rejects outright — listHubSpotDeals()
 // itself should always resolve to a typed ok:false result, but this is the

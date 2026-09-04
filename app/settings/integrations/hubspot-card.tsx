@@ -62,13 +62,26 @@ export function HubSpotConnectionCard({
           </p>
         ) : null}
       </CardContent>
-      <CardFooter>
+      <CardFooter className="flex items-center gap-4">
         {isConnected ? (
-          <form action={disconnectHubSpot} className="m-0">
-            <Button type="submit" variant="outline">
-              Disconnect
-            </Button>
-          </form>
+          <>
+            <form action={disconnectHubSpot} className="m-0">
+              <Button type="submit" variant="outline">
+                Disconnect
+              </Button>
+            </form>
+            {/* Sprint 11, Ticket 56 (founder-approved navigation) — plain
+                link styling, matching the page's own "Back to dashboard"
+                link convention, deliberately NOT the design system's amber
+                Signal: this card's Disconnect button is the decision
+                scope's own primary action, and Signal is one-per-scope. */}
+            <a
+              href="/admin/import/hubspot"
+              className="text-sm text-neutral-500 no-underline hover:underline dark:text-neutral-400"
+            >
+              Import deals
+            </a>
+          </>
         ) : (
           // Plain <a>, not <Button>, because this navigates a GET route
           // rather than submitting a form — buttonClassName keeps it

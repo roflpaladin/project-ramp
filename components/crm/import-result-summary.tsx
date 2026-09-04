@@ -24,10 +24,18 @@ import "./import-result-summary.css";
  * block: a single role="status" region, a dot+text status pill (status is
  * never colour-only), tokens-only styling shipping both light and dark
  * themes (import-result-summary.css).
+ *
+ * PROVIDER AWARENESS (Sprint 11, Ticket 56): `providerLabel` and
+ * `reconnectHref` are pure pass-through props to CrmFailureDetailList and
+ * CrmRetryReconnectRow — this component holds no provider-specific copy of
+ * its own. Both default to the original HubSpot values, so a caller that
+ * predates this ticket keeps rendering exactly as before.
  */
 export interface ImportResultSummaryProps {
   readonly result: CrmImportResult;
   readonly onRetry: () => void;
+  readonly providerLabel?: "HubSpot" | "Salesforce";
+  readonly reconnectHref?: string;
 }
 
 function statusTone(status: CrmImportResult["status"]): "done" | "risk" {
@@ -77,7 +85,12 @@ function ImportStatusMessage({ result }: { result: CrmImportResult }) {
   );
 }
 
-export function ImportResultSummary({ result, onRetry }: ImportResultSummaryProps) {
+export function ImportResultSummary({
+  result,
+  onRetry,
+  providerLabel = "HubSpot",
+  reconnectHref,
+}: ImportResultSummaryProps) {
   return (
     <section className="cir-card" data-surface="crm-import-result" data-testid="crm-import-result-summary">
       <div className="cir-results" role="status">
@@ -88,12 +101,14 @@ export function ImportResultSummary({ result, onRetry }: ImportResultSummaryProp
           </span>
         </p>
 
-        <CrmFailureDetailList failures={result.failures} />
+        <CrmFailureDetailList failures={result.failures} providerLabel={providerLabel} />
         <CrmUnmappedFieldsNotice fields={result.unmappedFields} />
         <CrmRetryReconnectRow
           retryable={result.retryable}
           reconnectRequired={result.reconnectRequired}
           onRetry={onRetry}
+          providerLabel={providerLabel}
+          reconnectHref={reconnectHref}
         />
       </div>
     </section>

@@ -1,37 +1,34 @@
 "use server";
 
-// Sprint 10, Ticket 53 — HubSpot deal import server actions. Wires
-// lib/crm-import/connection-state.ts -> hubspot-adapter.ts ->
+// Sprint 11, Ticket 56 — Salesforce Opportunity import server actions. Full
+// parity with app/admin/import/hubspot/hubspot-import-actions.ts: wires
+// lib/crm-import/connection-state.ts -> salesforce-adapter.ts ->
 // map-deal-to-workspace.ts -> write-crm-import.ts -> summarize-crm-import.ts
-// behind two calls: listHubSpotDeals() (the picker) and
-// importHubSpotDeals(externalIds) (the actual write) — the exact shapes a
-// later UI phase (T54, a peer session) builds against; see this ticket's
-// binding contract for both.
+// behind the same two calls: listSalesforceDeals() (the picker) and
+// importSalesforceDeals(externalIds) (the actual write).
 //
-// Named hubspot-import-actions.ts (not actions.ts) so
+// Named salesforce-import-actions.ts (not actions.ts) so
 // tests/security/server-action-auth.spec.ts's listActionFiles probe (only
 // walks files whose basename ends in "-actions.ts") covers it automatically
-// — same reasoning as app/admin/import/import-actions.ts's own header and
-// app/settings/integrations/hubspot-actions.ts's.
+// — same reasoning as hubspot-import-actions.ts's own header.
 //
-// Order of operations mirrors import-actions.ts's importDealsFromCsv:
-// requireSeller() first, then the HubSpot-specific connection check, then
-// checkRateLimit (after the cheap checks, before any real work), then the
-// actual pipeline.
+// Order of operations mirrors hubspot-import-actions.ts's own: requireSeller()
+// first, then the Salesforce-specific connection check, then checkRateLimit
+// (after the cheap checks, before any real work), then the actual pipeline.
 //
-// NEVER TRUST CLIENT-SENT FIELDS BEYOND THE ID: importHubSpotDeals only ever
-// receives externalId strings from its caller — every other field (name,
-// amount, stage, company, contact) is re-fetched from HubSpot via
+// NEVER TRUST CLIENT-SENT FIELDS BEYOND THE ID: importSalesforceDeals only
+// ever receives externalId strings from its caller — every other field
+// (name, amount, stage, company, contact) is re-fetched from Salesforce via
 // adapter.getDealDetail() for each id, never taken from whatever the picker
 // list call returned earlier. A stale or tampered picker payload can at
 // worst name the wrong deal id; it can never inject a fabricated
 // company/domain/amount into a write.
 
-import { getHubSpotConnectionState } from "@/lib/crm-import/connection-state";
-import { getUnmappedFields } from "@/lib/crm-import/hubspot-field-map";
-import { createHubSpotAdapter } from "@/lib/crm-import/hubspot-adapter";
-import { MAX_CRM_IMPORT_DEALS } from "@/lib/crm-import/import-limits";
+import { getSalesforceConnectionState } from "@/lib/crm-import/connection-state";
 import { mapDealToWorkspace } from "@/lib/crm-import/map-deal-to-workspace";
+import { createSalesforceAdapter } from "@/lib/crm-import/salesforce-adapter";
+import { getUnmappedFields } from "@/lib/crm-import/salesforce-field-map";
+import { MAX_CRM_IMPORT_DEALS } from "@/lib/crm-import/import-limits";
 import { summarizeCrmImport } from "@/lib/crm-import/summarize-crm-import";
 import type {
   CrmDealListResult,
@@ -56,18 +53,17 @@ import {
   RATE_LIMITED_MESSAGE,
   TOO_MANY_DEALS_SELECTED_MESSAGE,
   UNAUTHENTICATED_MESSAGE,
-  type HubSpotImportActionState,
-} from "./hubspot-import-state";
+  type SalesforceImportActionState,
+} from "./salesforce-import-state";
 
 // Module-level: the adapter is stateless (every call re-derives its own
-// HubSpot client from the tenant id it's given), so one instance is shared
-// across every request this server process handles — same reasoning as
-// lib/hubspot/get-client.ts's own per-call client construction, just one
-// layer up.
-const adapter = createHubSpotAdapter();
-const CRM_SOURCE = "hubspot";
+// Salesforce client from the tenant id it's given), so one instance is
+// shared across every request this server process handles — same reasoning
+// as hubspot-import-actions.ts's own module-level adapter.
+const adapter = createSalesforceAdapter();
+const CRM_SOURCE = "salesforce";
 
-/** Every action-level guard failure below encodes into CrmImportResult the same way (SETTLED shape for the disconnected-tenant case): one failure per requested externalId, reusing summarizeCrmImport's own status/retryable/reconnectRequired derivation rather than duplicating it. */
+/** Every action-level guard failure below encodes into CrmImportResult the same way — mirrors hubspot-import-actions.ts's own guardFailureResult. */
 function guardFailureResult(
   externalIds: readonly string[],
   reason: CrmImportFailureReason,
@@ -87,8 +83,7 @@ function guardFailureResult(
  * Re-fetches canonical detail for every selected id and runs it through the
  * pure mapping core — see this file's own header on never trusting
  * client-sent fields beyond the id itself. Sequential, not Promise.all, same
- * reasoning as lib/import/import-deals.ts's own loop (a bounded,
- * picker-sized selection, not a large concurrent burst).
+ * reasoning as hubspot-import-actions.ts's own fetchAndMapDeals.
  */
 async function fetchAndMapDeals(
   externalIds: readonly string[],
@@ -108,7 +103,7 @@ async function fetchAndMapDeals(
   return results;
 }
 
-/** Dedupe backstop before writing — SETTLED decision, see write-crm-import.ts's own header for the 23505 backstop this pre-check pairs with. */
+/** Dedupe backstop before writing — see write-crm-import.ts's own header for the 23505 backstop this pre-check pairs with; mirrors hubspot-import-actions.ts's own dedupeAlreadyImported. */
 function dedupeAlreadyImported(
   results: readonly CrmDealPreWriteResult[],
   alreadyImported: ReadonlySet<string>,
@@ -120,20 +115,20 @@ function dedupeAlreadyImported(
   );
 }
 
-export async function listHubSpotDeals(): Promise<CrmDealListResult> {
+export async function listSalesforceDeals(): Promise<CrmDealListResult> {
   const seller = await requireSeller();
   if (!seller) return { ok: false, reason: "unknown", message: UNAUTHENTICATED_MESSAGE, reconnectRequired: false };
   if (!seller.tenantId) {
     return { ok: false, reason: "unknown", message: MISSING_TENANT_MESSAGE, reconnectRequired: false };
   }
 
-  const connection = await getHubSpotConnectionState(seller.tenantId);
+  const connection = await getSalesforceConnectionState(seller.tenantId);
   if (!connection.isConnected) {
     return { ok: false, reason: "token_expired", message: NOT_CONNECTED_MESSAGE, reconnectRequired: true };
   }
 
   const limit = checkRateLimit(
-    `hubspot-import-list:${seller.userId}`,
+    `salesforce-import-list:${seller.userId}`,
     CRM_IMPORT_RATE_LIMIT.limit,
     CRM_IMPORT_RATE_LIMIT.windowMs,
   );
@@ -151,12 +146,10 @@ export async function listHubSpotDeals(): Promise<CrmDealListResult> {
     };
   }
 
-  // SETTLED decision: already-imported deals are filtered from the picker
-  // server-side, by querying workspaces on (tenant_id, crm_source,
-  // crm_object_id) — never trusting the caller to have not re-requested one.
-  // Code review (HIGH, code): this lookup can now fail with a typed result
-  // instead of throwing — folded into the same ok:false shape every other
-  // guard above returns, rather than an uncaught exception.
+  // SETTLED decision (mirrors hubspot-import-actions.ts's own): already-
+  // imported deals are filtered from the picker server-side, by querying
+  // workspaces on (tenant_id, crm_source, crm_object_id) — never trusting
+  // the caller to have not re-requested one.
   const alreadyImportedResult = await getAlreadyImportedExternalIds(seller.tenantId, CRM_SOURCE, seller.client);
   if (!alreadyImportedResult.ok) {
     return { ok: false, reason: "unknown", message: alreadyImportedResult.message, reconnectRequired: false };
@@ -166,14 +159,14 @@ export async function listHubSpotDeals(): Promise<CrmDealListResult> {
   return { ok: true, deals, alreadyImportedCount: listResult.deals.length - deals.length };
 }
 
-export async function importHubSpotDeals(externalIds: readonly string[]): Promise<CrmImportResult> {
+export async function importSalesforceDeals(externalIds: readonly string[]): Promise<CrmImportResult> {
   const unmappedFields = getUnmappedFields();
 
   const seller = await requireSeller();
   if (!seller) return guardFailureResult(externalIds, "unknown", UNAUTHENTICATED_MESSAGE, unmappedFields);
   if (!seller.tenantId) return guardFailureResult(externalIds, "unknown", MISSING_TENANT_MESSAGE, unmappedFields);
 
-  const connection = await getHubSpotConnectionState(seller.tenantId);
+  const connection = await getSalesforceConnectionState(seller.tenantId);
   if (!connection.isConnected) {
     // SETTLED shape: a disconnected tenant short-circuits before the loop —
     // one token_expired failure per requested externalId.
@@ -181,7 +174,7 @@ export async function importHubSpotDeals(externalIds: readonly string[]): Promis
   }
 
   const limit = checkRateLimit(
-    `hubspot-import:${seller.userId}`,
+    `salesforce-import:${seller.userId}`,
     CRM_IMPORT_RATE_LIMIT.limit,
     CRM_IMPORT_RATE_LIMIT.windowMs,
   );
@@ -189,12 +182,8 @@ export async function importHubSpotDeals(externalIds: readonly string[]): Promis
     return guardFailureResult(externalIds, "rate_limited", RATE_LIMITED_MESSAGE, unmappedFields);
   }
 
-  // Code review (HIGH, security): a hard server-side cap on batch size,
-  // placed immediately after the rate-limit check and before any adapter
-  // call — the picker UI only ever submits a checkbox-sized selection, but
-  // nothing previously stopped a caller invoking this action directly with
-  // an arbitrarily large externalIds array and forcing an unbounded number
-  // of sequential adapter fetches + DB writes in one call.
+  // Hard server-side cap on batch size, same placement and reasoning as
+  // hubspot-import-actions.ts's own MAX_CRM_IMPORT_DEALS guard.
   if (externalIds.length > MAX_CRM_IMPORT_DEALS) {
     return guardFailureResult(externalIds, "invalid_data", TOO_MANY_DEALS_SELECTED_MESSAGE, unmappedFields);
   }
@@ -207,9 +196,7 @@ export async function importHubSpotDeals(externalIds: readonly string[]): Promis
 
   // Primary already-imported defence — write-crm-import.ts's 23505 handling
   // is this pre-check's backstop for the race between this read and the
-  // insert below (SETTLED decision). Code review (HIGH, code): folds a
-  // failed lookup into the same guard-failure shape as every other
-  // precondition above, instead of letting a thrown error crash the action.
+  // insert below (SETTLED decision, mirrors hubspot-import-actions.ts's own).
   const alreadyImportedResult = await getAlreadyImportedExternalIds(seller.tenantId, CRM_SOURCE, seller.client);
   if (!alreadyImportedResult.ok) {
     return guardFailureResult(externalIds, "unknown", alreadyImportedResult.message, unmappedFields);
@@ -226,19 +213,18 @@ export async function importHubSpotDeals(externalIds: readonly string[]): Promis
 }
 
 /**
- * useActionState-shaped wrapper around importHubSpotDeals() for the minimal
- * page below — extracts the picker's checked externalId values from the
+ * useActionState-shaped wrapper around importSalesforceDeals() for a later
+ * UI phase — extracts the picker's checked externalId values from the
  * submitted form. requireSeller() is called here too (not just inside
- * importHubSpotDeals()) so this exported function independently satisfies
+ * importSalesforceDeals()) so this exported function independently satisfies
  * the server-action auth coverage probe without relying on a callee it
- * delegates to; importHubSpotDeals()'s own guard still runs as the real
- * authorization boundary either way (defense in depth, same reasoning as
- * require-seller.ts's own "nobody can skip the check" stance).
+ * delegates to — mirrors hubspot-import-actions.ts's own
+ * submitHubSpotImport() reasoning verbatim.
  */
-export async function submitHubSpotImport(
-  _previousState: HubSpotImportActionState,
+export async function submitSalesforceImport(
+  _previousState: SalesforceImportActionState,
   formData: FormData,
-): Promise<HubSpotImportActionState> {
+): Promise<SalesforceImportActionState> {
   const seller = await requireSeller();
   if (!seller) return { error: UNAUTHENTICATED_MESSAGE, result: null };
 
@@ -246,14 +232,13 @@ export async function submitHubSpotImport(
   if (externalIds.length === 0) {
     return { error: NO_DEALS_SELECTED_MESSAGE, result: null };
   }
-  // Code review (HIGH, security): same batch-size cap importHubSpotDeals()
-  // enforces, checked here too so a caller sees the clear cap-naming error
-  // before the pipeline delegates any work — mirrors this action's own
-  // no-deals-selected guard just above.
+  // Same batch-size cap importSalesforceDeals() enforces, checked here too
+  // so a caller sees the clear cap-naming error before the pipeline
+  // delegates any work — mirrors this action's own no-deals-selected guard.
   if (externalIds.length > MAX_CRM_IMPORT_DEALS) {
     return { error: TOO_MANY_DEALS_SELECTED_MESSAGE, result: null };
   }
 
-  const result = await importHubSpotDeals(externalIds);
+  const result = await importSalesforceDeals(externalIds);
   return { error: null, result };
 }

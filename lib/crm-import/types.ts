@@ -62,8 +62,10 @@ export interface CrmImportResult {
   readonly reconnectRequired: boolean;
 }
 
+export type CrmProvider = "hubspot" | "salesforce";
+
 export interface CrmConnectionState {
-  readonly provider: "hubspot";
+  readonly provider: CrmProvider;
   readonly isConnected: boolean;
 }
 
@@ -123,12 +125,12 @@ export type CrmDealDetailResult =
 
 /**
  * One CRM provider's read surface for the pull-based, one-shot deal import.
- * hubspot-adapter.ts is the only implementation today; a future provider
- * (e.g. Salesforce) implements this same interface rather than forking a
- * parallel import pipeline.
+ * hubspot-adapter.ts and salesforce-adapter.ts (Sprint 11, Ticket 56) are the
+ * two implementations of this interface — a future provider implements this
+ * same shape rather than forking a parallel import pipeline.
  */
 export interface CrmProviderAdapter {
-  readonly provider: "hubspot";
+  readonly provider: CrmProvider;
   listDeals(tenantId: string): Promise<CrmAdapterListDealsResult>;
   getDealDetail(tenantId: string, externalId: string): Promise<CrmDealDetailResult>;
 }

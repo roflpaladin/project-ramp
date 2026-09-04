@@ -120,7 +120,19 @@ function buildRequest(path: string, instanceUrl: string, accessToken: string, in
   if (!isValidSalesforceInstanceUrl(instanceUrl)) {
     throw new SalesforceOAuthError("Stored Salesforce instance URL is not a valid Salesforce host.");
   }
-  const url = `${instanceUrl}${path}`;
+  // Security review (T56): a caller-supplied path that isn't host-relative
+  // (e.g. "@evil.example/x", which URL parsing reads as userinfo@host) could
+  // re-aim this Bearer-authed request at a non-Salesforce host. Require a
+  // leading "/" and build via the URL API, then re-check the resolved host
+  // is still the org's instance — belt and suspenders for every caller.
+  if (!path.startsWith("/")) {
+    throw new SalesforceOAuthError("Salesforce request path must be host-relative.");
+  }
+  const resolved = new URL(path, instanceUrl);
+  if (resolved.origin !== new URL(instanceUrl).origin) {
+    throw new SalesforceOAuthError("Salesforce request path resolved off the org's instance host.");
+  }
+  const url = resolved.toString();
   const headers = { ...(init?.headers ?? {}), authorization: `Bearer ${accessToken}` };
   const signal = init?.signal ?? AbortSignal.timeout(DEFAULT_FETCH_TIMEOUT_MS);
   return [url, { ...init, headers, signal }];

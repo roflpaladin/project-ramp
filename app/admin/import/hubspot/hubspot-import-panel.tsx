@@ -66,6 +66,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { CrmDealPicker } from "@/components/crm/crm-deal-picker";
 import { CrmMappingPreview } from "@/components/crm/crm-mapping-preview";
 import { ImportResultSummary } from "@/components/crm/import-result-summary";
+import { HUBSPOT_OAUTH_START_HREF } from "@/components/crm/crm-retry-reconnect-row";
 import { buildFieldMappings } from "@/lib/crm-import/hubspot-field-map";
 import type { CrmDealListResult, CrmImportResult } from "@/lib/crm-import/types";
 import { importHubSpotDeals, listHubSpotDeals } from "./hubspot-import-actions";
@@ -207,14 +208,28 @@ export function HubSpotImportPanel() {
         <p className="hip-intro">Pick deals from HubSpot to bring into Brava as workspaces.</p>
       </div>
 
-      <CrmDealPicker result={pickerResult} isLoading={isBusy} onImport={runImport} onRetry={refreshDeals} />
+      <CrmDealPicker
+        result={pickerResult}
+        isLoading={isBusy}
+        onImport={runImport}
+        onRetry={refreshDeals}
+        providerLabel="HubSpot"
+        reconnectHref={HUBSPOT_OAUTH_START_HREF}
+      />
 
       <div className="hip-mapping">
         <h2 className="hip-section-title">Field mapping</h2>
         <CrmMappingPreview mappings={FIELD_MAPPINGS} />
       </div>
 
-      {importResult ? <ImportResultSummary result={importResult} onRetry={handleRetryImport} /> : null}
+      {importResult ? (
+        <ImportResultSummary
+          result={importResult}
+          onRetry={handleRetryImport}
+          providerLabel="HubSpot"
+          reconnectHref={HUBSPOT_OAUTH_START_HREF}
+        />
+      ) : null}
     </section>
   );
 }

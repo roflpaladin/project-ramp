@@ -91,7 +91,7 @@ let context: WriteCrmImportContext;
 beforeAll(async () => {
   sellerA = await provisionTestSeller();
   sellerClient = await signInAsSeller(sellerA);
-  context = { tenantId: sellerA.tenantId, userId: sellerA.userId };
+  context = { tenantId: sellerA.tenantId, userId: sellerA.userId, crmSource: "hubspot" };
 }, 60_000);
 
 afterAll(async () => {
@@ -254,7 +254,7 @@ describe("getAlreadyImportedExternalIds", () => {
     const deal = okDeal(`already-imported-${runId}`);
     await writeCrmImport([deal], context, sellerClient);
 
-    const result = await getAlreadyImportedExternalIds(sellerA.tenantId, sellerClient);
+    const result = await getAlreadyImportedExternalIds(sellerA.tenantId, "hubspot", sellerClient);
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -269,11 +269,59 @@ describe("getAlreadyImportedExternalIds", () => {
   // with a real Postgres error (an invalid uuid literal for the uuid-typed
   // tenant_id column, sqlstate 22P02), not a mock.
   it("returns ok:false with a message, never throws, when the underlying query errors", async () => {
-    const result = await getAlreadyImportedExternalIds("not-a-uuid", sellerClient);
+    const result = await getAlreadyImportedExternalIds("not-a-uuid", "hubspot", sellerClient);
 
     expect(result).toEqual({
       ok: false,
       message: "Could not check which deals were already imported. Please try again.",
+    });
+  });
+});
+
+// Sprint 11, Ticket 56 — proves writeCrmImport() and
+// getAlreadyImportedExternalIds() are genuinely parameterized by
+// crmSource, not just accepting-but-ignoring the field: a Salesforce-sourced
+// deal persists with crm_source "salesforce" and never collides with (or
+// gets suppressed by) a HubSpot-imported row sharing the same externalId.
+describe("writeCrmImport — salesforce crmSource (Sprint 11, Ticket 56 parity)", () => {
+  it("writes crm_source 'salesforce' when the context says so, isolated from a same-id hubspot import", async () => {
+    const sharedExternalId = `parity-${runId}`;
+    const hubspotDeal = okDeal(sharedExternalId, { companyDomain: `t53-hubspot-${sharedExternalId}-${runId}.example.com` });
+    const salesforceDeal = okDeal(sharedExternalId, {
+      companyDomain: `t56-salesforce-${sharedExternalId}-${runId}.example.com`,
+    });
+    const salesforceContext: WriteCrmImportContext = { ...context, crmSource: "salesforce" };
+
+    const [hubspotResult] = await writeCrmImport([hubspotDeal], context, sellerClient);
+    const [salesforceResult] = await writeCrmImport([salesforceDeal], salesforceContext, sellerClient);
+
+    expect(hubspotResult).toEqual({ externalId: sharedExternalId, ok: true });
+    expect(salesforceResult).toEqual({ externalId: sharedExternalId, ok: true });
+
+    const salesforceWorkspace = await workspaceByDomain(salesforceDeal.value.companyDomain);
+    expect(salesforceWorkspace?.crm_source).toBe("salesforce");
+    expect(salesforceWorkspace?.crm_object_id).toBe(sharedExternalId);
+
+    const hubspotAlreadyImported = await getAlreadyImportedExternalIds(sellerA.tenantId, "hubspot", sellerClient);
+    const salesforceAlreadyImported = await getAlreadyImportedExternalIds(sellerA.tenantId, "salesforce", sellerClient);
+    expect(hubspotAlreadyImported.ok && hubspotAlreadyImported.ids.has(sharedExternalId)).toBe(true);
+    expect(salesforceAlreadyImported.ok && salesforceAlreadyImported.ids.has(sharedExternalId)).toBe(true);
+  });
+
+  it("re-importing the same externalId under the same crmSource still hits the 23505 already-imported backstop", async () => {
+    const externalId = `parity-dup-${runId}`;
+    const deal = okDeal(externalId);
+    const salesforceContext: WriteCrmImportContext = { ...context, crmSource: "salesforce" };
+
+    const [first] = await writeCrmImport([deal], salesforceContext, sellerClient);
+    expect(first).toEqual({ externalId, ok: true });
+
+    const [second] = await writeCrmImport([deal], salesforceContext, sellerClient);
+    expect(second).toEqual({
+      externalId,
+      ok: false,
+      reason: "invalid_data",
+      message: "This deal has already been imported.",
     });
   });
 });

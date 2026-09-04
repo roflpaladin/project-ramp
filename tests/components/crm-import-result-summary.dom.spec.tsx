@@ -249,6 +249,59 @@ describe("ImportResultSummary — status is never colour-only", () => {
   });
 });
 
+describe("ImportResultSummary — provider awareness (Sprint 11, Ticket 56)", () => {
+  const SALESFORCE_OAUTH_START_HREF = "/api/integrations/salesforce/oauth/start";
+
+  it("defaults to HubSpot wording and href when no provider props are given (backward-safe default)", () => {
+    const onRetry = vi.fn();
+    const result = baseResult({
+      status: "failed",
+      importedCount: 0,
+      failedCount: 1,
+      totalCount: 1,
+      failures: [{ externalId: "d1", reason: "token_expired", message: "The connection token has expired." }],
+      retryable: true,
+      reconnectRequired: true,
+    });
+    render(<ImportResultSummary result={result} onRetry={onRetry} />);
+
+    expect(screen.getByText(/HubSpot connection expired/)).toBeInTheDocument();
+    const reconnectLink = screen.getByRole("link", { name: "Reconnect HubSpot" });
+    expect(reconnectLink).toHaveAttribute("href", HUBSPOT_OAUTH_START_HREF);
+  });
+
+  it("renders Salesforce failure-reason wording and the Salesforce reconnect link when providerLabel/reconnectHref are Salesforce", () => {
+    const onRetry = vi.fn();
+    const result = baseResult({
+      status: "partial",
+      importedCount: 8,
+      failedCount: 2,
+      totalCount: 10,
+      failures: [
+        { externalId: "d1", reason: "rate_limited", message: "Salesforce returned a 403; retry after a short wait." },
+        { externalId: "d2", reason: "token_expired", message: "The Salesforce connection token has expired." },
+      ],
+      retryable: true,
+      reconnectRequired: true,
+    });
+    render(
+      <ImportResultSummary
+        result={result}
+        onRetry={onRetry}
+        providerLabel="Salesforce"
+        reconnectHref={SALESFORCE_OAUTH_START_HREF}
+      />,
+    );
+
+    expect(screen.getByText(/Rate limited by Salesforce/)).toBeInTheDocument();
+    expect(screen.getByText(/Salesforce connection expired/)).toBeInTheDocument();
+
+    const reconnectLink = screen.getByRole("link", { name: "Reconnect Salesforce" });
+    expect(reconnectLink).toHaveAttribute("href", SALESFORCE_OAUTH_START_HREF);
+    expect(reconnectLink).toHaveAttribute("data-signal", "true");
+  });
+});
+
 describe("ImportResultSummary — CSS carries no hardcoded colours", () => {
   it("uses design tokens only, never a raw hex value", async () => {
     const { readFileSync } = await import("node:fs");
