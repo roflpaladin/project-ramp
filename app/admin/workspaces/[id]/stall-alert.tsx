@@ -41,6 +41,10 @@ export interface StallAlertProps {
  *   - plan/status-badge.tsx and buyer-workspace-view.tsx's own Signal card
  *     are scoped to different pages/routes (the plan builder and the buyer
  *     workspace, respectively) and are not in this page's decision scope.
+ *   - activation-checklist.tsx (Sprint 11, Ticket 58) mounts on this same
+ *     page too, above this component — it contributes ZERO Signal elements
+ *     by design (every CTA there is plain/secondary), so it never competes
+ *     with this file's `.wsa-cta` or invite-panel.tsx's own Signal pair.
  */
 export function StallAlert({ signal, planHref }: StallAlertProps) {
   if (signal.state === "active") return null;

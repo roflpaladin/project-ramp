@@ -123,6 +123,11 @@ function FlipSubmitButton() {
  * recoverable "cooldown"/"error" states and a successful send to a real
  * buyer's address (own-inbox rule above: no flip renders there) — the send
  * button stays the only primary throughout.
+ *
+ * T58 addition: the section carries `id="invite-panel"` so
+ * activation-checklist.tsx's "Invite your buyer" row can link straight to
+ * this card with a plain same-page anchor (`#invite-panel`) rather than a
+ * prop-drilled scroll callback.
  */
 export function InvitePanel({ workspaceId, sellerEmail }: InvitePanelProps) {
   const [state, formAction, isSending] = useActionState(
@@ -150,7 +155,7 @@ export function InvitePanel({ workspaceId, sellerEmail }: InvitePanelProps) {
   }
 
   return (
-    <section className="ip-card" data-surface="invite-panel" data-testid="invite-panel">
+    <section id="invite-panel" className="ip-card" data-surface="invite-panel" data-testid="invite-panel">
       <h2 className="ip-title">Invite your buyer</h2>
       <p className="ip-intro">
         Invite your buyer to the deal room — send a portal link to any inbox, including your own.

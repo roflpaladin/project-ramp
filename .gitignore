@@ -30,3 +30,4 @@ ECC/
 # (Ticket 24). Anchored to the repo root only.
 /plans/
 e2e/.logs/
+Brava.code-workspace
