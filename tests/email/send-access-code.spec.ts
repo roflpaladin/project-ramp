@@ -1,17 +1,16 @@
-// T43 (Sprint 8, Ticket 43 — "Own-inbox buyer invite & instant flip").
+// T43 (Sprint 8, Ticket 43 — "Own-inbox buyer invite & instant flip"), updated
+// for T57 (Sprint 11, Ticket 57 — "Transactional email deliverability").
 // Pure unit coverage for lib/email/send-access-code.ts: the optional
 // `portalUrl` link and the Brava-branded subject/copy added for the invite
-// flow. Deliberately does NOT touch the real SMTP transport — .env.local
-// ships a PLACEHOLDER SMTP_HOST ("smtp.your-provider.com"), and nodemailer's
-// default connection timeout (2 minutes) would starve this file past
-// Vitest's testTimeout, exactly as tests/api/send-token.spec.ts's header
-// comment documents for the same reason. Mocks ONLY `nodemailer` itself (the
-// transport), so sendAccessCodeEmail's own env-var validation, subject/body
-// construction, and the { ok: boolean } return contract all run for real.
+// flow, now sent via Resend instead of nodemailer/SMTP. Deliberately does
+// not touch the real Resend API -- mocks ONLY the `resend` SDK, so
+// sendAccessCodeEmail's own env-var validation, its delegation to
+// lib/email/templates/access-code.ts, and the { ok: boolean } return
+// contract all run for real.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-interface SentMail {
+interface SentEmail {
   readonly from: string;
   readonly to: string;
   readonly subject: string;
@@ -19,24 +18,32 @@ interface SentMail {
   readonly html: string;
 }
 
-const sendMail = vi.fn(async (_mail: SentMail) => ({ messageId: "test" }));
-const createTransport = vi.fn((..._args: unknown[]) => ({ sendMail }));
+interface SendResult {
+  readonly data: { id: string } | null;
+  readonly error: { name: string; message: string; statusCode: number | null } | null;
+}
 
-vi.mock("nodemailer", () => ({
-  default: { createTransport: (...args: unknown[]) => createTransport(...args) },
-}));
+const send = vi.fn(async (_mail: SentEmail): Promise<SendResult> => ({ data: { id: "test" }, error: null }));
+
+// `Resend` must be a constructible class (used as `new Resend(apiKey)` in
+// lib/email/send-access-code.ts) -- vi.fn()'s mockImplementation only
+// accepts a plain function/arrow implementation, neither of which vitest
+// will invoke with `new`, so this mocks the export with a real (if trivial)
+// class instead.
+class MockResend {
+  emails = { send };
+}
+
+vi.mock("resend", () => ({ Resend: MockResend }));
 
 const { sendAccessCodeEmail } = await import("@/lib/email/send-access-code");
 
 const REQUIRED_ENV = {
-  SMTP_HOST: "smtp.test.invalid",
-  SMTP_PORT: "587",
-  SMTP_USER: "test-user",
-  SMTP_PASSWORD: "test-password",
-  SMTP_FROM: "noreply@getbrava.tech",
+  RESEND_API_KEY: "re_test_key",
+  RESEND_FROM: "Brava <noreply@getbrava.tech>",
 } as const;
 
-describe("sendAccessCodeEmail (T43)", () => {
+describe("sendAccessCodeEmail (T43, updated T57)", () => {
   const originalEnv: Record<string, string | undefined> = {};
 
   beforeEach(() => {
@@ -44,8 +51,7 @@ describe("sendAccessCodeEmail (T43)", () => {
       originalEnv[key] = process.env[key];
       process.env[key] = REQUIRED_ENV[key];
     }
-    sendMail.mockClear();
-    createTransport.mockClear();
+    send.mockClear();
   });
 
   afterEach(() => {
@@ -59,17 +65,25 @@ describe("sendAccessCodeEmail (T43)", () => {
     const result = await sendAccessCodeEmail({ to: "buyer@example.invalid", code: "1234" });
 
     expect(result).toEqual({ ok: true });
-    expect(sendMail).toHaveBeenCalledTimes(1);
-    const call = sendMail.mock.calls[0][0];
+    expect(send).toHaveBeenCalledTimes(1);
+    const call = send.mock.calls[0][0];
     expect(call.subject).toBe("Your Brava deal room access code");
     expect(call.text).toContain("Brava");
     expect(call.html).toContain("Brava");
   });
 
+  it("sends from RESEND_FROM and to the given recipient", async () => {
+    await sendAccessCodeEmail({ to: "buyer@example.invalid", code: "1234" });
+
+    const call = send.mock.calls[0][0];
+    expect(call.from).toBe(REQUIRED_ENV.RESEND_FROM);
+    expect(call.to).toBe("buyer@example.invalid");
+  });
+
   it("omits any deal-room link when no portalUrl is given (unchanged existing-caller behaviour)", async () => {
     await sendAccessCodeEmail({ to: "buyer@example.invalid", code: "1234" });
 
-    const call = sendMail.mock.calls[0][0];
+    const call = send.mock.calls[0][0];
     expect(call.text).not.toContain("http");
     expect(call.html).not.toContain("<a ");
   });
@@ -79,24 +93,44 @@ describe("sendAccessCodeEmail (T43)", () => {
 
     await sendAccessCodeEmail({ to: "buyer@example.invalid", code: "1234", portalUrl });
 
-    const call = sendMail.mock.calls[0][0];
+    const call = send.mock.calls[0][0];
     expect(call.text).toContain("Open your deal room");
     expect(call.text).toContain(portalUrl);
     expect(call.html).toContain("Open your deal room");
     expect(call.html).toContain(`href="${portalUrl}"`);
   });
 
-  it("still reports { ok: false } and sends nothing when SMTP env vars are missing", async () => {
-    delete process.env.SMTP_HOST;
+  it("still reports { ok: false } and sends nothing when RESEND_API_KEY is missing", async () => {
+    delete process.env.RESEND_API_KEY;
 
     const result = await sendAccessCodeEmail({ to: "buyer@example.invalid", code: "1234" });
 
     expect(result).toEqual({ ok: false });
-    expect(sendMail).not.toHaveBeenCalled();
+    expect(send).not.toHaveBeenCalled();
   });
 
-  it("still reports { ok: false } when the transport rejects, without throwing", async () => {
-    sendMail.mockRejectedValueOnce(new Error("smtp down"));
+  it("still reports { ok: false } and sends nothing when RESEND_FROM is missing", async () => {
+    delete process.env.RESEND_FROM;
+
+    const result = await sendAccessCodeEmail({ to: "buyer@example.invalid", code: "1234" });
+
+    expect(result).toEqual({ ok: false });
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("still reports { ok: false } without throwing when Resend resolves an API-level error", async () => {
+    send.mockResolvedValueOnce({
+      data: null,
+      error: { name: "invalid_api_key", message: "API key is invalid", statusCode: 401 },
+    });
+
+    const result = await sendAccessCodeEmail({ to: "buyer@example.invalid", code: "1234" });
+
+    expect(result).toEqual({ ok: false });
+  });
+
+  it("still reports { ok: false } when the SDK call rejects (network failure), without throwing", async () => {
+    send.mockRejectedValueOnce(new Error("network down"));
 
     const result = await sendAccessCodeEmail({ to: "buyer@example.invalid", code: "1234" });
 
@@ -112,7 +146,7 @@ describe("sendAccessCodeEmail (T43)", () => {
 
     await sendAccessCodeEmail({ to: "buyer@example.invalid", code: "1234", portalUrl });
 
-    const call = sendMail.mock.calls[0][0];
+    const call = send.mock.calls[0][0];
     expect(call.html).not.toContain('"><script>');
     expect(call.html).toContain("&quot;&gt;&lt;script&gt;");
   });

@@ -62,6 +62,16 @@ the same HubSpot app (or two apps, if HubSpot's console requires it); a
 mismatched redirect_uri makes HubSpot reject the callback outright, before
 `lib/hubspot/token-exchange.ts` is ever reached.
 
+Transactional email (`lib/email/send-access-code.ts`) sends through
+**Resend** (T57, Sprint 11, Ticket 57 — replaces the Google Workspace SMTP
+relay used through Sprint 10): `RESEND_API_KEY` (from the Resend dashboard →
+API Keys, not generated) and `RESEND_FROM` (a verified sender, e.g. `"Brava
+<noreply@getbrava.tech>"`). `SMTP_*` is **retired** — `send-access-code.ts` no
+longer reads it; the vars can be deleted once nothing else references them.
+See `docs/adr/0001-transactional-email-provider.md` for why, and the DNS
+records (SPF/DKIM/DMARC) the domain needs for Resend to send as
+`getbrava.tech` without landing in spam.
+
 Never copy a dev secret into prod or vice-versa — a leaked dev secret must not
 authenticate against prod.
 
@@ -132,7 +142,9 @@ data), which defeats the whole split.
 | `CRM_WEBHOOK_SECRET` | prod secret | dev secret |
 | `APP_ENCRYPTION_KEY` | prod key | dev key |
 | `HUBSPOT_CLIENT_ID` / `HUBSPOT_CLIENT_SECRET` | prod HubSpot app creds | dev HubSpot app creds |
-| `SMTP_*` | real relay | test inbox (e.g. Mailtrap) or unset |
+| `RESEND_API_KEY` | prod Resend API key | dev/test Resend API key (or unset) |
+| `RESEND_FROM` | prod verified sender | dev/test verified sender (or unset) |
+| ~~`SMTP_*`~~ | retired (T57) — no longer read | retired (T57) — no longer read |
 
 The Preview/Development values are exactly what's in your local `.env.local`. To
 split an existing "All Environments" entry: edit it down to **Production** only,
