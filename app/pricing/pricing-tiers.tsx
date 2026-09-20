@@ -74,6 +74,11 @@ export interface PricingTiersProps {
 const REGISTER_RETURN_PATH = "/pricing";
 const SIGNED_OUT_SUBSCRIBE_HREF = `/register?next=${encodeURIComponent(REGISTER_RETURN_PATH)}`;
 
+// Joined onto window.location.origin at click time — Paddle.js only accepts
+// an absolute successUrl.
+const CHECKOUT_SUCCESS_PATH = "/welcome";
+const CHECKOUT_OPEN_ERROR = "We couldn't open checkout right now. Refresh the page and try again.";
+
 function tierCapLabel(maxActiveDeals: number | null): string {
   return maxActiveDeals === null ? "Unlimited active deals" : `Up to ${maxActiveDeals} active deals`;
 }
@@ -285,17 +290,24 @@ export function PricingTiers({
       }
       setCheckoutError(null);
 
-      paddle.Checkout.open({
-        items: [{ priceId, quantity: 1 }],
-        settings: {
-          displayMode: "overlay",
-          variant: "one-page",
-          successUrl: "/welcome",
-          theme: resolvedTheme === "dark" ? "dark" : "light",
-        },
-        customer: signedInEmail ? { email: signedInEmail } : undefined,
-        customData: { checkoutRef: issued.checkoutRef },
-      });
+      // Paddle.js validates its input synchronously and THROWS on anything it
+      // dislikes — including a relative successUrl, which it requires to be
+      // absolute. Caught so a refusal reads as a message, never a dead button.
+      try {
+        paddle.Checkout.open({
+          items: [{ priceId, quantity: 1 }],
+          settings: {
+            displayMode: "overlay",
+            variant: "one-page",
+            successUrl: `${window.location.origin}${CHECKOUT_SUCCESS_PATH}`,
+            theme: resolvedTheme === "dark" ? "dark" : "light",
+          },
+          customer: signedInEmail ? { email: signedInEmail } : undefined,
+          customData: { checkoutRef: issued.checkoutRef },
+        });
+      } catch {
+        setCheckoutError(CHECKOUT_OPEN_ERROR);
+      }
     },
     [paddle, billingCycle, resolvedTheme, signedInEmail],
   );

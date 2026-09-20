@@ -320,13 +320,28 @@ describe("PricingTiers — signed-in visitor", () => {
         settings: {
           displayMode: "overlay",
           variant: "one-page",
-          successUrl: "/welcome",
+          // Paddle.js rejects a relative successUrl outright ("Specify
+          // http(s)://example.com") — found against the real sandbox, which
+          // a mocked Paddle can't reproduce. Must be absolute.
+          successUrl: `${window.location.origin}/welcome`,
           theme: "light",
         },
         customer: { email: "seller@example.com" },
         customData: { checkoutRef: "ref_abc" },
       });
     });
+  });
+
+  it("shows an inline message instead of failing silently when Paddle refuses to open checkout", async () => {
+    mockCheckoutOpen.mockImplementationOnce(() => {
+      throw new Error("[PADDLE BILLING] Checkout input failed validation");
+    });
+    renderTiers({ signedInEmail: "seller@example.com" });
+    await screen.findByText("$29.00");
+
+    fireEvent.click(within(screen.getByTestId("pr-tier-pro")).getByRole("button", { name: /subscribe/i }));
+
+    expect(await screen.findByText(/couldn.t open checkout/i)).toBeInTheDocument();
   });
 
   it("never sends a tenant id to Paddle (T59 — the browser no longer holds one)", async () => {
