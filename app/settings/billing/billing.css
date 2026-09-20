@@ -25,7 +25,10 @@
   padding: 48px 24px 64px;
   display: flex;
   flex-direction: column;
-  gap: 32px;
+  /* Code review fix (polish): matches the heading-to-content rhythm
+     app/settings/integrations/page.tsx already uses (its own outer
+     `gap-6` = 24px), rather than this file's own, larger, invented value. */
+  gap: 24px;
 }
 
 [data-surface="settings-billing"] .bl-header {
@@ -49,6 +52,16 @@
   line-height: 30px;
   font-weight: 600;
   letter-spacing: -0.015em;
+}
+
+/* Third header line (code review fix — the "Billing" h1 read as flush
+   against the card below it without this), matching integrations'
+   back-link + h1 + description three-line header block exactly. */
+[data-surface="settings-billing"] .bl-subtitle {
+  margin: 0;
+  font-size: 14px;
+  line-height: 21px;
+  color: var(--slate);
 }
 
 [data-surface="settings-billing"] .bl-error {
@@ -173,6 +186,19 @@
 }
 [data-surface="settings-billing"] .bl-btn-secondary:hover {
   background: var(--mist);
+}
+
+/* Canceled state's two-action row (code review fix, MEDIUM) — "See plans"
+   (Signal) alongside a plain "View invoices". */
+[data-surface="settings-billing"] .bl-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+}
+[data-surface="settings-billing"] .bl-actions .bl-btn {
+  margin-top: 0;
 }
 
 @media (max-width: 480px) {

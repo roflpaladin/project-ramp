@@ -6,7 +6,14 @@ import "server-only";
 // https://developer.paddle.com/api-reference/customer-portals/create-customer-portal-session):
 //
 //   POST {apiBase}/customers/{customer_id}/portal-sessions
-//   body: { "subscription_ids": ["sub_..."] }
+//   body: { "subscription_ids": ["sub_..."] } — OMITTED ENTIRELY when there
+//   is no live subscription to scope the portal to (code review fix,
+//   MEDIUM): a canceled subscription still has a real Paddle customer, and
+//   sending its (dead) subscription_ids would scope the portal to THAT
+//   subscription's own management links instead of the customer's general
+//   overview/invoices view. subscriptionId is therefore `string | null`
+//   below — the caller (app/settings/billing/actions.ts) decides null vs a
+//   real id from whether the subscription is currently LIVE.
 //   response: { "data": { "urls": { "general": { "overview": "https://customer-portal.paddle.com/...?token=..." } } } }
 //
 // Importer: app/settings/billing/actions.ts's openBillingPortalAction, which
@@ -38,7 +45,8 @@ export interface CreatePortalSessionInput {
   readonly apiBaseUrl: string;
   readonly apiKey: string;
   readonly customerId: string;
-  readonly subscriptionId: string;
+  /** null opens the general/invoices view with no subscription-management links. */
+  readonly subscriptionId: string | null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -93,7 +101,7 @@ export async function createBillingPortalSession(
     response = await fetchImpl(endpoint, {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${input.apiKey}` },
-      body: JSON.stringify({ subscription_ids: [input.subscriptionId] }),
+      body: JSON.stringify(input.subscriptionId ? { subscription_ids: [input.subscriptionId] } : {}),
       signal: AbortSignal.timeout(PORTAL_FETCH_TIMEOUT_MS),
     });
   } catch (error: unknown) {

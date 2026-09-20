@@ -52,6 +52,23 @@ describe("createBillingPortalSession — happy path", () => {
     expect(JSON.parse(String(calls[0].init.body))).toEqual({ subscription_ids: [SUBSCRIPTION_ID] });
   });
 
+  it("omits subscription_ids entirely when subscriptionId is null (a canceled subscription's general/invoices view — code review fix, MEDIUM)", async () => {
+    // Arrange
+    const calls: { init: RequestInit }[] = [];
+    const fetchImpl = (async (_url: string, init: RequestInit) => {
+      calls.push({ init });
+      return jsonResponse(200, portalBody());
+    }) as typeof fetch;
+
+    // Act
+    await createBillingPortalSession(input({ subscriptionId: null }), fetchImpl);
+
+    // Assert
+    const body = JSON.parse(String(calls[0].init.body));
+    expect(body).not.toHaveProperty("subscription_ids");
+    expect(body).toEqual({});
+  });
+
   it("sends the API key as a Bearer token, never anywhere else", async () => {
     // Arrange
     let sentHeaders: HeadersInit | undefined;

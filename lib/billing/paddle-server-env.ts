@@ -1,6 +1,7 @@
-// Sprint 12, Ticket 59 (slice 1 — Paddle fulfillment). The server-only half
-// of the Paddle environment: the webhook secret, the (not yet used) API key,
-// and the API base URL every future server-to-Paddle call must go through.
+// Sprint 12, Ticket 59 (slice 1 — Paddle fulfillment; slice 2 — seller-
+// facing billing surface). The server-only half of the Paddle environment:
+// the webhook secret, the server-side API key, and the API base URL every
+// server-to-Paddle call must go through.
 //
 // Same rule as lib/billing/paddle-env.ts, and for the same founder reason
 // ("never silently default the environment, so we never run against the
@@ -10,9 +11,11 @@
 // could disagree with it, and an unresolved environment yields null — never
 // a guess at sandbox or production.
 //
-// No Paddle API call is built in this slice (explicitly out of scope);
-// getPaddleApiBaseUrl/getPaddleApiKey exist so that when one is built it
-// cannot invent its own host or key-reading convention.
+// getPaddleApiKey/getPaddleApiBaseUrl exist so that no server-to-Paddle call
+// can invent its own host or key-reading convention. Slice 1 shipped these
+// unused; slice 2's app/settings/billing/actions.ts (openBillingPortalAction,
+// via lib/billing/paddle-portal.ts) is the first real caller — PADDLE_API_KEY
+// is REQUIRED for "Manage billing" to work at all (see .env.example).
 
 import "server-only";
 
@@ -44,7 +47,7 @@ export function getPaddleWebhookSecret(env: NodeJS.ProcessEnv = process.env): st
   return readRequired(env, WEBHOOK_SECRET_VAR_NAME);
 }
 
-/** Unused in this slice — see the file header. */
+/** Required for "Manage billing" (app/settings/billing/actions.ts) — see the file header. */
 export function getPaddleApiKey(env: NodeJS.ProcessEnv = process.env): string | null {
   return readRequired(env, API_KEY_VAR_NAME);
 }

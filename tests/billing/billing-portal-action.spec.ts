@@ -117,37 +117,68 @@ describe("openBillingPortalAction — happy path", () => {
   });
 });
 
+// Code review fix (MEDIUM): a canceled subscription still has a real Paddle
+// customer id, so the seller should still be able to reach the portal — but
+// with NO subscription_ids, since there is nothing left to "manage" on a
+// dead subscription. Re-subscribing happens via a fresh Paddle checkout
+// (/pricing), not through this portal session.
+describe("openBillingPortalAction — canceled subscription (still reaches the portal, general view only)", () => {
+  it("passes subscriptionId: null so paddle-portal.ts omits subscription_ids", async () => {
+    mockFindByTenantId.mockResolvedValue(liveSubscription({ status: "canceled" }));
+
+    await expectRedirect();
+
+    expect(mockCreateBillingPortalSession).toHaveBeenCalledWith(
+      expect.objectContaining({ customerId: "ctm_1", subscriptionId: null }),
+    );
+    expect(redirectCalls).toEqual([PORTAL_URL]);
+  });
+
+  it.each(["trialing", "past_due", "paused"] as const)(
+    "still passes the real subscription id when the status is live (%s)",
+    async (status) => {
+      mockFindByTenantId.mockResolvedValue(liveSubscription({ status }));
+
+      await expectRedirect();
+
+      expect(mockCreateBillingPortalSession).toHaveBeenCalledWith(
+        expect.objectContaining({ subscriptionId: "sub_1" }),
+      );
+    },
+  );
+});
+
 describe("openBillingPortalAction — unauthenticated", () => {
-  it("redirects back with a sign-in message and never reads the subscription", async () => {
+  it("redirects back with the signed_out error code and never reads the subscription", async () => {
     mockRequireSeller.mockResolvedValue(null);
 
     await expectRedirect();
 
-    expect(redirectCalls[0]).toBe(`/settings/billing?error=${encodeURIComponent("Sign in again to continue to billing.")}`);
+    expect(redirectCalls[0]).toBe("/settings/billing?error=signed_out");
     expect(mockFindByTenantId).not.toHaveBeenCalled();
   });
 });
 
 describe("openBillingPortalAction — free tenant (no subscription row at all)", () => {
-  it("redirects back saying there is nothing to manage yet, never calling Paddle", async () => {
+  it("redirects back with the no_account error code, never calling Paddle", async () => {
     mockFindByTenantId.mockResolvedValue(null);
 
     await expectRedirect();
 
-    expect(redirectCalls[0]).toBe(`/settings/billing?error=${encodeURIComponent("There's no billing account to manage yet.")}`);
+    expect(redirectCalls[0]).toBe("/settings/billing?error=no_account");
     expect(mockCreateBillingPortalSession).not.toHaveBeenCalled();
   });
 });
 
 describe("openBillingPortalAction — manual/invoiced tenant (no Paddle customer id)", () => {
-  it("redirects back saying there is nothing to manage yet, never calling Paddle", async () => {
+  it("redirects back with the no_account error code, never calling Paddle", async () => {
     mockFindByTenantId.mockResolvedValue(
       liveSubscription({ paddleCustomerId: null, manualEntitlementTier: "enterprise" }),
     );
 
     await expectRedirect();
 
-    expect(redirectCalls[0]).toBe(`/settings/billing?error=${encodeURIComponent("There's no billing account to manage yet.")}`);
+    expect(redirectCalls[0]).toBe("/settings/billing?error=no_account");
     expect(mockCreateBillingPortalSession).not.toHaveBeenCalled();
   });
 });
@@ -161,29 +192,27 @@ describe("openBillingPortalAction — rate limited", () => {
 
     await expectRedirect();
 
-    expect(redirectCalls.at(-1)).toBe(`/settings/billing?error=${encodeURIComponent("Too many attempts. Try again in a few minutes.")}`);
+    expect(redirectCalls.at(-1)).toBe("/settings/billing?error=rate_limited");
     expect(mockCreateBillingPortalSession).toHaveBeenCalledTimes(callsBeforeOverBudget);
   });
 });
 
 describe("openBillingPortalAction — Paddle misconfigured", () => {
-  it("redirects back with a friendly message when the API key/base URL is missing", async () => {
+  it("redirects back with the misconfigured error code when the API key/base URL is missing", async () => {
     mockGetPaddleApiKey.mockReturnValue(null);
 
     await expectRedirect();
 
-    expect(redirectCalls[0]).toBe(
-      `/settings/billing?error=${encodeURIComponent("Billing isn't available right now. Try again shortly.")}`,
-    );
+    expect(redirectCalls[0]).toBe("/settings/billing?error=misconfigured");
   });
 });
 
 describe("openBillingPortalAction — Paddle call fails", () => {
-  it("redirects back with a friendly message, never leaking the failure detail to the URL", async () => {
+  it("redirects back with the generic error code, never leaking the failure detail to the URL", async () => {
     mockCreateBillingPortalSession.mockRejectedValue(new FakePaddlePortalError("status 500"));
 
     await expectRedirect();
 
-    expect(redirectCalls[0]).toBe(`/settings/billing?error=${encodeURIComponent("We couldn't open the billing portal. Try again.")}`);
+    expect(redirectCalls[0]).toBe("/settings/billing?error=generic");
   });
 });

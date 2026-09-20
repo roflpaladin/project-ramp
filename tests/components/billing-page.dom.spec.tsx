@@ -55,7 +55,7 @@ function subscription(overrides: Partial<SubscriptionState> = {}): SubscriptionS
   };
 }
 
-function renderPage(searchParams: { error?: string } = {}) {
+function renderPage(searchParams: { error?: string | string[] } = {}) {
   return BillingSettingsPage({ searchParams: Promise.resolve(searchParams) });
 }
 
@@ -181,15 +181,25 @@ describe("BillingSettingsPage — paused and canceled", () => {
     expect(screen.getByRole("button", { name: /manage billing/i })).toBeInTheDocument();
   });
 
-  it("shows Canceled/wait, still offering Manage billing", async () => {
+  it("shows Canceled/wait, WITH BOTH 'See plans' (the one Signal) AND a secondary 'View invoices' action (code review fix, MEDIUM)", async () => {
     mockRequireSeller.mockResolvedValue(signedInSeller());
     mockFindByTenantId.mockResolvedValue(subscription({ status: "canceled" }));
 
-    render(await renderPage());
+    const { container } = render(await renderPage());
 
     expect(screen.getByText("Canceled")).toBeInTheDocument();
     expect(screen.getByText("Free")).toBeInTheDocument(); // resolveEntitlement collapses to free
-    expect(screen.getByRole("button", { name: /manage billing/i })).toBeInTheDocument();
+
+    const seePlans = screen.getByRole("link", { name: /see plans/i });
+    expect(seePlans).toHaveAttribute("href", "/pricing");
+    expect(seePlans).toHaveAttribute("data-signal", "true");
+
+    const viewInvoices = screen.getByRole("button", { name: /view invoices/i });
+    expect(viewInvoices).not.toHaveAttribute("data-signal");
+    expect(screen.queryByRole("button", { name: /manage billing/i })).not.toBeInTheDocument();
+
+    // Still exactly one Signal — "See plans" — even with two actions present.
+    expect(container.querySelectorAll('[data-signal="true"]')).toHaveLength(1);
   });
 });
 
@@ -212,12 +222,41 @@ describe("BillingSettingsPage — manual/invoiced tenant", () => {
   });
 });
 
-describe("BillingSettingsPage — surface a portal error from the redirect-back query param", () => {
-  it("renders the friendly message the action redirected back with", async () => {
+describe("BillingSettingsPage — surface a portal error from the redirect-back query param (closed set of codes)", () => {
+  it("renders the fixed message for a known error code", async () => {
     mockRequireSeller.mockResolvedValue(signedInSeller());
     mockFindByTenantId.mockResolvedValue(subscription({ status: "active" }));
 
-    render(await renderPage({ error: "We couldn't open the billing portal. Try again." }));
+    render(await renderPage({ error: "generic" }));
+
+    expect(screen.getByTestId("billing-error")).toHaveTextContent(/couldn't open the billing portal/i);
+  });
+
+  it("never reflects an attacker-supplied ?error= value verbatim — falls back to the generic message (code review fix, HIGH)", async () => {
+    mockRequireSeller.mockResolvedValue(signedInSeller());
+    mockFindByTenantId.mockResolvedValue(subscription({ status: "active" }));
+
+    const phishingText = "Your card was declined — call 1-800-555-0100 to verify your identity";
+    render(await renderPage({ error: phishingText }));
+
+    expect(screen.queryByText(phishingText)).not.toBeInTheDocument();
+    expect(screen.getByTestId("billing-error")).toHaveTextContent(/couldn't open the billing portal/i);
+  });
+
+  it("shows nothing when there is no error param at all", async () => {
+    mockRequireSeller.mockResolvedValue(signedInSeller());
+    mockFindByTenantId.mockResolvedValue(subscription({ status: "active" }));
+
+    render(await renderPage());
+
+    expect(screen.queryByTestId("billing-error")).not.toBeInTheDocument();
+  });
+
+  it("handles a duplicated ?error= query param (array value) without crashing", async () => {
+    mockRequireSeller.mockResolvedValue(signedInSeller());
+    mockFindByTenantId.mockResolvedValue(subscription({ status: "active" }));
+
+    render(await renderPage({ error: ["signed_out", "no_account"] }));
 
     expect(screen.getByTestId("billing-error")).toHaveTextContent(/couldn't open the billing portal/i);
   });

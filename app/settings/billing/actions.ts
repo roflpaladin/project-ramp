@@ -13,12 +13,13 @@
 // action in this codebase (app/settings/integrations/actions.ts's
 // saveTriggerStage, hubspot-actions.ts's disconnectHubSpot): EVERY path
 // ends in redirect(), success to Paddle's own URL, failure back to this
-// page with a human-readable `?error=` message the page renders verbatim
-// (see the sibling salesforce/hubspot-actions.ts's own free-text-in-the-
-// query-param convention, first used by saveTriggerStage). This also keeps
-// the exported action's type exactly `(formData: FormData) => Promise<void>`
-// — React's typing for a <form>'s action prop requires a void return, which
-// an `{ ok, error }` object return would not satisfy.
+// page with `?error=<code>` — a CLOSED SET (billing-errors.ts), never free
+// text (code review fix, HIGH: a free-text query param would let anyone
+// craft a phishing message and have it rendered inside this trusted page).
+// This shape also keeps the exported action's type exactly
+// `(formData: FormData) => Promise<void>` — React's typing for a <form>'s
+// action prop requires a void return, which an `{ ok, error }` object
+// return would not satisfy.
 //
 // The detailed failure reason is logged server-side, following
 // lib/billing's existing convention (event id/type/outcome only) — and,
@@ -27,30 +28,37 @@
 
 import { redirect } from "next/navigation";
 
+import { hasLiveSubscription } from "@/lib/billing/entitlement";
 import { createBillingPortalSession, PaddlePortalError } from "@/lib/billing/paddle-portal";
 import { getPaddleApiBaseUrl, getPaddleApiKey } from "@/lib/billing/paddle-server-env";
 import { findByTenantId } from "@/lib/billing/subscription-repository";
 import { requireSeller } from "@/lib/plans/require-seller";
 import { BILLING_PORTAL_RATE_LIMIT, checkRateLimit } from "@/lib/rate-limit";
+import type { BillingErrorCode } from "./billing-errors";
 
 const BILLING_PAGE_PATH = "/settings/billing";
-const SIGNED_OUT_MESSAGE = "Sign in again to continue to billing.";
-const NO_BILLING_ACCOUNT_MESSAGE = "There's no billing account to manage yet.";
-const RATE_LIMITED_MESSAGE = "Too many attempts. Try again in a few minutes.";
-const MISCONFIGURED_MESSAGE = "Billing isn't available right now. Try again shortly.";
-const GENERIC_ERROR_MESSAGE = "We couldn't open the billing portal. Try again.";
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "unknown error";
 }
 
-function redirectWithError(message: string): never {
-  redirect(`${BILLING_PAGE_PATH}?error=${encodeURIComponent(message)}`);
+function redirectWithError(code: BillingErrorCode): never {
+  redirect(`${BILLING_PAGE_PATH}?error=${code}`);
 }
 
 interface BillableSubscription {
   readonly customerId: string;
-  readonly subscriptionId: string;
+  /**
+   * The Paddle subscription id to scope the portal session to, or `null` to
+   * open the general/invoices view with no subscription-management links.
+   * `null` for a CANCELED subscription on purpose (code review fix, MEDIUM):
+   * there is nothing left to "manage" on a dead subscription, but the
+   * tenant still has a real Paddle customer id and should be able to see
+   * past invoices — sending `subscription_ids` for a canceled subscription
+   * would scope the portal to that dead subscription instead of the
+   * customer's general view.
+   */
+  readonly subscriptionId: string | null;
 }
 
 /** Free or manual/invoiced tenants have no Paddle customer at all — there is
@@ -62,27 +70,30 @@ async function resolveBillableSubscription(tenantId: string): Promise<BillableSu
     subscription = await findByTenantId(tenantId);
   } catch (error) {
     console.error("[billing-portal] failed to read the tenant subscription:", { message: errorMessage(error) });
-    redirectWithError(GENERIC_ERROR_MESSAGE);
+    redirectWithError("generic");
   }
 
-  if (!subscription?.paddleCustomerId || !subscription.paddleSubscriptionId) {
-    redirectWithError(NO_BILLING_ACCOUNT_MESSAGE);
+  if (!subscription?.paddleCustomerId) {
+    redirectWithError("no_account");
   }
 
-  return { customerId: subscription.paddleCustomerId, subscriptionId: subscription.paddleSubscriptionId };
+  return {
+    customerId: subscription.paddleCustomerId,
+    subscriptionId: hasLiveSubscription(subscription) ? subscription.paddleSubscriptionId : null,
+  };
 }
 
 export async function openBillingPortalAction(): Promise<void> {
   const seller = await requireSeller();
-  if (!seller) redirectWithError(SIGNED_OUT_MESSAGE);
-  if (!seller.tenantId) redirectWithError(NO_BILLING_ACCOUNT_MESSAGE);
+  if (!seller) redirectWithError("signed_out");
+  if (!seller.tenantId) redirectWithError("no_account");
 
   const { allowed } = checkRateLimit(
     `billing-portal:${seller.userId}`,
     BILLING_PORTAL_RATE_LIMIT.limit,
     BILLING_PORTAL_RATE_LIMIT.windowMs,
   );
-  if (!allowed) redirectWithError(RATE_LIMITED_MESSAGE);
+  if (!allowed) redirectWithError("rate_limited");
 
   const { customerId, subscriptionId } = await resolveBillableSubscription(seller.tenantId);
 
@@ -90,7 +101,7 @@ export async function openBillingPortalAction(): Promise<void> {
   const apiBaseUrl = getPaddleApiBaseUrl();
   if (!apiKey || !apiBaseUrl) {
     console.error("[billing-portal] Paddle API key or base URL is not configured — refusing to open the portal");
-    redirectWithError(MISCONFIGURED_MESSAGE);
+    redirectWithError("misconfigured");
   }
 
   let url: string;
@@ -100,7 +111,7 @@ export async function openBillingPortalAction(): Promise<void> {
     console.error("[billing-portal] failed to create a Paddle portal session:", {
       message: error instanceof PaddlePortalError ? error.message : errorMessage(error),
     });
-    redirectWithError(GENERIC_ERROR_MESSAGE);
+    redirectWithError("generic");
   }
 
   redirect(url);
