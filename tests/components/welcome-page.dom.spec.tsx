@@ -34,6 +34,21 @@ describe("WelcomePage", () => {
     expect(screen.getByRole("link", { name: /workspace/i })).toHaveAttribute("href", "/admin");
   });
 
+  it("also links to the new billing settings page, as a secondary (non-Signal) action", () => {
+    render(<WelcomePage />);
+
+    const planLink = screen.getByRole("link", { name: /view your plan/i });
+    expect(planLink).toHaveAttribute("href", "/settings/billing");
+    expect(planLink).not.toHaveAttribute("data-signal");
+  });
+
+  it("keeps exactly one Signal-styled action ('Go to your workspace')", () => {
+    const { container } = render(<WelcomePage />);
+
+    expect(container.querySelectorAll('[data-signal="true"]')).toHaveLength(1);
+    expect(screen.getByRole("link", { name: /go to your workspace/i })).toHaveAttribute("data-signal", "true");
+  });
+
   it("carries the shared data-surface attribute its CSS is scoped to", () => {
     render(<WelcomePage />);
     expect(screen.getByTestId("welcome-page")).toHaveAttribute("data-surface", "welcome");

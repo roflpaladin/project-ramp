@@ -15,9 +15,10 @@
 // tests/components/hubspot-connection-card.dom.spec.tsx's note on the
 // pattern generally).
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import type { PricingModel } from "@/lib/billing/plans";
+import type { SubscriptionState } from "@/lib/billing/subscription-reducer";
 
 const { mockGetPricingModel } = vi.hoisted(() => ({ mockGetPricingModel: vi.fn() }));
 vi.mock("@/lib/billing/plans", async (importOriginal) => {
@@ -27,6 +28,9 @@ vi.mock("@/lib/billing/plans", async (importOriginal) => {
 
 const { mockRequireSeller } = vi.hoisted(() => ({ mockRequireSeller: vi.fn() }));
 vi.mock("@/lib/plans/require-seller", () => ({ requireSeller: mockRequireSeller }));
+
+const { mockFindByTenantId } = vi.hoisted(() => ({ mockFindByTenantId: vi.fn() }));
+vi.mock("@/lib/billing/subscription-repository", () => ({ findByTenantId: mockFindByTenantId }));
 
 const { mockNotFound } = vi.hoisted(() => ({
   mockNotFound: vi.fn(() => {
@@ -86,10 +90,18 @@ const PUBLISHABLE_MODEL: PricingModel = {
   isPublishable: true,
 };
 
+beforeEach(() => {
+  // T59 slice 2 — the page now also reads the tenant's subscription. Default
+  // to "no subscription" so every pre-existing test (which never sets this
+  // up) keeps rendering the same signed-out/no-tenant behaviour it always did.
+  mockFindByTenantId.mockResolvedValue(null);
+});
+
 afterEach(() => {
   cleanup();
   mockGetPricingModel.mockReset();
   mockRequireSeller.mockReset();
+  mockFindByTenantId.mockReset();
   mockNotFound.mockClear();
   mockHeadersGet.mockReset();
 });
@@ -160,6 +172,96 @@ describe("PricingPage — publishable, signed-in seller", () => {
     const props = JSON.parse(screen.getByTestId("mock-pricing-tiers").getAttribute("data-props") ?? "{}");
     expect(props.signedInEmail).toBe("seller@example.com");
     expect(props.tenantId).toBeUndefined();
+  });
+});
+
+// T59 slice 2 — no double-billing: the page resolves the tenant's own
+// subscription and passes down currentTierId/hasLiveSubscription/
+// isManualTenant so PricingTiers can never open a second checkout.
+describe("PricingPage — no double-billing (current plan / manual tenant)", () => {
+  const SIGNED_IN_SELLER = { client: {}, userId: "user-1", email: "seller@example.com", tenantId: "tenant-1" };
+
+  function liveSubscription(overrides: Partial<SubscriptionState> = {}): SubscriptionState {
+    return {
+      tenantId: "tenant-1",
+      paddleCustomerId: "ctm_1",
+      paddleSubscriptionId: "sub_1",
+      tierId: "pro",
+      billingCycle: "month",
+      status: "active",
+      currentPeriodEndsAt: "2026-10-20T00:00:00.000Z",
+      scheduledChange: null,
+      pastDueSince: null,
+      lastEventOccurredAt: "2026-09-20T10:00:00.000Z",
+      manualEntitlementTier: null,
+      manualEntitlementNote: null,
+      ...overrides,
+    };
+  }
+
+  it("passes null/false/false when the tenant has never subscribed", async () => {
+    mockGetPricingModel.mockReturnValue(PUBLISHABLE_MODEL);
+    mockRequireSeller.mockResolvedValue(SIGNED_IN_SELLER);
+    mockFindByTenantId.mockResolvedValue(null);
+    mockCountryHeader(null);
+
+    render(await PricingPage());
+
+    const props = JSON.parse(screen.getByTestId("mock-pricing-tiers").getAttribute("data-props") ?? "{}");
+    expect(props.currentTierId).toBeNull();
+    expect(props.hasLiveSubscription).toBe(false);
+    expect(props.isManualTenant).toBe(false);
+  });
+
+  it("passes the subscribed tier id and hasLiveSubscription=true for an active subscription", async () => {
+    mockGetPricingModel.mockReturnValue(PUBLISHABLE_MODEL);
+    mockRequireSeller.mockResolvedValue(SIGNED_IN_SELLER);
+    mockFindByTenantId.mockResolvedValue(liveSubscription({ tierId: "pro", status: "active" }));
+    mockCountryHeader(null);
+
+    render(await PricingPage());
+
+    const props = JSON.parse(screen.getByTestId("mock-pricing-tiers").getAttribute("data-props") ?? "{}");
+    expect(props.currentTierId).toBe("pro");
+    expect(props.hasLiveSubscription).toBe(true);
+  });
+
+  it("still reports hasLiveSubscription=true for a PAUSED subscription (a live Paddle record, even though entitlement itself is free)", async () => {
+    mockGetPricingModel.mockReturnValue(PUBLISHABLE_MODEL);
+    mockRequireSeller.mockResolvedValue(SIGNED_IN_SELLER);
+    mockFindByTenantId.mockResolvedValue(liveSubscription({ tierId: "pro", status: "paused" }));
+    mockCountryHeader(null);
+
+    render(await PricingPage());
+
+    const props = JSON.parse(screen.getByTestId("mock-pricing-tiers").getAttribute("data-props") ?? "{}");
+    expect(props.currentTierId).toBe("pro");
+    expect(props.hasLiveSubscription).toBe(true);
+  });
+
+  it("reports hasLiveSubscription=false for a canceled subscription — a new checkout is allowed again", async () => {
+    mockGetPricingModel.mockReturnValue(PUBLISHABLE_MODEL);
+    mockRequireSeller.mockResolvedValue(SIGNED_IN_SELLER);
+    mockFindByTenantId.mockResolvedValue(liveSubscription({ status: "canceled" }));
+    mockCountryHeader(null);
+
+    render(await PricingPage());
+
+    const props = JSON.parse(screen.getByTestId("mock-pricing-tiers").getAttribute("data-props") ?? "{}");
+    expect(props.currentTierId).toBeNull();
+    expect(props.hasLiveSubscription).toBe(false);
+  });
+
+  it("passes isManualTenant=true for an invoiced tenant", async () => {
+    mockGetPricingModel.mockReturnValue(PUBLISHABLE_MODEL);
+    mockRequireSeller.mockResolvedValue(SIGNED_IN_SELLER);
+    mockFindByTenantId.mockResolvedValue(liveSubscription({ manualEntitlementTier: "enterprise" }));
+    mockCountryHeader(null);
+
+    render(await PricingPage());
+
+    const props = JSON.parse(screen.getByTestId("mock-pricing-tiers").getAttribute("data-props") ?? "{}");
+    expect(props.isManualTenant).toBe(true);
   });
 });
 

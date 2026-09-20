@@ -40,6 +40,13 @@ export const CSV_IMPORT_RATE_LIMIT: RateLimitBudget = { limit: 3, windowMs: 15 *
 // caller, not to gate a normal purchase: a real seller opens checkout a
 // handful of times at most.
 export const CHECKOUT_REF_RATE_LIMIT: RateLimitBudget = { limit: 10, windowMs: 15 * 60_000 };
+// T59 slice 2 — opening Paddle's hosted customer portal
+// (app/settings/billing/actions.ts), keyed per signed-in seller. Same threat
+// model and shape as CHECKOUT_REF_RATE_LIMIT above (an authenticated,
+// low-write, click-triggered action; the budget bounds a click-spamming or
+// scripted caller, not a real seller's normal use), so it shares that exact
+// budget rather than inventing a new number with no reasoning behind it.
+export const BILLING_PORTAL_RATE_LIMIT: RateLimitBudget = { limit: 10, windowMs: 15 * 60_000 };
 // T47 public waitlist capture, keyed per caller IP — same threat class as
 // REGISTRATION_RATE_LIMIT (public, unauthenticated, write), so it carries the
 // same budget rather than inventing a separate policy for no reason.

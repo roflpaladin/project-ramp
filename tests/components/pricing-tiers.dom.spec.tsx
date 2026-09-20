@@ -184,6 +184,9 @@ function renderTiers(overrides: Partial<React.ComponentProps<typeof PricingTiers
       paddleClientToken="test_abc123"
       countryCode={null}
       signedInEmail={null}
+      currentTierId={null}
+      hasLiveSubscription={false}
+      isManualTenant={false}
       {...overrides}
     />,
   );
@@ -530,5 +533,93 @@ describe("PricingTiers — Enterprise (contact) tier", () => {
     // the "one Signal per decision scope" describe block above for the
     // dedicated assertion; this just confirms Enterprise contributes none.
     expect(container.querySelectorAll('[data-signal="true"]')).toHaveLength(1);
+  });
+});
+
+// T59 slice 2 — no double-billing: a tenant with a live Paddle subscription
+// must never see a second Subscribe button.
+describe("PricingTiers — no double-billing (live subscription)", () => {
+  it("shows a non-interactive 'Current plan' label on the tenant's own tier, never a button or link", async () => {
+    renderTiers({ currentTierId: "pro", hasLiveSubscription: true, signedInEmail: "seller@example.com" });
+    await screen.findByText("$29.00");
+
+    const proCard = screen.getByTestId("pr-tier-pro");
+    expect(within(proCard).getByText(/current plan/i)).toBeInTheDocument();
+    expect(within(proCard).queryByRole("button")).not.toBeInTheDocument();
+    expect(within(proCard).queryByRole("link")).not.toBeInTheDocument();
+  });
+
+  it("turns every OTHER checkout tier's action into a 'Change plan in billing' link to /settings/billing", async () => {
+    renderTiers({ currentTierId: "pro", hasLiveSubscription: true, signedInEmail: "seller@example.com" });
+    await screen.findByText("$29.00");
+
+    for (const tierId of ["starter", "advanced"]) {
+      const link = within(screen.getByTestId(`pr-tier-${tierId}`)).getByRole("link", { name: /change plan in billing/i });
+      expect(link).toHaveAttribute("href", "/settings/billing");
+    }
+    expect(screen.queryByRole("button", { name: /subscribe/i })).not.toBeInTheDocument();
+  });
+
+  it("never calls Checkout.open for a tier that is already the current plan or any other tier while subscribed", async () => {
+    renderTiers({ currentTierId: "pro", hasLiveSubscription: true, signedInEmail: "seller@example.com" });
+    await screen.findByText("$29.00");
+
+    fireEvent.click(within(screen.getByTestId("pr-tier-starter")).getByRole("link", { name: /change plan in billing/i }));
+    expect(mockCheckoutOpen).not.toHaveBeenCalled();
+    expect(mockIssueCheckoutRef).not.toHaveBeenCalled();
+  });
+
+  it("keeps exactly one Signal — on the recommended tier's 'Change plan in billing' link — when the current plan is a DIFFERENT tier", async () => {
+    const { container } = renderTiers({ currentTierId: "starter", hasLiveSubscription: true, signedInEmail: "seller@example.com" });
+    await screen.findByText("$29.00");
+
+    const signals = container.querySelectorAll('[data-signal="true"]');
+    expect(signals).toHaveLength(1);
+    expect(within(screen.getByTestId("pr-tier-pro")).getByRole("link", { name: /change plan in billing/i })).toHaveAttribute(
+      "data-signal",
+      "true",
+    );
+  });
+
+  it("renders zero Signal elements when the tenant is already on the recommended tier (an inert label is never Signal)", async () => {
+    const { container } = renderTiers({ currentTierId: "pro", hasLiveSubscription: true, signedInEmail: "seller@example.com" });
+    await screen.findByText("$29.00");
+
+    expect(container.querySelectorAll('[data-signal="true"]')).toHaveLength(0);
+  });
+
+  it("leaves the Enterprise (contact) tier's 'Talk to us' action unaffected", async () => {
+    renderTiers({ currentTierId: "pro", hasLiveSubscription: true, signedInEmail: "seller@example.com" });
+    await screen.findByText("$29.00");
+
+    expect(within(screen.getByTestId("pr-tier-enterprise")).getByRole("link", { name: /talk to us/i })).toBeInTheDocument();
+  });
+});
+
+describe("PricingTiers — no double-billing (manual/invoiced tenant)", () => {
+  it("shows no Subscribe/Change-plan action on any checkout tier", async () => {
+    renderTiers({ isManualTenant: true, signedInEmail: "seller@example.com" });
+    await screen.findByText("$29.00");
+
+    for (const tierId of ["starter", "pro", "advanced"]) {
+      const card = screen.getByTestId(`pr-tier-${tierId}`);
+      expect(within(card).queryByRole("button")).not.toBeInTheDocument();
+      expect(within(card).queryByRole("link")).not.toBeInTheDocument();
+    }
+  });
+
+  it("points the tenant to /settings/billing with a single explanatory line", async () => {
+    renderTiers({ isManualTenant: true });
+    await screen.findByText("$29.00");
+
+    expect(screen.getByRole("link", { name: /billing settings/i })).toHaveAttribute("href", "/settings/billing");
+  });
+
+  it("still renders Enterprise's 'Talk to us' mailto, and contributes no Signal at all", async () => {
+    const { container } = renderTiers({ isManualTenant: true, signedInEmail: "seller@example.com" });
+    await screen.findByText("$29.00");
+
+    expect(within(screen.getByTestId("pr-tier-enterprise")).getByRole("link", { name: /talk to us/i })).toBeInTheDocument();
+    expect(container.querySelectorAll('[data-signal="true"]')).toHaveLength(0);
   });
 });

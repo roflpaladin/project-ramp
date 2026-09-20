@@ -19,7 +19,8 @@
 // a "use server" module may not export a runtime value, the lesson
 // app/admin/workspaces/[id]/invite-state.ts records.
 
-import { createCheckoutRef } from "@/lib/billing/subscription-repository";
+import { hasLiveSubscription } from "@/lib/billing/entitlement";
+import { createCheckoutRef, findByTenantId } from "@/lib/billing/subscription-repository";
 import { requireSeller } from "@/lib/plans/require-seller";
 import { CHECKOUT_REF_RATE_LIMIT, checkRateLimit } from "@/lib/rate-limit";
 
@@ -30,6 +31,7 @@ export type IssueCheckoutRefResult =
 const SIGNED_OUT_MESSAGE = "Sign in again to continue to checkout.";
 const NO_TENANT_MESSAGE = "Your account isn't set up for billing yet. Contact us and we'll sort it out.";
 const RATE_LIMITED_MESSAGE = "Too many checkout attempts. Try again in a few minutes.";
+const ALREADY_SUBSCRIBED_MESSAGE = "You already have a subscription. Manage it from your billing settings.";
 const GENERIC_ERROR_MESSAGE = "We couldn't start checkout. Try again.";
 
 export async function issueCheckoutRefAction(): Promise<IssueCheckoutRefResult> {
@@ -48,6 +50,15 @@ export async function issueCheckoutRefAction(): Promise<IssueCheckoutRefResult> 
   if (!allowed) return { ok: false, error: RATE_LIMITED_MESSAGE };
 
   try {
+    // T59 slice 2 (defense in depth): the UI (pricing-tiers.tsx) already
+    // hides Subscribe once a tenant has a live Paddle subscription, but this
+    // action is the actual gate — a second checkout must never be openable
+    // by any client that skips the UI's own check.
+    const existing = await findByTenantId(seller.tenantId);
+    if (hasLiveSubscription(existing)) {
+      return { ok: false, error: ALREADY_SUBSCRIBED_MESSAGE };
+    }
+
     const ref = await createCheckoutRef({ tenantId: seller.tenantId, userId: seller.userId });
     return { ok: true, checkoutRef: ref.id };
   } catch (error) {

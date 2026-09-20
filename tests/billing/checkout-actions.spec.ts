@@ -12,14 +12,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CHECKOUT_REF_RATE_LIMIT, resetRateLimiterForTests } from "@/lib/rate-limit";
+import type { SubscriptionState } from "@/lib/billing/subscription-reducer";
 
-const { mockRequireSeller, mockCreateCheckoutRef } = vi.hoisted(() => ({
+const { mockRequireSeller, mockCreateCheckoutRef, mockFindByTenantId } = vi.hoisted(() => ({
   mockRequireSeller: vi.fn(),
   mockCreateCheckoutRef: vi.fn(),
+  mockFindByTenantId: vi.fn(),
 }));
 
 vi.mock("@/lib/plans/require-seller", () => ({ requireSeller: mockRequireSeller }));
-vi.mock("@/lib/billing/subscription-repository", () => ({ createCheckoutRef: mockCreateCheckoutRef }));
+vi.mock("@/lib/billing/subscription-repository", () => ({
+  createCheckoutRef: mockCreateCheckoutRef,
+  findByTenantId: mockFindByTenantId,
+}));
 
 const { issueCheckoutRefAction } = await import("@/app/pricing/checkout-actions");
 
@@ -30,9 +35,28 @@ function signedInSeller(overrides: Record<string, unknown> = {}) {
   return { client: {}, userId: USER_ID, email: "seller@example.com", tenantId: TENANT_ID, ...overrides };
 }
 
+function subscription(overrides: Partial<SubscriptionState> = {}): SubscriptionState {
+  return {
+    tenantId: TENANT_ID,
+    paddleCustomerId: "ctm_1",
+    paddleSubscriptionId: "sub_1",
+    tierId: "pro",
+    billingCycle: "month",
+    status: "active",
+    currentPeriodEndsAt: "2026-10-20T00:00:00.000Z",
+    scheduledChange: null,
+    pastDueSince: null,
+    lastEventOccurredAt: "2026-09-20T10:00:00.000Z",
+    manualEntitlementTier: null,
+    manualEntitlementNote: null,
+    ...overrides,
+  };
+}
+
 beforeEach(() => {
   resetRateLimiterForTests();
   mockRequireSeller.mockResolvedValue(signedInSeller());
+  mockFindByTenantId.mockResolvedValue(null);
   mockCreateCheckoutRef.mockResolvedValue({ id: "ref_abc", expiresAt: "2026-09-20T13:00:00.000Z" });
 });
 
@@ -40,6 +64,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   mockRequireSeller.mockReset();
   mockCreateCheckoutRef.mockReset();
+  mockFindByTenantId.mockReset();
 });
 
 describe("issueCheckoutRefAction", () => {
@@ -88,6 +113,41 @@ describe("issueCheckoutRefAction", () => {
     // Assert
     expect(result.ok).toBe(false);
     expect(mockCreateCheckoutRef).toHaveBeenCalledTimes(CHECKOUT_REF_RATE_LIMIT.limit);
+  });
+
+  it("refuses server-side when the tenant already has a live Paddle subscription (T59 slice 2 — defense in depth)", async () => {
+    // Arrange — the UI (pricing-tiers.tsx) already hides Subscribe for a
+    // live subscription, but this action is the real guard: a caller that
+    // skips the UI entirely must still be refused.
+    mockFindByTenantId.mockResolvedValue(subscription({ status: "active" }));
+
+    // Act
+    const result = await issueCheckoutRefAction();
+
+    // Assert
+    expect(result.ok).toBe(false);
+    expect(result.ok === false && result.error).toMatch(/already have a subscription/i);
+    expect(mockCreateCheckoutRef).not.toHaveBeenCalled();
+  });
+
+  it.each(["trialing", "past_due", "paused"] as const)(
+    "refuses when the live subscription's status is %s",
+    async (status) => {
+      mockFindByTenantId.mockResolvedValue(subscription({ status }));
+
+      const result = await issueCheckoutRefAction();
+
+      expect(result.ok).toBe(false);
+      expect(mockCreateCheckoutRef).not.toHaveBeenCalled();
+    },
+  );
+
+  it("allows a new checkout when the stored subscription is canceled", async () => {
+    mockFindByTenantId.mockResolvedValue(subscription({ status: "canceled" }));
+
+    const result = await issueCheckoutRefAction();
+
+    expect(result).toEqual({ ok: true, checkoutRef: "ref_abc" });
   });
 
   it("reports a friendly failure (and logs) when the write fails, never throwing into the page", async () => {

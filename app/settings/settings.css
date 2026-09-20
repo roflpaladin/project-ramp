@@ -8,3 +8,24 @@
    for the same reason. */
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css";
+
+/* Cross-section nav shared by every /settings page (T59 slice 2). Token-only
+   (app/globals.css) — never a raw hex, both themes ship for free since the
+   tokens themselves flip under [data-theme="dark"]. */
+[data-surface="settings"] .st-nav {
+  display: flex;
+  gap: 20px;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--line);
+  background: var(--paper);
+  font-family: "Geist", "Inter", system-ui, -apple-system, sans-serif;
+}
+[data-surface="settings"] .st-nav a {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--slate);
+  text-decoration: none;
+}
+[data-surface="settings"] .st-nav a:hover {
+  color: var(--ink);
+}

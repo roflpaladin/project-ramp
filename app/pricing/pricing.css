@@ -168,6 +168,22 @@
   line-height: 21px;
 }
 
+/* Neutral informational line (T59 slice 2 — invoiced tenants pointed at
+   /settings/billing). Deliberately NOT .pr-price-error's risk tokens: this
+   is not a problem, just "the room" telling you where to go. */
+[data-surface="pricing"] .pr-info-note {
+  margin: 0;
+  padding: 12px 16px;
+  border-radius: 10px;
+  background: var(--mist);
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 21px;
+}
+[data-surface="pricing"] .pr-info-note a {
+  color: var(--ink);
+}
+
 /* ---- tier cards ------------------------------------------------------ */
 
 [data-surface="pricing"] .pr-tier-grid {
@@ -359,6 +375,19 @@
 [data-surface="pricing"] .pr-btn-secondary:disabled {
   background: var(--mist);
   border-color: var(--mist);
+  color: var(--slate);
+}
+
+/* Non-interactive "Current plan" label (T59 slice 2) — deliberately not a
+   button at all (there is nothing to do here), so it never carries
+   data-signal, focus, or hover states. */
+[data-surface="pricing"] .pr-tier-current {
+  display: inline-flex;
+  align-items: center;
+  height: 40px;
+  margin-top: auto;
+  font-size: 14px;
+  font-weight: 500;
   color: var(--slate);
 }
 

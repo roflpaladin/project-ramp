@@ -187,6 +187,18 @@ export function maxActiveDealsForTier(tierId: string): number | null | undefined
   return TIER_DEFINITIONS.find((def) => def.id === tierId)?.maxActiveDeals;
 }
 
+/**
+ * T59 slice 2 — the seller-facing billing page's plan-name display, pulled
+ * from the same founder-editable tier copy above rather than a second,
+ * drift-prone name list. `undefined` for an unrecognised tier id, exactly
+ * like maxActiveDealsForTier — the free tier ("free", FREE_TIER_ID in
+ * lib/billing/entitlement.ts) is deliberately NOT one of these definitions,
+ * so callers handle it themselves rather than getting a name back for it.
+ */
+export function tierNameForId(tierId: string): string | undefined {
+  return TIER_DEFINITIONS.find((def) => def.id === tierId)?.name;
+}
+
 export type BillingCycle = "month" | "year";
 
 function priceEnvVarName(tierId: string, cycle: BillingCycle): string {

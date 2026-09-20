@@ -48,13 +48,20 @@
   color: var(--slate);
 }
 
+[data-surface="welcome"] .wc-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+
 [data-surface="welcome"] .wc-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   height: 40px;
   padding: 0 20px;
-  margin-top: 8px;
   border-radius: 10px;
   border: 1px solid transparent;
   font: inherit;
@@ -75,4 +82,15 @@
 [data-surface="welcome"] .wc-btn-primary:hover {
   background: var(--signal-hover);
   border-color: var(--signal-hover);
+}
+
+/* T59 slice 2 — the "View your plan" link, never Signal: this page keeps
+   exactly one Signal-styled action ("Go to your workspace"). */
+[data-surface="welcome"] .wc-btn-secondary {
+  background: var(--paper);
+  border-color: var(--line);
+  color: var(--ink);
+}
+[data-surface="welcome"] .wc-btn-secondary:hover {
+  background: var(--mist);
 }

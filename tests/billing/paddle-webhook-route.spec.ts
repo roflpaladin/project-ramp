@@ -300,9 +300,10 @@ describe("POST /api/billing/paddle/webhook — idempotency and ordering", () => 
     expect(mockMarkEventOutcome).toHaveBeenCalledWith("evt_1", "stale", null);
   });
 
-  it("returns 2xx without recording an event type it does not handle", async () => {
-    // Act
-    const response = await post(rawBody({ event_type: "transaction.completed" }));
+  it("returns 2xx without recording an event type it does not handle at all", async () => {
+    // Act — "payout.created" is neither a subscription.* type nor one of
+    // the T59-slice-2 record-only types (transaction.completed/customer.*).
+    const response = await post(rawBody({ event_type: "payout.created" }));
 
     // Assert
     expect(response.status).toBe(200);
@@ -325,6 +326,79 @@ describe("POST /api/billing/paddle/webhook — idempotency and ordering", () => 
 
     // Assert
     expect(response.status).toBe(400);
+  });
+});
+
+// T59 slice 2 — transaction.completed/customer.created/customer.updated are
+// recorded through the same idempotent gate, but must NEVER touch
+// tenant_subscriptions, never throw, and always answer 2xx once the
+// signature has verified (even when persisting the record itself fails —
+// these carry no entitlement, so there is no unprovisioned customer at
+// risk, unlike a subscription.* event).
+describe("POST /api/billing/paddle/webhook — record-only events", () => {
+  function recordOnlyBody(eventType: string, eventId = "evt_record_1") {
+    return JSON.stringify({
+      event_id: eventId,
+      event_type: eventType,
+      occurred_at: "2026-09-20T10:00:00.000Z",
+      data: { id: "ctm_1", email: "buyer@example.com" },
+    });
+  }
+
+  it.each(["transaction.completed", "customer.created", "customer.updated"])(
+    "records %s through the idempotent gate with outcome ignored/recorded_only, never touching tenant_subscriptions",
+    async (eventType) => {
+      // Act
+      const response = await post(recordOnlyBody(eventType));
+
+      // Assert
+      expect(response.status).toBe(200);
+      expect(mockRecordEvent).toHaveBeenCalledWith(
+        expect.objectContaining({ eventId: "evt_record_1", eventType }),
+      );
+      expect(mockMarkEventOutcome).toHaveBeenCalledWith("evt_record_1", "ignored", "recorded_only");
+      expect(mockUpsertFromState).not.toHaveBeenCalled();
+      expect(mockFindByPaddleSubscriptionId).not.toHaveBeenCalled();
+      expect(mockFindByTenantId).not.toHaveBeenCalled();
+    },
+  );
+
+  it("is a no-op (never re-marks the outcome) for a record-only event already processed to completion", async () => {
+    // Arrange
+    mockRecordEvent.mockResolvedValue("duplicate");
+
+    // Act
+    const response = await post(recordOnlyBody("transaction.completed"));
+
+    // Assert
+    expect(response.status).toBe(200);
+    expect(mockMarkEventOutcome).not.toHaveBeenCalled();
+  });
+
+  it("still answers 200 when recording a record-only event fails — never a 500, never a retry storm", async () => {
+    // Arrange
+    mockRecordEvent.mockRejectedValue(new Error("db down"));
+
+    // Act
+    const response = await post(recordOnlyBody("customer.updated"));
+
+    // Assert
+    expect(response.status).toBe(200);
+    expect(mockUpsertFromState).not.toHaveBeenCalled();
+  });
+
+  it("logs a failure to record without throwing, and without touching entitlement", async () => {
+    // Arrange
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockMarkEventOutcome.mockRejectedValueOnce(new Error("db down"));
+
+    // Act
+    const response = await post(recordOnlyBody("customer.created"));
+
+    // Assert
+    expect(response.status).toBe(200);
+    expect(errorSpy.mock.calls.flat().map(String).join(" ")).toMatch(/failed to record/i);
+    expect(mockUpsertFromState).not.toHaveBeenCalled();
   });
 });
 

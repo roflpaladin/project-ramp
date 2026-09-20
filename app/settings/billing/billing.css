@@ -1,0 +1,208 @@
+/* Seller-facing billing settings page (Sprint 12, Ticket 59 slice 2). Same
+   layering choice and token-only rule as pricing.css/welcome.css: theme
+   layered, utilities unlayered so class specificity beats globals.css's
+   plain element selectors. No raw hex anywhere in this file — every colour
+   resolves to a Ramp token from app/globals.css, both themes included by
+   construction (the tokens themselves flip under [data-theme="dark"]). */
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css";
+
+[data-surface="settings-billing"] {
+  min-height: 100dvh;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: "Geist", "Inter", system-ui, -apple-system, sans-serif;
+  font-weight: 400;
+}
+
+[data-surface="settings-billing"] .bl-mono {
+  font-family: "Geist Mono", "SFMono-Regular", ui-monospace, monospace;
+}
+
+[data-surface="settings-billing"] .bl-page {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 48px 24px 64px;
+  display: flex;
+  flex-direction: column;
+  /* Code review fix (polish): matches the heading-to-content rhythm
+     app/settings/integrations/page.tsx already uses (its own outer
+     `gap-6` = 24px), rather than this file's own, larger, invented value. */
+  gap: 24px;
+}
+
+[data-surface="settings-billing"] .bl-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+[data-surface="settings-billing"] .bl-back a {
+  font-size: 14px;
+  color: var(--slate);
+  text-decoration: none;
+}
+[data-surface="settings-billing"] .bl-back a:hover {
+  text-decoration: underline;
+}
+
+[data-surface="settings-billing"] .bl-title {
+  margin: 0;
+  font-size: 24px;
+  line-height: 30px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+/* Third header line (code review fix — the "Billing" h1 read as flush
+   against the card below it without this), matching integrations'
+   back-link + h1 + description three-line header block exactly. */
+[data-surface="settings-billing"] .bl-subtitle {
+  margin: 0;
+  font-size: 14px;
+  line-height: 21px;
+  color: var(--slate);
+}
+
+[data-surface="settings-billing"] .bl-error {
+  margin: 0;
+  padding: 12px 16px;
+  border-radius: 10px;
+  background: var(--wash-risk);
+  color: var(--state-risk);
+  font-size: 14px;
+  line-height: 21px;
+}
+
+[data-surface="settings-billing"] .bl-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--paper);
+}
+
+[data-surface="settings-billing"] .bl-plan-name {
+  margin: 0;
+  font-size: 20px;
+  line-height: 26px;
+  font-weight: 600;
+}
+
+[data-surface="settings-billing"] .bl-allowance {
+  margin: 0;
+  font-size: 14px;
+  color: var(--slate);
+}
+
+[data-surface="settings-billing"] .bl-invoiced {
+  margin: 0;
+  font-size: 14px;
+  color: var(--ink);
+}
+
+/* ---- status: dot + text, never colour-only ----------------------------- */
+
+[data-surface="settings-billing"] .bl-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink);
+  white-space: nowrap;
+}
+[data-surface="settings-billing"] .bl-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+  background: var(--state-wait);
+}
+[data-surface="settings-billing"] .bl-status[data-tone="done"] .bl-status-dot {
+  background: var(--state-done);
+}
+[data-surface="settings-billing"] .bl-status[data-tone="risk"] .bl-status-dot {
+  background: var(--state-risk);
+}
+
+[data-surface="settings-billing"] .bl-help,
+[data-surface="settings-billing"] .bl-cycle,
+[data-surface="settings-billing"] .bl-renewal,
+[data-surface="settings-billing"] .bl-note {
+  margin: 0;
+  font-size: 13px;
+  line-height: 19px;
+  color: var(--slate);
+}
+
+/* ---- actions: at most one Signal per this card's decision scope -------- */
+
+[data-surface="settings-billing"] .bl-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  height: 40px;
+  padding: 0 16px;
+  margin-top: 4px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  text-decoration: none;
+}
+[data-surface="settings-billing"] .bl-btn:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+
+[data-surface="settings-billing"] .bl-btn-primary {
+  background: var(--signal);
+  border-color: var(--signal);
+  color: var(--signal-fg);
+}
+[data-surface="settings-billing"] .bl-btn-primary:hover {
+  background: var(--signal-hover);
+  border-color: var(--signal-hover);
+}
+[data-surface="settings-billing"] .bl-btn-primary:active {
+  background: var(--signal-press);
+  border-color: var(--signal-press);
+}
+
+[data-surface="settings-billing"] .bl-btn-secondary {
+  background: var(--paper);
+  border-color: var(--line);
+  color: var(--ink);
+}
+[data-surface="settings-billing"] .bl-btn-secondary:hover {
+  background: var(--mist);
+}
+
+/* Canceled state's two-action row (code review fix, MEDIUM) — "See plans"
+   (Signal) alongside a plain "View invoices". */
+[data-surface="settings-billing"] .bl-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+}
+[data-surface="settings-billing"] .bl-actions .bl-btn {
+  margin-top: 0;
+}
+
+@media (max-width: 480px) {
+  [data-surface="settings-billing"] .bl-page {
+    padding: 32px 16px 48px;
+  }
+}
