@@ -17,8 +17,9 @@
 // one Signal-styled Subscribe action exists (the recommended tier); signed-
 // out Subscribe is a plain /register link (no Checkout.open call); signed-in
 // Subscribe opens the overlay with the exact price ID for the selected
-// tier/cycle, one-page overlay settings, /welcome successUrl, and the
-// signed-in email + tenant customData; the yearly toggle is hidden when
+// tier/cycle, one-page overlay settings, /welcome successUrl, the signed-in
+// email, and (Sprint 12, Ticket 59) the SERVER-ISSUED checkoutRef as
+// customData — never a tenant id; the yearly toggle is hidden when
 // hasYearlyPricing is false and re-queries PricePreview with yearly price
 // IDs when toggled.
 
@@ -41,6 +42,16 @@ const { mockUseTheme } = vi.hoisted(() => ({
 }));
 
 vi.mock("next-themes", () => ({ useTheme: mockUseTheme }));
+
+// Sprint 12, Ticket 59 — the server action that issues the checkout
+// reference. Mocked wholesale (same house style as @paddle/paddle-js
+// above): it is a "use server" module whose real implementation reaches for
+// a Supabase session, and its own behaviour is covered server-side. What
+// this file proves is that the component sends the returned reference — and
+// never a tenant id — to Paddle.
+const { mockIssueCheckoutRef } = vi.hoisted(() => ({ mockIssueCheckoutRef: vi.fn() }));
+
+vi.mock("@/app/pricing/checkout-actions", () => ({ issueCheckoutRefAction: mockIssueCheckoutRef }));
 
 const { PricingTiers } = await import("@/app/pricing/pricing-tiers");
 
@@ -153,6 +164,7 @@ function createDeferred<T>() {
 beforeEach(() => {
   mockInitializePaddle.mockResolvedValue(mockPaddleInstance);
   mockPricePreview.mockResolvedValue(pricePreviewResponse(MONTHLY_PRICES));
+  mockIssueCheckoutRef.mockResolvedValue({ ok: true, checkoutRef: "ref_abc" });
 });
 
 afterEach(() => {
@@ -160,6 +172,7 @@ afterEach(() => {
   mockInitializePaddle.mockReset();
   mockPricePreview.mockReset();
   mockCheckoutOpen.mockReset();
+  mockIssueCheckoutRef.mockReset();
 });
 
 function renderTiers(overrides: Partial<React.ComponentProps<typeof PricingTiers>> = {}) {
@@ -171,7 +184,6 @@ function renderTiers(overrides: Partial<React.ComponentProps<typeof PricingTiers
       paddleClientToken="test_abc123"
       countryCode={null}
       signedInEmail={null}
-      tenantId={null}
       {...overrides}
     />,
   );
@@ -294,25 +306,63 @@ describe("PricingTiers — signed-out visitor", () => {
 });
 
 describe("PricingTiers — signed-in visitor", () => {
-  it("opens Paddle Checkout with the exact price ID, overlay settings, successUrl, email and tenant customData", async () => {
-    renderTiers({ signedInEmail: "seller@example.com", tenantId: "tenant-1" });
+  it("opens Paddle Checkout with the exact price ID, overlay settings, successUrl, email and the server-issued checkout ref", async () => {
+    renderTiers({ signedInEmail: "seller@example.com" });
     await screen.findByText("$29.00");
 
     const button = within(screen.getByTestId("pr-tier-pro")).getByRole("button", { name: /subscribe/i });
     expect(button).not.toBeDisabled();
     fireEvent.click(button);
 
-    expect(mockCheckoutOpen).toHaveBeenCalledWith({
-      items: [{ priceId: "pri_pro_month", quantity: 1 }],
-      settings: {
-        displayMode: "overlay",
-        variant: "one-page",
-        successUrl: "/welcome",
-        theme: "light",
-      },
-      customer: { email: "seller@example.com" },
-      customData: { tenantId: "tenant-1" },
+    await waitFor(() => {
+      expect(mockCheckoutOpen).toHaveBeenCalledWith({
+        items: [{ priceId: "pri_pro_month", quantity: 1 }],
+        settings: {
+          displayMode: "overlay",
+          variant: "one-page",
+          // Paddle.js rejects a relative successUrl outright ("Specify
+          // http(s)://example.com") — found against the real sandbox, which
+          // a mocked Paddle can't reproduce. Must be absolute.
+          successUrl: `${window.location.origin}/welcome`,
+          theme: "light",
+        },
+        customer: { email: "seller@example.com" },
+        customData: { checkoutRef: "ref_abc" },
+      });
     });
+  });
+
+  it("shows an inline message instead of failing silently when Paddle refuses to open checkout", async () => {
+    mockCheckoutOpen.mockImplementationOnce(() => {
+      throw new Error("[PADDLE BILLING] Checkout input failed validation");
+    });
+    renderTiers({ signedInEmail: "seller@example.com" });
+    await screen.findByText("$29.00");
+
+    fireEvent.click(within(screen.getByTestId("pr-tier-pro")).getByRole("button", { name: /subscribe/i }));
+
+    expect(await screen.findByText(/couldn.t open checkout/i)).toBeInTheDocument();
+  });
+
+  it("never sends a tenant id to Paddle (T59 — the browser no longer holds one)", async () => {
+    renderTiers({ signedInEmail: "seller@example.com" });
+    await screen.findByText("$29.00");
+
+    fireEvent.click(within(screen.getByTestId("pr-tier-pro")).getByRole("button", { name: /subscribe/i }));
+
+    await waitFor(() => expect(mockCheckoutOpen).toHaveBeenCalled());
+    expect(JSON.stringify(mockCheckoutOpen.mock.calls[0][0])).not.toContain("tenant");
+  });
+
+  it("does not open checkout at all when the server refuses to issue a reference", async () => {
+    mockIssueCheckoutRef.mockResolvedValue({ ok: false, error: "Sign in again to continue to checkout." });
+    renderTiers({ signedInEmail: "seller@example.com" });
+    await screen.findByText("$29.00");
+
+    fireEvent.click(within(screen.getByTestId("pr-tier-pro")).getByRole("button", { name: /subscribe/i }));
+
+    expect(await screen.findByText(/sign in again to continue to checkout/i)).toBeInTheDocument();
+    expect(mockCheckoutOpen).not.toHaveBeenCalled();
   });
 
   it("disables Subscribe until a price has actually loaded", () => {

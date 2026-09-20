@@ -32,7 +32,11 @@ const COUNTRY_HEADER_NAME = "x-vercel-ip-country";
  *
  * requireSeller() (lib/plans/require-seller.ts) determines whether Subscribe
  * opens the Paddle overlay (signed in) or routes to /register first (signed
- * out) — see pricing-tiers.tsx. The country header is read here (server-
+ * out) — see pricing-tiers.tsx. Only the seller's EMAIL is threaded down
+ * (for Paddle's prefill): as of Sprint 12, Ticket 59 the browser is never
+ * told, and never sends, a tenant id — the tenant behind a checkout comes
+ * from a server-issued reference (./checkout-actions.ts) that the webhook
+ * looks up itself. The country header is read here (server-
  * side, per Vercel's own x-vercel-ip-country convention) and normalised by
  * resolveVercelCountryCode before ever reaching the client bundle, so no
  * internal "unknown" sentinel can leak into a Paddle.PricePreview call.
@@ -71,7 +75,6 @@ export default async function PricingPage() {
         paddleClientToken={pricing.paddle.clientToken}
         countryCode={countryCode}
         signedInEmail={seller?.email ?? null}
-        tenantId={seller?.tenantId ?? null}
       />
 
       <MarketingFooterNav isPricingPublishable={pricing.isPublishable} />

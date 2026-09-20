@@ -187,7 +187,7 @@ export function maxActiveDealsForTier(tierId: string): number | null | undefined
   return TIER_DEFINITIONS.find((def) => def.id === tierId)?.maxActiveDeals;
 }
 
-type BillingCycle = "month" | "year";
+export type BillingCycle = "month" | "year";
 
 function priceEnvVarName(tierId: string, cycle: BillingCycle): string {
   return `PADDLE_PRICE_${tierId.toUpperCase()}_${cycle.toUpperCase()}`;
@@ -212,6 +212,36 @@ function resolveTier(def: TierDefinition, env: NodeJS.ProcessEnv): Tier {
       year: readPriceId(env, def.id, "year"),
     }),
   }) as CheckoutTier;
+}
+
+export interface PriceIdMatch {
+  readonly tierId: string;
+  readonly billingCycle: BillingCycle;
+}
+
+/**
+ * Sprint 12, Ticket 59 — the reverse of the lookup /pricing does: given a
+ * price ID off a Paddle webhook payload, which tier (and cycle) is it?
+ * Deliberately built from the SAME PADDLE_PRICE_<TIER>_<CYCLE> env vars the
+ * page charges against, so a price ID we never sell — someone else's
+ * product, a deleted price, a guess — resolves to `null` and can never
+ * grant entitlement. Returns the first match in tier-definition order; a
+ * misconfiguration that points two tiers at one price ID resolves to the
+ * earlier tier rather than to an arbitrary one.
+ */
+export function resolveTierForPriceId(priceId: string, env: NodeJS.ProcessEnv = process.env): PriceIdMatch | null {
+  if (!priceId) return null;
+
+  for (const def of TIER_DEFINITIONS) {
+    if (def.kind !== "checkout") continue;
+    for (const cycle of ["month", "year"] as const) {
+      if (readPriceId(env, def.id, cycle) === priceId) {
+        return Object.freeze({ tierId: def.id, billingCycle: cycle });
+      }
+    }
+  }
+
+  return null;
 }
 
 /**

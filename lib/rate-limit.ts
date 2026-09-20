@@ -34,6 +34,12 @@ export const ONBOARDING_RATE_LIMIT: RateLimitBudget = { limit: 5, windowMs: 15 *
 // workspace, so it earns a tighter budget of its own rather than sharing
 // ONBOARDING_RATE_LIMIT's.
 export const CSV_IMPORT_RATE_LIMIT: RateLimitBudget = { limit: 3, windowMs: 15 * 60_000 };
+// T59 checkout-reference issuance (app/pricing/checkout-actions.ts), keyed
+// per signed-in seller. One call writes one billing_checkout_refs row, so
+// the budget exists to bound a click-spamming (or scripted) authenticated
+// caller, not to gate a normal purchase: a real seller opens checkout a
+// handful of times at most.
+export const CHECKOUT_REF_RATE_LIMIT: RateLimitBudget = { limit: 10, windowMs: 15 * 60_000 };
 // T47 public waitlist capture, keyed per caller IP — same threat class as
 // REGISTRATION_RATE_LIMIT (public, unauthenticated, write), so it carries the
 // same budget rather than inventing a separate policy for no reason.

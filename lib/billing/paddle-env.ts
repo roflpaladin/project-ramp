@@ -29,17 +29,31 @@ function isPaddleEnvironment(value: string | undefined): value is PaddleEnvironm
   return value === "sandbox" || value === "production";
 }
 
-export function getPaddleClientConfig(env: NodeJS.ProcessEnv = process.env): PaddleClientConfig | null {
+/**
+ * The ONE place NEXT_PUBLIC_PADDLE_ENV is interpreted (Sprint 12, Ticket 59
+ * — extracted so the server side, lib/billing/paddle-server-env.ts, derives
+ * its API base URL from exactly the same value rather than reading the var
+ * a second time and risking a different opinion about it). Returns null,
+ * never a default, for the reason in this file's header.
+ */
+export function resolvePaddleEnvironment(env: NodeJS.ProcessEnv = process.env): PaddleEnvironment | null {
   const rawEnvironment = env[ENV_VAR_NAME];
+  if (isPaddleEnvironment(rawEnvironment)) return rawEnvironment;
+
+  console.error(
+    `[paddle-env] ${ENV_VAR_NAME} is unset or not "sandbox"/"production" (got "${rawEnvironment ?? ""}") — ` +
+      "refusing to default to a Paddle environment",
+  );
+  return null;
+}
+
+export function getPaddleClientConfig(env: NodeJS.ProcessEnv = process.env): PaddleClientConfig | null {
+  const rawEnvironment = resolvePaddleEnvironment(env);
   const clientToken = env[TOKEN_VAR_NAME];
 
-  if (!isPaddleEnvironment(rawEnvironment)) {
-    console.error(
-      `[paddle-env] ${ENV_VAR_NAME} is unset or not "sandbox"/"production" (got "${rawEnvironment ?? ""}") — ` +
-        "refusing to default to a Paddle environment; pricing stays unpublishable",
-    );
-    return null;
-  }
+  // resolvePaddleEnvironment has already logged exactly why — no second log
+  // line here (tests/plans/paddle-env.spec.ts pins one log per failure).
+  if (rawEnvironment === null) return null;
 
   if (!clientToken || clientToken.trim() === "") {
     console.error(`[paddle-env] ${TOKEN_VAR_NAME} is unset — pricing stays unpublishable`);
