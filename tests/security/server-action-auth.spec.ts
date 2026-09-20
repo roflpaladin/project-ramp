@@ -31,7 +31,12 @@ const REPO_ROOT = fileURLToPath(new URL("../../", import.meta.url));
 // that only ever looked at app/admin would never have caught it (or any
 // future app/settings/**/*-actions.ts file) missing its requireSeller()
 // guard.
-const ACTION_GLOB_ROOTS = ["app/admin", "app/settings"] as const;
+// Sprint 12, Ticket 59: widened again to "app/pricing", where
+// checkout-actions.ts issues the server-side checkout reference a Paddle
+// payment is credited against. That action is the whole reason the browser
+// no longer sends a tenant id, so it must never lose its requireSeller()
+// guard.
+const ACTION_GLOB_ROOTS = ["app/admin", "app/settings", "app/pricing"] as const;
 
 interface AllowlistEntry {
   /** Repo-root-relative, e.g. "app/admin/workspaces/[id]/links-actions.ts". */
@@ -136,6 +141,11 @@ describe("server-action auth coverage — app/admin/**/*-actions.ts + app/settin
     // importSalesforceDeals()/submitSalesforceImport(): named this way (not
     // actions.ts) specifically so this probe covers it from day one.
     expect(actionFiles).toContain("app/admin/import/salesforce/salesforce-import-actions.ts");
+    // Sprint 12, Ticket 59 — same reasoning for
+    // app/pricing/checkout-actions.ts's issueCheckoutRefAction(): named this
+    // way (and the glob widened above) specifically so this probe covers the
+    // action that decides which tenant a payment is credited to.
+    expect(actionFiles).toContain("app/pricing/checkout-actions.ts");
   });
 
   it("registers no manual enable/disable override that could desync the allowlist from its own reasons", () => {

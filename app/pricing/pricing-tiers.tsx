@@ -28,6 +28,15 @@
 // formatted "$0.00" still contains a currency symbol, so only the raw value
 // is safe to compare against "0".
 //
+// Checkout identity (Sprint 12, Ticket 59): this component no longer knows
+// (or sends) a tenant id. It used to pass `customData: { tenantId }`, which
+// a signed-in user could tamper with before the overlay opened — the
+// webhook would then have credited whatever tenant the browser named.
+// Instead, Subscribe first calls issueCheckoutRefAction() (a server action
+// that resolves the seller's own tenant from their session and stores it
+// against an opaque id), and the only thing that reaches Paddle is
+// `customData: { checkoutRef }`.
+//
 // Enterprise (kind: "contact") is a second founder amendment: it is
 // invoiced directly, never sold through Paddle, so it never contributes a
 // price ID to the PricePreview request, never opens Checkout, and its
@@ -42,6 +51,7 @@ import { initializePaddle, type Paddle } from "@paddle/paddle-js";
 import type { PaddleEnvironment } from "@/lib/billing/paddle-env";
 import type { CheckoutTier, Tier } from "@/lib/billing/plans";
 import { YEARLY_DISCOUNT_NOTE } from "@/lib/billing/plans";
+import { issueCheckoutRefAction } from "./checkout-actions";
 import "./pricing.css";
 
 type BillingCycle = "month" | "year";
@@ -55,7 +65,6 @@ export interface PricingTiersProps {
    * this component never sees an "XX"/unknown sentinel. */
   countryCode: string | null;
   signedInEmail: string | null;
-  tenantId: string | null;
 }
 
 // A fixed, hardcoded literal — never built from request/user input — so
@@ -185,13 +194,13 @@ export function PricingTiers({
   paddleClientToken,
   countryCode,
   signedInEmail,
-  tenantId,
 }: PricingTiersProps) {
   const { resolvedTheme } = useTheme();
   const [paddle, setPaddle] = useState<Paddle | null>(null);
   const [billingCycle, setBillingCycle] = useState<BillingCycle>("month");
   const [priceDetailsByTier, setPriceDetailsByTier] = useState<Readonly<Record<string, TierPriceDetails>>>({});
   const [hasPriceError, setHasPriceError] = useState(false);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -262,9 +271,19 @@ export function PricingTiers({
   }, [paddle, priceItems, countryCode]);
 
   const handleSubscribe = useCallback(
-    (tier: CheckoutTier) => {
+    async (tier: CheckoutTier) => {
       const priceId = priceIdFor(tier, billingCycle);
       if (!paddle || !priceId) return;
+
+      // The overlay only ever opens against a reference this server issued
+      // for THIS seller's tenant — if we can't get one, there is nothing
+      // safe to open, so the checkout simply doesn't start.
+      const issued = await issueCheckoutRefAction();
+      if (!issued.ok) {
+        setCheckoutError(issued.error);
+        return;
+      }
+      setCheckoutError(null);
 
       paddle.Checkout.open({
         items: [{ priceId, quantity: 1 }],
@@ -275,10 +294,10 @@ export function PricingTiers({
           theme: resolvedTheme === "dark" ? "dark" : "light",
         },
         customer: signedInEmail ? { email: signedInEmail } : undefined,
-        customData: tenantId ? { tenantId } : undefined,
+        customData: { checkoutRef: issued.checkoutRef },
       });
     },
-    [paddle, billingCycle, resolvedTheme, signedInEmail, tenantId],
+    [paddle, billingCycle, resolvedTheme, signedInEmail],
   );
 
   return (
@@ -315,6 +334,12 @@ export function PricingTiers({
       {hasPriceError ? (
         <p className="pr-price-error" role="status">
           We couldn&apos;t load live pricing right now. Refresh the page to try again.
+        </p>
+      ) : null}
+
+      {checkoutError ? (
+        <p className="pr-price-error" role="status">
+          {checkoutError}
         </p>
       ) : null}
 
@@ -362,7 +387,9 @@ export function PricingTiers({
                 tier={tier}
                 isReady={isReady}
                 signedInEmail={signedInEmail}
-                onSubscribe={() => tier.kind === "checkout" && handleSubscribe(tier)}
+                onSubscribe={() => {
+                  if (tier.kind === "checkout") void handleSubscribe(tier);
+                }}
               />
             </li>
           );

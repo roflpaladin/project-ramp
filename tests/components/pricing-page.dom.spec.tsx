@@ -126,7 +126,10 @@ describe("PricingPage — publishable, signed-out visitor", () => {
     expect(props.paddleClientToken).toBe("test_abc123");
     expect(props.countryCode).toBe("DE");
     expect(props.signedInEmail).toBeNull();
-    expect(props.tenantId).toBeNull();
+    // Sprint 12, Ticket 59: the tenant id is no longer a prop at all — the
+    // browser must never hold (or be able to tamper with) one. See
+    // app/pricing/checkout-actions.ts.
+    expect(props.tenantId).toBeUndefined();
   });
 
   it("omits the country code when the x-vercel-ip-country header is absent", async () => {
@@ -142,7 +145,7 @@ describe("PricingPage — publishable, signed-out visitor", () => {
 });
 
 describe("PricingPage — publishable, signed-in seller", () => {
-  it("threads the signed-in seller's email and tenant id through to PricingTiers", async () => {
+  it("threads the signed-in seller's email — and no tenant id — through to PricingTiers", async () => {
     mockGetPricingModel.mockReturnValue(PUBLISHABLE_MODEL);
     mockRequireSeller.mockResolvedValue({
       client: {},
@@ -156,7 +159,7 @@ describe("PricingPage — publishable, signed-in seller", () => {
 
     const props = JSON.parse(screen.getByTestId("mock-pricing-tiers").getAttribute("data-props") ?? "{}");
     expect(props.signedInEmail).toBe("seller@example.com");
-    expect(props.tenantId).toBe("tenant-1");
+    expect(props.tenantId).toBeUndefined();
   });
 });
 
