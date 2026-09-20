@@ -4,8 +4,10 @@
 --
 -- Applied by pasting into the Supabase SQL Editor per this project's
 -- migration workflow (no CLI link/psql available) — same as every migration
--- before it. Idempotent throughout (`if not exists` / `drop policy if
--- exists` before `create policy`) so a re-paste is safe.
+-- before it. Idempotent throughout (`create … if not exists`, `add column
+-- if not exists`, and `drop … if exists` ahead of every policy, index and
+-- function this file owns), so it converges both on a fresh database AND on
+-- one that already ran an earlier draft of this same file.
 --
 -- BILLING UNIT IS THE TENANT (founder ruling, 2026-09-20): one subscription
 -- per seller org, hence `tenant_id` unique on tenant_subscriptions. Tiers
@@ -47,8 +49,22 @@
 --   * Pruning: expired/consumed billing_checkout_refs rows are never
 --     removed. A scheduled job should delete rows past expires_at; the
 --     index on expires_at below exists so that stays cheap.
---   * Rate limiting is still the in-memory, per-instance limiter
---     (lib/rate-limit.ts). A DB- or Redis-backed limiter is Ticket 62.
+--   * Rate limiting: the webhook route has NO rate limit at all (an
+--     unauthenticated POST whose signature check is cheap but not free),
+--     and the checkout-ref action uses the in-memory, per-instance limiter
+--     (lib/rate-limit.ts). A DB- or Redis-backed limiter covering both is
+--     Ticket 62.
+--   * Alerting: nothing watches this data yet. Two signals matter — events
+--     landing on a non-`applied` outcome (especially `ignored` with
+--     reason `duplicate_subscription` or `unknown_price_id`), and events
+--     stuck at `received`/`failed` past Paddle's retry window, which means
+--     a customer may have paid without being provisioned. Ticket 63
+--     (monitoring).
+--   * Body cap: the route bounds the webhook body at 64 KB via
+--     Content-Length plus the bytes actually read. It does not STREAM the
+--     read, so a request with no Content-Length is bounded only by the
+--     host's own request limit (~4.5 MB on Vercel today) before our check
+--     runs. A streamed, incremental cap is the complete fix.
 
 begin;
 
@@ -99,7 +115,9 @@ create table if not exists tenant_subscriptions (
 
 -- No explicit index on paddle_subscription_id: the `unique` constraint on
 -- the column above already creates one, and a second would just be write
--- amplification.
+-- amplification. Dropped explicitly so a re-paste over an earlier draft of
+-- this file (which did create one) converges on the same schema.
+drop index if exists idx_tenant_subscriptions_paddle_subscription;
 
 alter table tenant_subscriptions enable row level security;
 
@@ -194,11 +212,21 @@ alter table billing_checkout_refs enable row level security;
 -- then writes, the LAST writer wins — which is exactly how an older event
 -- overwrites a newer one and silently downgrades a paying tenant.
 --
--- This function does the write and the "is this event actually newer?"
--- comparison in ONE statement, so the loser of a race is rejected by the
--- database itself rather than by a check it already passed. It returns
--- whether a row was written; the webhook records an event whose write was
--- refused as `stale`, never as `applied`.
+-- The same is true of "does this tenant already have a different live
+-- subscription?": the application asks it before writing, but two FIRST
+-- events (subscription S1 and S2 for one tenant) can both read "no row yet"
+-- and both pass that check — after which the later occurred_at would win
+-- and flip the tenant onto the subscription Paddle is NOT billing.
+--
+-- So this function re-asks BOTH questions inside the single statement that
+-- writes. The loser of a race is rejected by the database itself rather
+-- than by a check it already passed. It returns which verdict was reached:
+--   'written'               the row now reflects this event
+--   'stale'                 the stored event is newer; nothing written
+--   'subscription_conflict' a different, non-canceled subscription owns
+--                           this tenant's row; nothing written
+-- The webhook records the last two as `stale` and `ignored` respectively —
+-- never as `applied`.
 --
 -- STRICTLY older is rejected (`<=` in the WHERE means "write when the
 -- incoming event is at least as new"): Paddle emits several events with an
@@ -210,7 +238,17 @@ alter table billing_checkout_refs enable row level security;
 -- its own. Only the service-role client calls it, and it is the service
 -- role's own rights that let it write — so a future caller who is not
 -- service-role gains nothing by finding this function.
-create or replace function apply_tenant_subscription_event(
+--
+-- Dropped first, not `create or replace`d: an earlier draft of this file
+-- returned boolean, and Postgres refuses to replace a function whose return
+-- type changes. `drop … if exists` is a no-op on a fresh database and makes
+-- a re-paste over that draft converge. The argument list (which is what
+-- identifies the function) is unchanged.
+drop function if exists apply_tenant_subscription_event(
+  uuid, text, text, text, text, text, timestamptz, jsonb, timestamptz, timestamptz, text, text
+);
+
+create function apply_tenant_subscription_event(
   p_tenant_id uuid,
   p_paddle_customer_id text,
   p_paddle_subscription_id text,
@@ -224,13 +262,15 @@ create or replace function apply_tenant_subscription_event(
   p_manual_entitlement_tier text,
   p_manual_entitlement_note text
 )
-returns boolean
+returns text
 language plpgsql
 security invoker
 set search_path = public
 as $$
 declare
   v_written boolean;
+  v_stored_subscription_id text;
+  v_stored_status text;
 begin
   insert into tenant_subscriptions (
     tenant_id, paddle_customer_id, paddle_subscription_id, tier_id, billing_cycle, status,
@@ -255,23 +295,57 @@ begin
         manual_entitlement_tier  = excluded.manual_entitlement_tier,
         manual_entitlement_note  = excluded.manual_entitlement_note,
         updated_at               = now()
-    where tenant_subscriptions.last_event_occurred_at is null
-       or tenant_subscriptions.last_event_occurred_at <= excluded.last_event_occurred_at
+    where (
+            -- Ordering guard: never let an older event overwrite a newer one.
+            tenant_subscriptions.last_event_occurred_at is null
+            or tenant_subscriptions.last_event_occurred_at <= excluded.last_event_occurred_at
+          )
+      and (
+            -- Identity guard: only this tenant's OWN subscription may write
+            -- here — or a row that has no Paddle subscription yet, or one
+            -- whose subscription is terminal and may be replaced.
+            tenant_subscriptions.paddle_subscription_id is null
+            or tenant_subscriptions.paddle_subscription_id = excluded.paddle_subscription_id
+            or tenant_subscriptions.status = 'canceled'
+          )
   returning true into v_written;
 
-  -- No row returned = the WHERE above refused the update (the stored event
-  -- is newer). Not an error: the caller records the event as stale.
-  return coalesce(v_written, false);
+  if coalesce(v_written, false) then
+    return 'written';
+  end if;
+
+  -- Nothing was written; re-read the row that blocked it to say WHICH guard
+  -- refused. Inside the same transaction, so this sees exactly the row the
+  -- statement above was evaluated against.
+  select paddle_subscription_id, status
+    into v_stored_subscription_id, v_stored_status
+    from tenant_subscriptions
+   where tenant_id = p_tenant_id;
+
+  if v_stored_subscription_id is not null
+     and v_stored_subscription_id is distinct from p_paddle_subscription_id
+     and v_stored_status is distinct from 'canceled' then
+    return 'subscription_conflict';
+  end if;
+
+  return 'stale';
 end;
 $$;
 
--- Service-role only, explicitly. PUBLIC holds EXECUTE on new functions by
--- default in Postgres; revoking it means an anon/authenticated caller cannot
--- even attempt this (and `security invoker` means it would gain nothing if
--- it did).
+-- Service-role only, explicitly.
+--
+-- Two separate revokes on purpose: PUBLIC holds EXECUTE on new functions by
+-- default in Postgres, AND Supabase additionally grants EXECUTE to `anon`
+-- and `authenticated` through its own default privileges — a grant made TO
+-- THOSE ROLES, which `revoke … from public` does not touch. Both have to go
+-- (and `security invoker` means neither would gain anything even if one
+-- were missed).
 revoke all on function apply_tenant_subscription_event(
   uuid, text, text, text, text, text, timestamptz, jsonb, timestamptz, timestamptz, text, text
 ) from public;
+revoke all on function apply_tenant_subscription_event(
+  uuid, text, text, text, text, text, timestamptz, jsonb, timestamptz, timestamptz, text, text
+) from anon, authenticated;
 grant execute on function apply_tenant_subscription_event(
   uuid, text, text, text, text, text, timestamptz, jsonb, timestamptz, timestamptz, text, text
 ) to service_role;

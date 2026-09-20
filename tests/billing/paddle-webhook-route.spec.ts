@@ -105,9 +105,10 @@ beforeEach(() => {
 
   mockFindByPaddleSubscriptionId.mockResolvedValue(null);
   mockFindByTenantId.mockResolvedValue(null);
-  // true = the database actually wrote the row. False means its own
-  // ordering guard refused an out-of-order write (see the H2 tests).
-  mockUpsertFromState.mockResolvedValue(true);
+  // The conditional write reports what the DATABASE decided: 'written',
+  // 'stale' (its ordering guard refused) or 'subscription_conflict' (the
+  // tenant already has a different live subscription).
+  mockUpsertFromState.mockResolvedValue("written");
   mockRecordEvent.mockResolvedValue("recorded");
   mockMarkEventOutcome.mockResolvedValue(undefined);
   mockConsumeCheckoutRef.mockResolvedValue({ tenantId: TENANT_ID, userId: "user-1" });
@@ -502,7 +503,7 @@ describe("POST /api/billing/paddle/webhook — the database's own ordering guard
     // Arrange — H2: two concurrent deliveries can both pass the in-memory
     // staleness check, so the final word belongs to the conditional write.
     mockFindByPaddleSubscriptionId.mockResolvedValue(STORED_SUBSCRIPTION);
-    mockUpsertFromState.mockResolvedValue(false);
+    mockUpsertFromState.mockResolvedValue("stale");
 
     // Act
     const response = await post(rawBody({ event_id: "evt_late", event_type: "subscription.updated" }));
@@ -515,13 +516,42 @@ describe("POST /api/billing/paddle/webhook — the database's own ordering guard
   it("reports an accepted write as applied", async () => {
     // Arrange
     mockFindByPaddleSubscriptionId.mockResolvedValue(STORED_SUBSCRIPTION);
-    mockUpsertFromState.mockResolvedValue(true);
+    mockUpsertFromState.mockResolvedValue("written");
 
     // Act
     await post(rawBody({ event_id: "evt_ok", event_type: "subscription.updated" }));
 
     // Assert
     expect(mockMarkEventOutcome).toHaveBeenCalledWith("evt_ok", "applied", null);
+  });
+
+  it("records a conflict the DATABASE caught as ignored/duplicate_subscription", async () => {
+    // Arrange — the app-level guard passed (no row existed when it looked),
+    // but a concurrent first event for another subscription got there
+    // first. The write is refused inside the same statement, and this event
+    // must not be recorded as applied.
+    mockUpsertFromState.mockResolvedValue("subscription_conflict");
+
+    // Act
+    const response = await post(rawBody({ event_id: "evt_race" }));
+
+    // Assert
+    expect(response.status).toBe(200);
+    expect(mockMarkEventOutcome).toHaveBeenCalledWith("evt_race", "ignored", "duplicate_subscription");
+  });
+
+  it("logs a database-caught conflict at error level, with no customer detail", async () => {
+    // Arrange
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockUpsertFromState.mockResolvedValue("subscription_conflict");
+
+    // Act
+    await post(rawBody({ event_id: "evt_race" }));
+
+    // Assert
+    const logged = errorSpy.mock.calls.flat().map((entry) => JSON.stringify(entry)).join(" ");
+    expect(logged).toContain("duplicate_subscription");
+    expect(logged).not.toContain("ctm_1");
   });
 });
 

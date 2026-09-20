@@ -7,9 +7,10 @@
 //
 // Everything goes through the service-role client (lib/supabase/admin.ts),
 // the same shape lib/crm-connections/token-store.ts uses over
-// crm_connections: tenant_subscriptions exposes only a seller SELECT policy
-// for their own tenant, and the other two tables have RLS enabled with zero
-// policies, so no RLS-scoped client could write any of this anyway.
+// crm_connections: all three tables have RLS enabled with ZERO policies, so
+// no RLS-scoped client can read or write any of them. (When the seller UI
+// needs to show a plan, 0014's header says how: a column-limited view with
+// its own tenant-scoped policy — not a select policy on the table.)
 //
 // Every query is parameterized through supabase-js (.eq/.insert/.update/
 // .rpc — the one write that needs a conditional lives in a Postgres
@@ -109,24 +110,36 @@ export async function findByPaddleSubscriptionId(subscriptionId: string): Promis
 }
 
 /**
+ * What the database decided about one conditional write:
+ *   written               — the row now reflects this event.
+ *   stale                 — the stored row is already at or ahead of this
+ *                           event's occurred_at; nothing was written.
+ *   subscription_conflict — the tenant already has a DIFFERENT, non-canceled
+ *                           Paddle subscription; nothing was written.
+ * Neither refusal is an error — both are normal outcomes of concurrent or
+ * out-of-order delivery, and each maps to a different recorded outcome.
+ */
+export type ApplySubscriptionResult = "written" | "stale" | "subscription_conflict";
+
+const APPLY_RESULTS: readonly string[] = ["written", "stale", "subscription_conflict"];
+
+/**
  * Writes through apply_tenant_subscription_event (0014), NOT a plain
  * upsert. Two webhook deliveries can be in flight at once; each would read
- * the row, decide it is newer, and write — last writer wins, which is how
- * an older event overwrites a newer one. The Postgres function does the
- * insert-or-update and the "is this event actually newer?" comparison in
- * ONE statement, so the loser of a race is rejected by the database itself.
+ * the row, decide in application code that it may write, and write — last
+ * writer wins. That is how an older event overwrites a newer one, and how
+ * two first-events for different subscriptions both "pass" a check-then-
+ * write guard and leave the tenant pointing at the wrong subscription.
  *
- * Returns whether a row was actually written. `false` is not an error: it
- * means the stored state is already at or ahead of this event, and the
- * caller must record the event as `stale` rather than `applied`.
+ * The Postgres function does the insert-or-update AND both guards (is this
+ * event newer? is this the same subscription — or a canceled one we may
+ * replace?) in ONE statement, so the loser of a race is rejected by the
+ * database itself rather than by a check it already passed.
  *
- * Conflict target is tenant_id, not paddle_subscription_id: the billing
- * unit is the TENANT (founder ruling — one subscription per tenant). The
- * caller is responsible for not handing us a SECOND live subscription for a
- * tenant that already has one (see the route's duplicate_subscription
- * guard) — this function would happily replace it.
+ * Conflict target is tenant_id: the billing unit is the TENANT (founder
+ * ruling — one subscription per tenant).
  */
-export async function upsertFromState(state: SubscriptionState): Promise<boolean> {
+export async function upsertFromState(state: SubscriptionState): Promise<ApplySubscriptionResult> {
   const admin = createAdminClient();
   const { data, error } = await admin.rpc("apply_tenant_subscription_event", {
     p_tenant_id: state.tenantId,
@@ -144,7 +157,14 @@ export async function upsertFromState(state: SubscriptionState): Promise<boolean
   });
 
   if (error) throw new Error(`Failed to persist the tenant subscription: ${error.message}`);
-  return data === true;
+
+  // Validated, not trusted: an old (boolean-returning) version of the
+  // function still deployed somewhere must fail loudly — and be retried by
+  // Paddle — rather than be silently read as "not written".
+  if (typeof data !== "string" || !APPLY_RESULTS.includes(data)) {
+    throw new Error(`apply_tenant_subscription_event returned an unexpected result: ${JSON.stringify(data)}`);
+  }
+  return data as ApplySubscriptionResult;
 }
 
 export interface RecordEventInput {

@@ -18,10 +18,14 @@
 //     silently overwrite the paid row — and its ordering anchor with it.
 //     Only a terminal (canceled) subscription, or a row that has no Paddle
 //     subscription at all, may be replaced.
-//  3. The final word on ordering belongs to SQL, not to this process (two
-//     deliveries can be in flight at once) — upsertFromState reports
-//     whether the conditional write actually happened, and a refused write
-//     is recorded as `stale`, never as `applied`.
+//  3. The final word belongs to SQL, not to this process. Defence 2 above
+//     is a check-then-write: two FIRST events for different subscriptions
+//     on one tenant can both read "no row yet" and both pass it. So the
+//     same two questions (is this event newer? is this the same
+//     subscription, or a canceled one we may replace?) are re-asked inside
+//     the single statement that writes — upsertFromState reports which
+//     verdict the database reached, and a refused write is recorded as
+//     `stale` or `ignored`, never as `applied`.
 //
 // A manual entitlement (invoice-paying customers) is carried across a
 // replacement: those tenants are entitled by a human decision, and a new
@@ -108,11 +112,18 @@ export async function processSubscriptionEvent(event: PaddleSubscriptionEvent): 
     return Object.freeze({ outcome: result.outcome, reason: result.reason });
   }
 
-  const written = await upsertFromState(withCarriedManualEntitlement(result.state, target.replaces));
+  const applied = await upsertFromState(withCarriedManualEntitlement(result.state, target.replaces));
 
-  // The database refused the write because its stored event is newer — that
-  // is a stale event, not an applied one, and must be recorded as such.
-  return written
-    ? Object.freeze({ outcome: "applied" as const, reason: null })
-    : Object.freeze({ outcome: "stale" as const, reason: "rejected_by_ordering_guard" });
+  // The database has the last word, and it distinguishes the two ways a
+  // write can be refused: an event older than the stored one (stale), and
+  // a second live subscription for a tenant that already has one (the same
+  // duplicate_subscription verdict the app-level check produces — reached
+  // here when two first-events raced each other past it).
+  if (applied === "stale") {
+    return Object.freeze({ outcome: "stale" as const, reason: "rejected_by_ordering_guard" });
+  }
+  if (applied === "subscription_conflict") {
+    return ignored("duplicate_subscription");
+  }
+  return Object.freeze({ outcome: "applied" as const, reason: null });
 }

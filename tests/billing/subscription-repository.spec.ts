@@ -213,7 +213,7 @@ describe("markEventOutcome", () => {
 describe("upsertFromState", () => {
   it("writes through the conditional Postgres function, passing every column", async () => {
     // Arrange
-    results.value = [{ data: true, error: null }];
+    results.value = [{ data: "written", error: null }];
     const state = storedState({
       tierId: "advanced",
       billingCycle: "year",
@@ -226,7 +226,7 @@ describe("upsertFromState", () => {
     const written = await upsertFromState(state);
 
     // Assert
-    expect(written).toBe(true);
+    expect(written).toBe("written");
     expect(operationPayload("apply_tenant_subscription_event", "rpc")).toMatchObject({
       p_tenant_id: TENANT_ID,
       p_paddle_subscription_id: "sub_1",
@@ -238,12 +238,31 @@ describe("upsertFromState", () => {
     });
   });
 
-  it("reports false when the database's ordering guard refuses the write", async () => {
+  it("reports 'stale' when the database's ordering guard refuses the write", async () => {
     // Arrange — a concurrent, newer delivery already landed.
-    results.value = [{ data: false, error: null }];
+    results.value = [{ data: "stale", error: null }];
 
     // Act + Assert
-    expect(await upsertFromState(storedState())).toBe(false);
+    expect(await upsertFromState(storedState())).toBe("stale");
+  });
+
+  it("reports 'subscription_conflict' when the tenant already has a different live subscription", async () => {
+    // Arrange — the database, not the app, is the authority here: two first
+    // events racing each other both pass the app-level check.
+    results.value = [{ data: "subscription_conflict", error: null }];
+
+    // Act + Assert
+    expect(await upsertFromState(storedState())).toBe("subscription_conflict");
+  });
+
+  it("throws on a result the function is not supposed to return (schema drift)", async () => {
+    // Arrange — an old boolean-returning version of the function, or a
+    // rename: failing loudly makes Paddle retry rather than letting us
+    // record a guess about what happened.
+    results.value = [{ data: true, error: null }];
+
+    // Act + Assert
+    await expect(upsertFromState(storedState())).rejects.toThrow(/unexpected result/i);
   });
 
   it("throws when the write fails, so the webhook can answer 500 and be retried", async () => {
