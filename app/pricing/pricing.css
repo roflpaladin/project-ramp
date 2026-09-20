@@ -242,6 +242,18 @@
   color: var(--slate);
 }
 
+/* Tax disclosure line — same muted/secondary token as .pr-tier-period, only
+   rendered when Paddle's raw (unformatted) line-item tax isn't "0" (see
+   pricing-tiers.tsx's TierPrice). --slate on --paper already clears the
+   4.5:1 body-text contrast floor in both themes (same pairing as every
+   other secondary-text usage on this page, e.g. .pr-tier-description). */
+[data-surface="pricing"] .pr-tier-tax-note {
+  margin: -4px 0 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--slate);
+}
+
 [data-surface="pricing"] .pr-tier-cap {
   margin: 0;
   font-size: 14px;

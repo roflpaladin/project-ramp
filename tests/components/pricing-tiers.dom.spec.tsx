@@ -92,32 +92,49 @@ const TIERS = [STARTER_TIER, PRO_TIER, ADVANCED_TIER, ENTERPRISE_TIER];
 
 interface PricePreviewEntry {
   priceId: string;
+  subtotal: string;
+  tax: string;
   total: string;
+  /** Raw (unformatted) tax amount, e.g. "0" or "660" — this is what
+   * PricingTiers checks to decide whether to show a tax line, never the
+   * formatted "tax" string above (which would always contain a currency
+   * symbol, even for zero). */
+  rawTax: string;
 }
 
 function pricePreviewResponse(entries: PricePreviewEntry[]) {
   return {
     data: {
       details: {
-        lineItems: entries.map(({ priceId, total }) => ({
+        lineItems: entries.map(({ priceId, subtotal, tax, total, rawTax }) => ({
           price: { id: priceId },
-          formattedTotals: { total, subtotal: total, tax: "$0.00", discount: "$0.00" },
+          formattedTotals: { subtotal, tax, total, discount: "$0.00" },
+          totals: { subtotal, tax: rawTax, total, discount: "0" },
         })),
       },
     },
   };
 }
 
+// No tax: subtotal === total, rawTax "0" — the common case for these specs.
 const MONTHLY_PRICES: PricePreviewEntry[] = [
-  { priceId: "pri_starter_month", total: "$12.00" },
-  { priceId: "pri_pro_month", total: "$29.00" },
-  { priceId: "pri_advanced_month", total: "$79.00" },
+  { priceId: "pri_starter_month", subtotal: "$12.00", tax: "$0.00", total: "$12.00", rawTax: "0" },
+  { priceId: "pri_pro_month", subtotal: "$29.00", tax: "$0.00", total: "$29.00", rawTax: "0" },
+  { priceId: "pri_advanced_month", subtotal: "$79.00", tax: "$0.00", total: "$79.00", rawTax: "0" },
 ];
 
 const YEARLY_PRICES: PricePreviewEntry[] = [
-  { priceId: "pri_starter_year", total: "$120.00" },
-  { priceId: "pri_pro_year", total: "$290.00" },
-  { priceId: "pri_advanced_year", total: "$790.00" },
+  { priceId: "pri_starter_year", subtotal: "$120.00", tax: "$0.00", total: "$120.00", rawTax: "0" },
+  { priceId: "pri_pro_year", subtotal: "$290.00", tax: "$0.00", total: "$290.00", rawTax: "0" },
+  { priceId: "pri_advanced_year", subtotal: "$790.00", tax: "$0.00", total: "$790.00", rawTax: "0" },
+];
+
+// One tier taxed (an 11%-VAT-country scenario), the others not — exercises
+// both the "show the tax line" and "no tax line" paths in the same render.
+const MIXED_TAX_PRICES: PricePreviewEntry[] = [
+  { priceId: "pri_starter_month", subtotal: "$60.00", tax: "$6.60", total: "$66.60", rawTax: "660" },
+  { priceId: "pri_pro_month", subtotal: "$29.00", tax: "$0.00", total: "$29.00", rawTax: "0" },
+  { priceId: "pri_advanced_month", subtotal: "$79.00", tax: "$0.00", total: "$79.00", rawTax: "0" },
 ];
 
 const mockPaddleInstance = { PricePreview: mockPricePreview, Checkout: { open: mockCheckoutOpen } };
@@ -185,6 +202,46 @@ describe("PricingTiers — Paddle initialization and price preview", () => {
     await waitFor(() => expect(mockPricePreview).toHaveBeenCalled());
     const [callArgs] = mockPricePreview.mock.calls[0];
     expect(callArgs).not.toHaveProperty("address");
+  });
+});
+
+describe("PricingTiers — tax disclosure", () => {
+  it("renders the subtotal, not the tax-inclusive total, as the headline price", async () => {
+    mockPricePreview.mockResolvedValueOnce(pricePreviewResponse(MIXED_TAX_PRICES));
+    renderTiers();
+
+    const starterCard = await screen.findByTestId("pr-tier-starter");
+    await waitFor(() => {
+      expect(starterCard.querySelector(".pr-tier-amount")).toHaveTextContent("$60.00");
+    });
+  });
+
+  it("shows a tax disclosure line with Paddle's exact tax and total strings when tax is non-zero", async () => {
+    mockPricePreview.mockResolvedValueOnce(pricePreviewResponse(MIXED_TAX_PRICES));
+    renderTiers();
+
+    const starterCard = await screen.findByTestId("pr-tier-starter");
+    await waitFor(() => expect(within(starterCard).getByText("$6.60")).toBeInTheDocument());
+
+    expect(within(starterCard).getByText("$66.60")).toBeInTheDocument();
+    expect(starterCard.textContent).toMatch(/\+\s*\$6\.60\s*tax\s*·\s*\$66\.60\s*total/);
+  });
+
+  it("shows no tax disclosure line when the raw tax is exactly \"0\"", async () => {
+    mockPricePreview.mockResolvedValueOnce(pricePreviewResponse(MIXED_TAX_PRICES));
+    renderTiers();
+
+    const proCard = await screen.findByTestId("pr-tier-pro");
+    await waitFor(() => {
+      expect(proCard.querySelector(".pr-tier-amount")).toHaveTextContent("$29.00");
+    });
+
+    expect(within(proCard).queryByText(/tax/i)).not.toBeInTheDocument();
+  });
+
+  it("never shows a tax line while the price hasn't loaded yet", () => {
+    renderTiers();
+    expect(within(screen.getByTestId("pr-tier-starter")).queryByText(/tax/i)).not.toBeInTheDocument();
   });
 });
 

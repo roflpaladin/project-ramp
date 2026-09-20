@@ -38,11 +38,27 @@ function priceEnvVar(tierId: string, cycle: "MONTH" | "YEAR"): string {
   return `PADDLE_PRICE_${tierId.toUpperCase()}_${cycle}`;
 }
 
+// vitest.config.ts loads .env.local, which (since the founder's real
+// sandbox price IDs landed there) now legitimately sets every
+// PADDLE_PRICE_<TIER>_<CYCLE> var on the real process.env, including
+// _YEAR. Spreading process.env as a base would leak those real values into
+// tests that specifically want a "no yearly price set" env — so every
+// price-ID var this module knows about is explicitly cleared first, then
+// only the ones a given test wants are set back on top.
+function cleanPaddlePriceEnv(): NodeJS.ProcessEnv {
+  const cleared = { ...process.env };
+  for (const id of TIER_IDS) {
+    delete cleared[priceEnvVar(id, "MONTH")];
+    delete cleared[priceEnvVar(id, "YEAR")];
+  }
+  return cleared;
+}
+
 function envWithAllMonthPrices(overrides: Partial<NodeJS.ProcessEnv> = {}): NodeJS.ProcessEnv {
   const monthPrices = Object.fromEntries(
     CHECKOUT_TIER_IDS.map((id) => [priceEnvVar(id, "MONTH"), `pri_${id}_month`]),
   );
-  return { ...process.env, ...VALID_PADDLE_ENV, ...monthPrices, ...overrides } as NodeJS.ProcessEnv;
+  return { ...cleanPaddlePriceEnv(), ...VALID_PADDLE_ENV, ...monthPrices, ...overrides } as NodeJS.ProcessEnv;
 }
 
 function envWithAllYearPrices(base: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
@@ -259,5 +275,73 @@ describe("maxActiveDealsForTier", () => {
 describe("YEARLY_DISCOUNT_NOTE", () => {
   it("is the founder-approved static yearly-savings claim", () => {
     expect(YEARLY_DISCOUNT_NOTE).toBe("2 months free");
+  });
+});
+
+// Founder ruling (post-review, "no claims we can't back"): nothing is
+// actually feature-gated by tier today — the only real difference between
+// Starter/Pro/Advanced is the active-deal cap. Copy must never claim a
+// feature that isn't built (CRM sync, team workspaces, dedicated
+// onboarding, "unlimited" buyer plans as if that were tier-gated) or
+// duplicate the cap label as a bullet (Enterprise).
+describe("getPricingModel — honest, founder-approved tier copy", () => {
+  function tierById(model: ReturnType<typeof getPricingModel>, id: string) {
+    const tier = model.tiers.find((t) => t.id === id);
+    if (!tier) throw new Error(`tier "${id}" not found in model`);
+    return tier;
+  }
+
+  it("Starter: description and feature bullets", () => {
+    const tier = tierById(getPricingModel(envWithAllMonthPrices()), "starter");
+
+    expect(tier.description).toBe("For a seller running their first few deals with buyers.");
+    expect(tier.features).toEqual([
+      "Shared success plans with your buyers",
+      "Buyer portal for every deal",
+      "Import deals from CSV, HubSpot or Salesforce",
+      "Email support",
+    ]);
+  });
+
+  it("Pro: description and feature bullets", () => {
+    const tier = tierById(getPricingModel(envWithAllMonthPrices()), "pro");
+
+    expect(tier.description).toBe("For a seller with a full pipeline.");
+    expect(tier.features).toEqual(["Everything in Starter", "Room for a full pipeline", "Priority email support"]);
+  });
+
+  it("Advanced: description and feature bullets", () => {
+    const tier = tierById(getPricingModel(envWithAllMonthPrices()), "advanced");
+
+    expect(tier.description).toBe("For sellers who never want to think about limits.");
+    expect(tier.features).toEqual([
+      "Everything in Pro",
+      "No limit on active deals",
+      "Onboarding call with our founder",
+    ]);
+  });
+
+  it("Enterprise: no duplicate 'Unlimited active deals' bullet (the cap label already says it)", () => {
+    const tier = tierById(getPricingModel(envWithAllMonthPrices()), "enterprise");
+
+    expect(tier.features).not.toContain("Unlimited active deals");
+  });
+
+  it("never claims a feature that isn't built, across any tier", () => {
+    const model = getPricingModel(envWithAllMonthPrices());
+    const allFeatureText = model.tiers.flatMap((tier) => tier.features).join(" | ");
+
+    for (const unbuiltClaim of [
+      "CRM sync",
+      "Team workspaces",
+      "Dedicated onboarding",
+      "Unlimited buyer plans",
+      "SSO",
+      "SLA",
+      "SOC 2",
+      "audit log",
+    ]) {
+      expect(allFeatureText).not.toMatch(new RegExp(unbuiltClaim, "i"));
+    }
   });
 });

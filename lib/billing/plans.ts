@@ -119,8 +119,13 @@ const TIER_DEFINITIONS: readonly TierDefinition[] = [
     kind: "checkout",
     id: "starter",
     name: "Starter",
-    description: "For a seller running their first few plans with buyers.",
-    features: ["Unlimited buyer plans", "Buyer portal access", "Email support"],
+    description: "For a seller running their first few deals with buyers.",
+    features: [
+      "Shared success plans with your buyers",
+      "Buyer portal for every deal",
+      "Import deals from CSV, HubSpot or Salesforce",
+      "Email support",
+    ],
     isRecommended: false,
     maxActiveDeals: 3,
   },
@@ -128,8 +133,8 @@ const TIER_DEFINITIONS: readonly TierDefinition[] = [
     kind: "checkout",
     id: "pro",
     name: "Pro",
-    description: "For a seller closing deals every week.",
-    features: ["Everything in Starter", "CRM sync (HubSpot, Salesforce)", "Priority support"],
+    description: "For a seller with a full pipeline.",
+    features: ["Everything in Starter", "Room for a full pipeline", "Priority email support"],
     isRecommended: true,
     maxActiveDeals: 8,
   },
@@ -137,8 +142,8 @@ const TIER_DEFINITIONS: readonly TierDefinition[] = [
     kind: "checkout",
     id: "advanced",
     name: "Advanced",
-    description: "For a team running Brava across multiple sellers.",
-    features: ["Everything in Pro", "Team workspaces", "Dedicated onboarding"],
+    description: "For sellers who never want to think about limits.",
+    features: ["Everything in Pro", "No limit on active deals", "Onboarding call with our founder"],
     isRecommended: false,
     maxActiveDeals: null,
   },
@@ -148,7 +153,10 @@ const TIER_DEFINITIONS: readonly TierDefinition[] = [
     name: "Enterprise",
     description: "For organizations that need to buy on their own terms.",
     features: [
-      "Unlimited active deals",
+      // "Unlimited active deals" deliberately NOT repeated here — the
+      // tier's maxActiveDeals: null already renders that as the cap label
+      // (tierCapLabel in pricing-tiers.tsx); a feature bullet would just
+      // duplicate it.
       "Pay by invoice, on an annual contract",
       "Help with your security and vendor review",
       "Onboarding directly with our founder",

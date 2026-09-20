@@ -14,6 +14,20 @@
 // number from a price ID. This component only ever displays what
 // Paddle.PricePreview returned for the price ID actually being charged.
 //
+// Tax fix (post-review): Paddle prices are tax-exclusive, so
+// formattedTotals.total already includes any VAT/sales tax PricePreview
+// calculated for the visitor's country — showing it as the headline number
+// would silently mark up the founder's advertised price (e.g. $60 rendering
+// as $66.60 in an 11%-VAT country). The headline is therefore
+// formattedTotals.subtotal (the pre-tax price that matches what's
+// advertised), with formattedTotals.tax/.total disclosed on a small
+// secondary line — verbatim, still no math — ONLY when tax applies, so the
+// number a visitor sees on this page still matches what Paddle's own
+// checkout charges them. Whether tax applies is decided from the RAW
+// (unformatted) lineItem.totals.tax string, not the formatted one — a
+// formatted "$0.00" still contains a currency symbol, so only the raw value
+// is safe to compare against "0".
+//
 // Enterprise (kind: "contact") is a second founder amendment: it is
 // invoiced directly, never sold through Paddle, so it never contributes a
 // price ID to the PricePreview request, never opens Checkout, and its
@@ -63,15 +77,29 @@ function isCheckoutTier(tier: Tier): tier is CheckoutTier {
   return tier.kind === "checkout";
 }
 
+/** The three Paddle-formatted strings for one tier's current price, plus
+ * whether tax applies (decided from the RAW totals.tax string at fetch
+ * time — see the file header comment). All three strings render verbatim,
+ * exactly as Paddle returned them; nothing here is computed. */
+export interface TierPriceDetails {
+  readonly subtotal: string;
+  readonly tax: string;
+  readonly total: string;
+  readonly hasTax: boolean;
+}
+
 interface TierPriceProps {
   tier: Tier;
-  price: string | undefined;
+  priceDetails: TierPriceDetails | undefined;
   billingCycle: BillingCycle;
 }
 
 /** Enterprise (kind: "contact") always shows "Custom" — never a Paddle
- * price, never affected by the monthly/yearly toggle. */
-function TierPrice({ tier, price, billingCycle }: TierPriceProps) {
+ * price, never affected by the monthly/yearly toggle. For a checkout tier,
+ * the headline is the pre-tax subtotal (matches the advertised price); the
+ * tax-inclusive total is disclosed on its own line, only when tax applies,
+ * so it still matches what Paddle's checkout actually charges. */
+function TierPrice({ tier, priceDetails, billingCycle }: TierPriceProps) {
   if (tier.kind === "contact") {
     return (
       <p className="pr-tier-price">
@@ -81,14 +109,22 @@ function TierPrice({ tier, price, billingCycle }: TierPriceProps) {
   }
 
   return (
-    <p className="pr-tier-price">
-      {price ? (
-        <span className="pr-tier-amount pr-mono">{price}</span>
-      ) : (
-        <span className="pr-tier-amount pr-tier-amount--loading">Loading price…</span>
-      )}
-      <span className="pr-tier-period">/ {billingCycle === "year" ? "year" : "month"}</span>
-    </p>
+    <>
+      <p className="pr-tier-price">
+        {priceDetails ? (
+          <span className="pr-tier-amount pr-mono">{priceDetails.subtotal}</span>
+        ) : (
+          <span className="pr-tier-amount pr-tier-amount--loading">Loading price…</span>
+        )}
+        <span className="pr-tier-period">/ {billingCycle === "year" ? "year" : "month"}</span>
+      </p>
+      {priceDetails?.hasTax ? (
+        <p className="pr-tier-tax-note">
+          + <span className="pr-mono">{priceDetails.tax}</span> tax · <span className="pr-mono">{priceDetails.total}</span>{" "}
+          total
+        </p>
+      ) : null}
+    </>
   );
 }
 
@@ -147,7 +183,7 @@ export function PricingTiers({
   const { resolvedTheme } = useTheme();
   const [paddle, setPaddle] = useState<Paddle | null>(null);
   const [billingCycle, setBillingCycle] = useState<BillingCycle>("month");
-  const [formattedTotals, setFormattedTotals] = useState<Readonly<Record<string, string>>>({});
+  const [priceDetailsByTier, setPriceDetailsByTier] = useState<Readonly<Record<string, TierPriceDetails>>>({});
   const [hasPriceError, setHasPriceError] = useState(false);
 
   useEffect(() => {
@@ -191,12 +227,21 @@ export function PricingTiers({
       })
       .then((response) => {
         if (isCancelled) return;
-        const next: Record<string, string> = {};
+        const next: Record<string, TierPriceDetails> = {};
         for (const lineItem of response.data.details.lineItems) {
           const match = priceItems.find((item) => item.priceId === lineItem.price.id);
-          if (match) next[match.tierId] = lineItem.formattedTotals.total;
+          if (match) {
+            next[match.tierId] = {
+              subtotal: lineItem.formattedTotals.subtotal,
+              tax: lineItem.formattedTotals.tax,
+              total: lineItem.formattedTotals.total,
+              // Raw, unformatted comparison — see the file header comment on
+              // why formattedTotals.tax ("$0.00") can't be compared to "0".
+              hasTax: lineItem.totals.tax !== "0",
+            };
+          }
         }
-        setFormattedTotals(next);
+        setPriceDetailsByTier(next);
         setHasPriceError(false);
       })
       .catch(() => {
@@ -268,8 +313,8 @@ export function PricingTiers({
       <ul className="pr-tier-grid">
         {tiers.map((tier) => {
           const priceId = tier.kind === "checkout" ? priceIdFor(tier, billingCycle) : null;
-          const price = formattedTotals[tier.id];
-          const isReady = tier.kind === "checkout" && paddle !== null && priceId !== null && price !== undefined;
+          const priceDetails = priceDetailsByTier[tier.id];
+          const isReady = tier.kind === "checkout" && paddle !== null && priceId !== null && priceDetails !== undefined;
 
           const isRecommended = tier.kind === "checkout" && tier.isRecommended;
 
@@ -284,7 +329,7 @@ export function PricingTiers({
               <h3 className="pr-tier-name">{tier.name}</h3>
               <p className="pr-tier-description">{tier.description}</p>
 
-              <TierPrice tier={tier} price={price} billingCycle={billingCycle} />
+              <TierPrice tier={tier} priceDetails={priceDetails} billingCycle={billingCycle} />
               <p className="pr-tier-cap">{tierCapLabel(tier.maxActiveDeals)}</p>
 
               <ul className="pr-tier-features">
