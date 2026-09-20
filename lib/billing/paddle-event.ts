@@ -36,6 +36,21 @@ export const HANDLED_EVENT_TYPES: readonly string[] = [
   "subscription.canceled",
 ];
 
+/**
+ * T59 slice 2. Paddle's fulfillment brief also requires handlers for these
+ * three — but NOT as a source of entitlement. subscription.* above remains
+ * the only thing that can ever change tenant_subscriptions; these are
+ * recorded (for support visibility, idempotently, same as every other
+ * event) and otherwise ignored. Checked before HANDLED_EVENT_TYPES in
+ * parsePaddleEvent so a body carrying one of these never falls through to
+ * subscription parsing (they have no `items`/subscription shape at all).
+ */
+export const RECORD_ONLY_EVENT_TYPES: readonly string[] = [
+  "transaction.completed",
+  "customer.created",
+  "customer.updated",
+];
+
 export interface PaddleScheduledChange {
   readonly action: string;
   readonly effectiveAt: string | null;
@@ -60,8 +75,18 @@ export interface PaddleSubscriptionEvent {
   readonly subscription: PaddleSubscriptionPayload;
 }
 
+/** T59 slice 2 — just enough of transaction.completed/customer.* to record
+ * them in paddle_webhook_events; no subscription/customer detail is parsed
+ * out of them because nothing downstream is allowed to act on it. */
+export interface PaddleRecordOnlyEvent {
+  readonly eventId: string;
+  readonly eventType: string;
+  readonly occurredAt: string;
+}
+
 export type ParsedPaddleEvent =
   | { readonly kind: "subscription"; readonly event: PaddleSubscriptionEvent }
+  | { readonly kind: "recordOnly"; readonly event: PaddleRecordOnlyEvent }
   | { readonly kind: "unhandled"; readonly eventType: string }
   | { readonly kind: "invalid"; readonly reason: string };
 
@@ -133,16 +158,42 @@ function parseSubscriptionPayload(
   };
 }
 
+/** Shared by both event lanes — a missing/unparsable event_id or
+ * occurred_at is equally invalid whether the body turns out to be a
+ * subscription event or a record-only one. */
+function parseEventEnvelope(
+  body: Record<string, unknown>,
+): { readonly ok: true; readonly eventId: string; readonly occurredAt: string } | { readonly ok: false; readonly reason: string } {
+  const eventId = readString(body.event_id);
+  if (!eventId) return { ok: false, reason: "missing_event_id" };
+
+  const occurredAt = readString(body.occurred_at);
+  if (!occurredAt || !isParsableTimestamp(occurredAt)) return { ok: false, reason: "missing_occurred_at" };
+
+  return { ok: true, eventId, occurredAt };
+}
+
 /**
- * Three-way verdict so the caller can answer each case correctly: process
- * it, 2xx-and-move-on (an event type we never subscribed to, or one Paddle
- * added later), or 400 (a body that is not a Paddle event at all).
+ * Four-way verdict so the caller can answer each case correctly: process a
+ * subscription event, record-and-ignore a non-entitlement one, 2xx-and-
+ * move-on (an event type we never subscribed to at all), or 400 (a body
+ * that is not a Paddle event).
  */
 export function parsePaddleEvent(body: unknown): ParsedPaddleEvent {
   if (!isRecord(body)) return { kind: "invalid", reason: "body_not_an_object" };
 
   const eventType = readString(body.event_type);
   if (!eventType) return { kind: "invalid", reason: "missing_event_type" };
+
+  if (RECORD_ONLY_EVENT_TYPES.includes(eventType)) {
+    const envelope = parseEventEnvelope(body);
+    if (!envelope.ok) return { kind: "invalid", reason: envelope.reason };
+    return {
+      kind: "recordOnly",
+      event: Object.freeze({ eventId: envelope.eventId, eventType, occurredAt: envelope.occurredAt }),
+    };
+  }
+
   if (!HANDLED_EVENT_TYPES.includes(eventType)) return { kind: "unhandled", eventType };
 
   const eventId = readString(body.event_id);

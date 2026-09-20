@@ -18,6 +18,7 @@
 //     module never reads scheduledChange at all.
 
 import { FREE_TIER_ACTIVE_DEALS, maxActiveDealsForTier } from "./plans";
+import type { PaddleSubscriptionStatus } from "./paddle-event";
 import type { SubscriptionState } from "./subscription-reducer";
 
 /** Not a tier in TIER_DEFINITIONS — the absence of a paid plan. */
@@ -130,4 +131,26 @@ export function resolveEntitlement(subscription: SubscriptionState | null, now: 
   // paused or canceled — back to free. Existing deals are untouched by this
   // (nothing here deletes or hides anything); only new ones are capped.
   return freeEntitlement();
+}
+
+/**
+ * T59 slice 2. Paddle subscription statuses that mean "there is a real,
+ * still-open subscription record in Paddle" — used by the checkout lane
+ * (app/pricing/checkout-actions.ts must never let a tenant open a SECOND
+ * Paddle checkout while one of these is true) and by /pricing's own
+ * current-plan / change-plan rendering. Deliberately broader than "the
+ * tenant is currently entitled to a paid tier": resolveEntitlement above
+ * already sends 'paused' back to the free tier, but a paused subscription is
+ * still a live Paddle record the tenant must manage in Paddle's portal, not
+ * restart via a second checkout.
+ */
+export const LIVE_SUBSCRIPTION_STATUSES: readonly PaddleSubscriptionStatus[] = Object.freeze([
+  "active",
+  "trialing",
+  "past_due",
+  "paused",
+]);
+
+export function hasLiveSubscription(subscription: SubscriptionState | null): boolean {
+  return subscription !== null && LIVE_SUBSCRIPTION_STATUSES.includes(subscription.status);
 }

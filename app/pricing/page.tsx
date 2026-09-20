@@ -2,8 +2,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
+import { hasLiveSubscription, resolveEntitlement } from "@/lib/billing/entitlement";
 import { getPricingModel } from "@/lib/billing/plans";
 import { resolveVercelCountryCode } from "@/lib/billing/country";
+import { findByTenantId } from "@/lib/billing/subscription-repository";
 import { requireSeller } from "@/lib/plans/require-seller";
 import { MarketingFooterNav } from "@/components/marketing/marketing-footer-nav";
 import { PricingTiers } from "./pricing-tiers";
@@ -40,6 +42,13 @@ const COUNTRY_HEADER_NAME = "x-vercel-ip-country";
  * side, per Vercel's own x-vercel-ip-country convention) and normalised by
  * resolveVercelCountryCode before ever reaching the client bundle, so no
  * internal "unknown" sentinel can leak into a Paddle.PricePreview call.
+ *
+ * No double-billing (T59 slice 2): also resolves the tenant's stored
+ * subscription (if any) so PricingTiers can render "Current plan" /
+ * "Change plan in billing" instead of a second Subscribe button — see
+ * pricing-tiers.tsx's own header for the full state table. Only these three
+ * derived, non-sensitive booleans/ids cross the server/client boundary,
+ * never the subscription row itself.
  */
 export default async function PricingPage() {
   const pricing = getPricingModel();
@@ -49,6 +58,12 @@ export default async function PricingPage() {
 
   const [headerList, seller] = await Promise.all([headers(), requireSeller()]);
   const countryCode = resolveVercelCountryCode(headerList.get(COUNTRY_HEADER_NAME));
+
+  const subscription = seller?.tenantId ? await findByTenantId(seller.tenantId) : null;
+  const entitlement = resolveEntitlement(subscription, new Date());
+  const isManualTenant = entitlement.source === "manual";
+  const isLiveSubscription = hasLiveSubscription(subscription);
+  const currentTierId = isLiveSubscription && subscription ? subscription.tierId : null;
 
   return (
     <main data-surface="pricing" data-testid="pricing-page" className="pr-page">
@@ -75,6 +90,9 @@ export default async function PricingPage() {
         paddleClientToken={pricing.paddle.clientToken}
         countryCode={countryCode}
         signedInEmail={seller?.email ?? null}
+        currentTierId={currentTierId}
+        hasLiveSubscription={isLiveSubscription}
+        isManualTenant={isManualTenant}
       />
 
       <MarketingFooterNav isPricingPublishable={pricing.isPublishable} />

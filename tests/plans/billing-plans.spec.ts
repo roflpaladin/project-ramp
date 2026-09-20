@@ -25,6 +25,7 @@ import {
   FREE_TIER_ACTIVE_DEALS,
   getPricingModel,
   maxActiveDealsForTier,
+  tierNameForId,
   TIER_IDS,
   YEARLY_DISCOUNT_NOTE,
 } from "@/lib/billing/plans";
@@ -269,6 +270,25 @@ describe("maxActiveDealsForTier", () => {
 
   it("returns undefined for an unknown tier id, never throwing", () => {
     expect(maxActiveDealsForTier("nonexistent-tier")).toBeUndefined();
+  });
+});
+
+// T59 slice 2 — app/settings/billing's plan-name display reads this rather
+// than duplicating the founder-editable tier names above a second time.
+describe("tierNameForId", () => {
+  it("returns the founder-editable display name for each known tier", () => {
+    expect(tierNameForId("starter")).toBe("Starter");
+    expect(tierNameForId("pro")).toBe("Pro");
+    expect(tierNameForId("advanced")).toBe("Advanced");
+    expect(tierNameForId("enterprise")).toBe("Enterprise");
+  });
+
+  it("returns undefined for the free tier — callers handle it themselves", () => {
+    expect(tierNameForId("free")).toBeUndefined();
+  });
+
+  it("returns undefined for an unknown tier id, never throwing", () => {
+    expect(tierNameForId("nonexistent-tier")).toBeUndefined();
   });
 });
 

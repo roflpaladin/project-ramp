@@ -15,7 +15,7 @@
 import { describe, expect, it } from "vitest";
 
 import { FREE_TIER_ACTIVE_DEALS } from "@/lib/billing/plans";
-import { FREE_TIER_ID, PAST_DUE_GRACE_DAYS, resolveEntitlement } from "@/lib/billing/entitlement";
+import { FREE_TIER_ID, LIVE_SUBSCRIPTION_STATUSES, PAST_DUE_GRACE_DAYS, hasLiveSubscription, resolveEntitlement } from "@/lib/billing/entitlement";
 import type { SubscriptionState } from "@/lib/billing/subscription-reducer";
 
 const NOW = new Date("2026-09-20T12:00:00.000Z");
@@ -284,5 +284,26 @@ describe("resolveEntitlement — canStartNewDeal at each tier limit", () => {
     expect(entitlement.maxActiveDeals).toBeNull();
     expect(entitlement.canStartNewDeal(0)).toBe(true);
     expect(entitlement.canStartNewDeal(10_000)).toBe(true);
+  });
+});
+
+// T59 slice 2 — used by app/pricing/checkout-actions.ts (refuse a second
+// checkout) and app/pricing/page.tsx (current-plan/change-plan rendering).
+// Deliberately broader than "is this tenant entitled to a paid tier right
+// now": a PAUSED subscription already resolves to the free tier above, but
+// is still a live Paddle record a tenant must manage in the portal.
+describe("hasLiveSubscription", () => {
+  it("is false when the tenant has never subscribed", () => {
+    expect(hasLiveSubscription(null)).toBe(false);
+  });
+
+  for (const status of LIVE_SUBSCRIPTION_STATUSES) {
+    it(`is true for status "${status}"`, () => {
+      expect(hasLiveSubscription(subscription({ status }))).toBe(true);
+    });
+  }
+
+  it("is false for a canceled subscription", () => {
+    expect(hasLiveSubscription(subscription({ status: "canceled" }))).toBe(false);
   });
 });

@@ -10,6 +10,11 @@ import "./welcome.css";
 // scope) is what actually flips the tenant's plan, and that can happen a
 // few seconds after the overlay closes. Claiming "your plan is active" here
 // would be a lie the moment the webhook hasn't landed yet.
+//
+// T59 slice 2 adds a secondary "View your plan" link to the new
+// app/settings/billing page, alongside (never replacing) the existing
+// workspace link — plain/secondary styling, never Signal: "Go to your
+// workspace" remains this page's one Signal-styled action.
 export const metadata: Metadata = {
   title: "Welcome — Brava",
   description: "Your Brava subscription is being activated.",
@@ -25,9 +30,14 @@ export default function WelcomePage() {
           Your payment went through. We&apos;re finishing activation on our side, which usually takes just a
           moment — your plan will unlock automatically as soon as it&apos;s done.
         </p>
-        <Link href="/admin" className="wc-btn wc-btn-primary" data-signal="true">
-          Go to your workspace
-        </Link>
+        <div className="wc-actions">
+          <Link href="/admin" className="wc-btn wc-btn-primary" data-signal="true">
+            Go to your workspace
+          </Link>
+          <Link href="/settings/billing" className="wc-btn wc-btn-secondary">
+            View your plan
+          </Link>
+        </div>
       </div>
     </main>
   );

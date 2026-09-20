@@ -121,20 +121,73 @@ describe("parsePaddleEvent — well-formed subscription events", () => {
 });
 
 describe("parsePaddleEvent — events we do not handle", () => {
-  it("reports a transaction event as unhandled rather than invalid", () => {
-    // Act
-    const parsed = parsePaddleEvent(rawEvent({ event_type: "transaction.completed" }));
-
-    // Assert
-    expect(parsed).toEqual({ kind: "unhandled", eventType: "transaction.completed" });
-  });
-
   it("reports an unknown subscription sub-type as unhandled", () => {
     // Act
     const parsed = parsePaddleEvent(rawEvent({ event_type: "subscription.imported" }));
 
     // Assert
     expect(parsed.kind).toBe("unhandled");
+  });
+
+  it("reports an event type Paddle might add later as unhandled", () => {
+    // Act
+    const parsed = parsePaddleEvent(rawEvent({ event_type: "payout.created" }));
+
+    // Assert
+    expect(parsed).toEqual({ kind: "unhandled", eventType: "payout.created" });
+  });
+});
+
+// T59 slice 2 — Paddle's fulfillment brief requires handlers for these three,
+// but never as a source of entitlement: they are recorded (for support
+// visibility, through the same idempotent gate) and otherwise ignored.
+// subscription.* remains the only thing that can change tenant_subscriptions.
+describe("parsePaddleEvent — record-only events (never entitlement-bearing)", () => {
+  const RECORD_ONLY_TYPES = ["transaction.completed", "customer.created", "customer.updated"] as const;
+
+  for (const eventType of RECORD_ONLY_TYPES) {
+    it(`maps a well-formed ${eventType} body onto the record-only shape`, () => {
+      // Act
+      const parsed = parsePaddleEvent(rawEvent({ event_type: eventType }));
+
+      // Assert
+      expect(parsed).toEqual({
+        kind: "recordOnly",
+        event: { eventId: "evt_1", eventType, occurredAt: "2026-09-20T10:00:00.000Z" },
+      });
+    });
+
+    it(`never parses any subscription/customer detail out of a ${eventType} body`, () => {
+      // Act
+      const parsed = parsePaddleEvent(rawEvent({ event_type: eventType }));
+
+      // Assert
+      expect(parsed.kind === "recordOnly" && Object.keys(parsed.event)).toEqual(["eventId", "eventType", "occurredAt"]);
+    });
+  }
+
+  it("rejects a record-only event missing event_id", () => {
+    const parsed = parsePaddleEvent(rawEvent({ event_type: "transaction.completed", event_id: undefined }));
+    expect(parsed).toEqual({ kind: "invalid", reason: "missing_event_id" });
+  });
+
+  it("rejects a record-only event with an unparsable occurred_at", () => {
+    const parsed = parsePaddleEvent(
+      rawEvent({ event_type: "customer.created", occurred_at: "not-a-timestamp" }),
+    );
+    expect(parsed).toEqual({ kind: "invalid", reason: "missing_occurred_at" });
+  });
+
+  it("never falls through to subscription parsing for a record-only type, even with a malformed data payload", () => {
+    // customer.updated bodies don't carry a subscription `data.id`/`status`
+    // shape at all — this must still parse successfully as recordOnly.
+    const parsed = parsePaddleEvent({
+      event_id: "evt_2",
+      event_type: "customer.updated",
+      occurred_at: "2026-09-20T10:00:00.000Z",
+      data: { id: "ctm_1", email: "buyer@example.com" },
+    });
+    expect(parsed.kind).toBe("recordOnly");
   });
 });
 

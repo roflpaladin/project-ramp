@@ -9,15 +9,22 @@
 //   2. Body larger than MAX_BODY_BYTES      -> 413, before any hashing.
 //   3. Missing/invalid Paddle-Signature     -> 401, nothing processed.
 //   4. Body that isn't a Paddle event       -> 400.
-//   5. Event type we don't handle           -> 200 immediately, no work.
+//   5. Event type we don't handle at all    -> 200 immediately, no work.
 //   6. event_id already processed to a
 //      terminal outcome                     -> 200, no work (idempotent).
 //      An event logged but never finished is REPROCESSED instead.
 //   7. A tenant we cannot resolve from a
 //      SERVER-ISSUED reference or a stored
 //      subscription id                      -> 200, nothing granted.
-//   8. Anything thrown while processing     -> event marked failed, 500, so
+//   8. Anything thrown while processing a
+//      subscription.* event                 -> event marked failed, 500, so
 //      Paddle retries and the retry does the work.
+//
+// T59 slice 2 adds a second, deliberately lower-stakes lane:
+// transaction.completed / customer.created / customer.updated are recorded
+// (same idempotent gate, outcome 'ignored'/'recorded_only') for support
+// visibility, but NEVER touch tenant_subscriptions and never turn a failure
+// into a 500 — see handleRecordOnlyEvent's own comment for why.
 //
 // The raw body text is read ONCE and used verbatim for verification — a
 // re-serialised JSON.stringify of a parsed object does not reproduce
@@ -34,7 +41,7 @@
 
 import { NextResponse } from "next/server";
 
-import { parsePaddleEvent, type PaddleSubscriptionEvent } from "@/lib/billing/paddle-event";
+import { parsePaddleEvent, type PaddleRecordOnlyEvent, type PaddleSubscriptionEvent } from "@/lib/billing/paddle-event";
 import { getPaddleWebhookSecret } from "@/lib/billing/paddle-server-env";
 import { PADDLE_SIGNATURE_HEADER, verifyPaddleSignature } from "@/lib/billing/paddle-signature";
 import { processSubscriptionEvent } from "@/lib/billing/process-subscription-event";
@@ -92,6 +99,37 @@ async function markFailedBestEffort(eventId: string): Promise<void> {
   }
 }
 
+/**
+ * T59 slice 2 — transaction.completed / customer.created / customer.updated.
+ * Recorded through the SAME idempotent gate as a subscription event, with a
+ * terminal outcome of 'ignored'/'recorded_only' — but never touches
+ * tenant_subscriptions (subscription.* above remains the only source of
+ * plan state) and, unlike handleSubscriptionEvent, never turns a failure
+ * into a 500: these carry no entitlement, so there is no unprovisioned
+ * customer at risk, and a DB hiccup recording one must never trigger a
+ * Paddle retry storm. Always 2xx once the signature has verified.
+ */
+async function handleRecordOnlyEvent(event: PaddleRecordOnlyEvent, payload: unknown): Promise<Response> {
+  try {
+    const recorded = await recordEvent({
+      eventId: event.eventId,
+      eventType: event.eventType,
+      occurredAt: event.occurredAt,
+      payload,
+    });
+    if (recorded !== "duplicate") {
+      await markEventOutcome(event.eventId, "ignored", "recorded_only");
+    }
+  } catch (error) {
+    console.error(`${LOG_PREFIX} failed to record a non-entitlement event:`, {
+      eventId: event.eventId,
+      eventType: event.eventType,
+      message: error instanceof Error ? error.message : "unknown error",
+    });
+  }
+  return ok();
+}
+
 async function handleSubscriptionEvent(event: PaddleSubscriptionEvent, payload: unknown): Promise<Response> {
   try {
     const recorded = await recordEvent({
@@ -133,25 +171,31 @@ async function handleSubscriptionEvent(event: PaddleSubscriptionEvent, payload: 
   }
 }
 
-export async function POST(request: Request): Promise<Response> {
+type VerifiedBody = { readonly ok: true; readonly body: unknown } | { readonly ok: false; readonly response: Response };
+
+/** Everything that happens before we trust the bytes at all: secret
+ * configured, size within bound (checked twice — the declared
+ * Content-Length, then the bytes actually read), signature genuine, body is
+ * JSON. Split out of POST so the handler itself stays a short dispatch. */
+async function readVerifiedBody(request: Request): Promise<VerifiedBody> {
   const secret = getPaddleWebhookSecret();
   if (!secret) {
     // Answered as 401, exactly like a bad signature: an unauthenticated
     // prober must not be able to tell a misconfigured billing webhook from
     // a rejected forgery. The real reason goes to the server log.
     console.error(`${LOG_PREFIX} PADDLE_WEBHOOK_SECRET is not set — refusing to process any event`);
-    return failure(401, UNAUTHORIZED_MESSAGE);
+    return { ok: false, response: failure(401, UNAUTHORIZED_MESSAGE) };
   }
 
   if (isDeclaredBodyTooLarge(request)) {
     console.error(`${LOG_PREFIX} refused an oversized body before reading it`);
-    return failure(413, BODY_TOO_LARGE_MESSAGE);
+    return { ok: false, response: failure(413, BODY_TOO_LARGE_MESSAGE) };
   }
 
   const rawBody = await request.text();
   if (Buffer.byteLength(rawBody, "utf8") > MAX_BODY_BYTES) {
     console.error(`${LOG_PREFIX} refused an oversized body after reading it`);
-    return failure(413, BODY_TOO_LARGE_MESSAGE);
+    return { ok: false, response: failure(413, BODY_TOO_LARGE_MESSAGE) };
   }
 
   const verification = verifyPaddleSignature({
@@ -161,27 +205,30 @@ export async function POST(request: Request): Promise<Response> {
   });
   if (!verification.ok) {
     console.error(`${LOG_PREFIX} rejected an unverified request:`, { reason: verification.reason });
-    return failure(401, UNAUTHORIZED_MESSAGE);
+    return { ok: false, response: failure(401, UNAUTHORIZED_MESSAGE) };
   }
 
-  let body: unknown;
   try {
-    body = JSON.parse(rawBody);
+    return { ok: true, body: JSON.parse(rawBody) };
   } catch {
     console.error(`${LOG_PREFIX} verified request carried a body that is not JSON`);
-    return failure(400, INVALID_BODY_MESSAGE);
+    return { ok: false, response: failure(400, INVALID_BODY_MESSAGE) };
   }
+}
 
-  const parsed = parsePaddleEvent(body);
+export async function POST(request: Request): Promise<Response> {
+  const verified = await readVerifiedBody(request);
+  if (!verified.ok) return verified.response;
+
+  const parsed = parsePaddleEvent(verified.body);
   if (parsed.kind === "invalid") {
     console.error(`${LOG_PREFIX} rejected a malformed event:`, { reason: parsed.reason });
     return failure(400, INVALID_BODY_MESSAGE);
   }
-  if (parsed.kind === "unhandled") {
-    // Subscribing to extra event types in the Paddle dashboard must never
-    // cost us a retry storm — acknowledge and move on.
-    return ok();
-  }
+  // Subscribing to extra event types in the Paddle dashboard must never cost
+  // us a retry storm — acknowledge and move on.
+  if (parsed.kind === "unhandled") return ok();
+  if (parsed.kind === "recordOnly") return handleRecordOnlyEvent(parsed.event, verified.body);
 
-  return handleSubscriptionEvent(parsed.event, body);
+  return handleSubscriptionEvent(parsed.event, verified.body);
 }
