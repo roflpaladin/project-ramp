@@ -1,0 +1,369 @@
+/* Public pricing page (Sprint 12, Ticket 67 — Paddle onboarding step 1,
+   "build your pricing page"; founder scope amendment folded in the same
+   pass — Paddle overlay checkout, three tiers). Same layering choice as
+   every sibling public surface (landing.css, legal.css): theme layered,
+   utilities unlayered so class specificity beats globals.css's plain
+   element selectors. Brand colour comes entirely from the Ramp tokens
+   defined globally in app/globals.css — no raw hex anywhere in this file.
+
+   Font family + spacing rhythm match landing.css exactly (Geist stack,
+   2/4/8/12/16/24/32/48/64/96 scale) — this page is landing.css's sibling,
+   not a new design language. Numbers (prices, active-deal counts) use the
+   .pr-mono class, matching every other Geist Mono usage in the app (see
+   e.g. app/landing.css's .lp-value-index, crm-forecast-strip.css). */
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css";
+
+[data-surface="pricing"] {
+  min-height: 100dvh;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: "Geist", "Inter", system-ui, -apple-system, sans-serif;
+  font-weight: 400;
+}
+
+[data-surface="pricing"] .pr-mono {
+  font-family: "Geist Mono", "SFMono-Regular", ui-monospace, monospace;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-surface="pricing"] * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+/* ---- page shell --------------------------------------------------------- */
+
+[data-surface="pricing"] .pr-page {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 64px 24px 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 64px;
+}
+
+[data-surface="pricing"] .pr-header {
+  display: flex;
+}
+
+[data-surface="pricing"] .pr-mark {
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+/* ---- hero ---------------------------------------------------------------- */
+
+[data-surface="pricing"] .pr-hero {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 640px;
+}
+
+[data-surface="pricing"] .pr-kicker {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: var(--slate);
+}
+
+[data-surface="pricing"] .pr-headline {
+  margin: 0;
+  font-size: 32px;
+  line-height: 38px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+[data-surface="pricing"] .pr-subline {
+  margin: 0;
+  font-size: 16px;
+  line-height: 24px;
+  color: var(--slate);
+  max-width: 60ch;
+}
+
+/* ---- plans header (title + monthly/yearly toggle) ------------------------ */
+
+[data-surface="pricing"] .pr-plans {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+[data-surface="pricing"] .pr-plans-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+[data-surface="pricing"] .pr-section-title {
+  margin: 0;
+  font-size: 24px;
+  line-height: 30px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+[data-surface="pricing"] .pr-cycle-toggle-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+[data-surface="pricing"] .pr-cycle-toggle {
+  display: inline-flex;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--mist);
+  gap: 4px;
+}
+
+[data-surface="pricing"] .pr-cycle-note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--slate);
+}
+
+[data-surface="pricing"] .pr-cycle-btn {
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--slate);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 6px 14px;
+  cursor: pointer;
+}
+[data-surface="pricing"] .pr-cycle-btn[aria-pressed="true"] {
+  background: var(--paper);
+  color: var(--ink);
+  font-weight: 600;
+}
+[data-surface="pricing"] .pr-cycle-btn:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+
+[data-surface="pricing"] .pr-price-error {
+  margin: 0;
+  padding: 12px 16px;
+  border-radius: 10px;
+  background: var(--wash-risk);
+  color: var(--state-risk);
+  font-size: 14px;
+  line-height: 21px;
+}
+
+/* ---- tier cards ------------------------------------------------------ */
+
+[data-surface="pricing"] .pr-tier-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 24px;
+}
+
+[data-surface="pricing"] .pr-tier-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--paper);
+}
+[data-surface="pricing"] .pr-tier-card[data-recommended="true"] {
+  border-color: var(--ink);
+}
+
+[data-surface="pricing"] .pr-tier-badge {
+  margin: 0;
+  align-self: flex-start;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--mist);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+[data-surface="pricing"] .pr-tier-name {
+  margin: 0;
+  font-size: 18px;
+  line-height: 24px;
+  font-weight: 600;
+}
+
+[data-surface="pricing"] .pr-tier-description {
+  margin: 0;
+  font-size: 14px;
+  line-height: 21px;
+  color: var(--slate);
+}
+
+/* Wraps .pr-tier-price + .pr-tier-tax-note in a single aria-live="polite"
+   region (screen readers announce the price resolving/changing — see
+   pricing-tiers.tsx's TierPrice) without becoming a layout box of its own,
+   so .pr-tier-card's flex column still lays out its children exactly as if
+   this wrapper weren't there. */
+[data-surface="pricing"] .pr-tier-price-live {
+  display: contents;
+}
+
+[data-surface="pricing"] .pr-tier-price {
+  margin: 4px 0 0;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+[data-surface="pricing"] .pr-tier-amount {
+  font-size: 28px;
+  line-height: 34px;
+  font-weight: 600;
+}
+[data-surface="pricing"] .pr-tier-amount--loading {
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--slate);
+}
+
+[data-surface="pricing"] .pr-tier-period {
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--slate);
+}
+
+/* Tax disclosure line — same muted/secondary token as .pr-tier-period, only
+   rendered when Paddle's raw (unformatted) line-item tax isn't "0" (see
+   pricing-tiers.tsx's TierPrice). --slate on --paper already clears the
+   4.5:1 body-text contrast floor in both themes (same pairing as every
+   other secondary-text usage on this page, e.g. .pr-tier-description). */
+[data-surface="pricing"] .pr-tier-tax-note {
+  margin: -4px 0 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--slate);
+}
+
+[data-surface="pricing"] .pr-tier-cap {
+  margin: 0;
+  font-size: 14px;
+  line-height: 21px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+[data-surface="pricing"] .pr-tier-features {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+}
+[data-surface="pricing"] .pr-tier-features li {
+  padding-left: 20px;
+  position: relative;
+  font-size: 14px;
+  line-height: 21px;
+  color: var(--ink);
+}
+[data-surface="pricing"] .pr-tier-features li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 8px;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--slate);
+}
+
+/* ---- buttons: primary (the one recommended-tier Signal action) /
+   secondary (every other tier) — same shape/tokens as
+   app/admin/onboarding/onboarding.css's .ob-btn family. */
+
+[data-surface="pricing"] .pr-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 40px;
+  padding: 0 16px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  text-decoration: none;
+  margin-top: auto;
+  transition:
+    background-color 0.12s cubic-bezier(0.2, 0, 0, 1),
+    border-color 0.12s cubic-bezier(0.2, 0, 0, 1);
+}
+[data-surface="pricing"] .pr-btn:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+[data-surface="pricing"] .pr-btn:disabled {
+  cursor: not-allowed;
+}
+
+[data-surface="pricing"] .pr-btn-primary {
+  background: var(--signal);
+  border-color: var(--signal);
+  color: var(--signal-fg);
+}
+[data-surface="pricing"] .pr-btn-primary:hover:not(:disabled) {
+  background: var(--signal-hover);
+  border-color: var(--signal-hover);
+}
+[data-surface="pricing"] .pr-btn-primary:active:not(:disabled) {
+  background: var(--signal-press);
+  border-color: var(--signal-press);
+}
+[data-surface="pricing"] .pr-btn-primary:disabled {
+  background: var(--mist);
+  border-color: var(--mist);
+  color: var(--slate);
+}
+
+[data-surface="pricing"] .pr-btn-secondary {
+  background: var(--paper);
+  border-color: var(--line);
+  color: var(--ink);
+}
+[data-surface="pricing"] .pr-btn-secondary:hover:not(:disabled) {
+  background: var(--mist);
+}
+[data-surface="pricing"] .pr-btn-secondary:disabled {
+  background: var(--mist);
+  border-color: var(--mist);
+  color: var(--slate);
+}
+
+@media (max-width: 480px) {
+  [data-surface="pricing"] .pr-page {
+    padding: 32px 16px 48px;
+  }
+}

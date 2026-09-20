@@ -1,0 +1,27 @@
+/* Shared marketing nav+footer (Sprint 12, Ticket 67 — Paddle onboarding
+   step 1). Scoped by its own class, not a data-surface attribute, so it
+   drops cleanly into any page (currently just /pricing — see the ticket
+   report). Same tokens/shape as app/landing.css's .lp-footer-nav; no raw
+   hex, both themes ship via app/globals.css's custom properties. */
+.mkt-footer-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding-top: 32px;
+  border-top: 1px solid var(--line);
+}
+
+.mkt-footer-nav a {
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--slate);
+  text-decoration: none;
+}
+.mkt-footer-nav a:hover {
+  color: var(--ink);
+  text-decoration: underline;
+}
+.mkt-footer-nav a:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}

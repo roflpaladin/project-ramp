@@ -1,0 +1,78 @@
+/* Post-checkout confirmation page (Sprint 12, Ticket 67 — Paddle Checkout's
+   settings.successUrl target, see app/pricing/pricing-tiers.tsx). Same
+   layering choice and token-only rule as every other public surface
+   (pricing.css, landing.css, legal.css). */
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css";
+
+[data-surface="welcome"] {
+  min-height: 100dvh;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: "Geist", "Inter", system-ui, -apple-system, sans-serif;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+[data-surface="welcome"] .wc-card {
+  max-width: 480px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  text-align: center;
+  align-items: center;
+}
+
+[data-surface="welcome"] .wc-kicker {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 500;
+  color: var(--slate);
+}
+
+[data-surface="welcome"] .wc-title {
+  margin: 0;
+  font-size: 28px;
+  line-height: 34px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+[data-surface="welcome"] .wc-body {
+  margin: 0;
+  font-size: 15px;
+  line-height: 23px;
+  color: var(--slate);
+}
+
+[data-surface="welcome"] .wc-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 40px;
+  padding: 0 20px;
+  margin-top: 8px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+}
+[data-surface="welcome"] .wc-btn:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+
+[data-surface="welcome"] .wc-btn-primary {
+  background: var(--signal);
+  border-color: var(--signal);
+  color: var(--signal-fg);
+}
+[data-surface="welcome"] .wc-btn-primary:hover {
+  background: var(--signal-hover);
+  border-color: var(--signal-hover);
+}
