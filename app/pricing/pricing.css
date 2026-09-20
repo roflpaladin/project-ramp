@@ -218,6 +218,15 @@
   color: var(--slate);
 }
 
+/* Wraps .pr-tier-price + .pr-tier-tax-note in a single aria-live="polite"
+   region (screen readers announce the price resolving/changing — see
+   pricing-tiers.tsx's TierPrice) without becoming a layout box of its own,
+   so .pr-tier-card's flex column still lays out its children exactly as if
+   this wrapper weren't there. */
+[data-surface="pricing"] .pr-tier-price-live {
+  display: contents;
+}
+
 [data-surface="pricing"] .pr-tier-price {
   margin: 4px 0 0;
   display: flex;

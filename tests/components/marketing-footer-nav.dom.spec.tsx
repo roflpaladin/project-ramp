@@ -7,7 +7,12 @@
 //
 // Coverage: Home/Terms/Privacy/Refunds always render; Pricing renders only
 // when lib/billing/plans's getPricingModel() reports isPublishable; Security
-// never renders (that page doesn't exist yet — no dead link).
+// never renders (that page doesn't exist yet — no dead link); when a caller
+// (app/pricing/page.tsx, which has already computed the model itself)
+// passes the optional isPricingPublishable prop, this component uses THAT
+// instead of calling getPricingModel() again — code review flagged the
+// double-evaluation (and its duplicated misconfiguration console.error) on
+// every /pricing request.
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
@@ -53,5 +58,29 @@ describe("MarketingFooterNav — pricing not publishable", () => {
     expect(screen.queryByRole("link", { name: /^pricing$/i })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /^home$/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /^terms$/i })).toBeInTheDocument();
+  });
+});
+
+describe("MarketingFooterNav — isPricingPublishable prop supplied", () => {
+  it("shows Pricing from a true prop without calling getPricingModel() at all", () => {
+    render(<MarketingFooterNav isPricingPublishable />);
+
+    expect(screen.getByRole("link", { name: /^pricing$/i })).toHaveAttribute("href", "/pricing");
+    expect(mockGetPricingModel).not.toHaveBeenCalled();
+  });
+
+  it("hides Pricing from a false prop without calling getPricingModel() at all", () => {
+    render(<MarketingFooterNav isPricingPublishable={false} />);
+
+    expect(screen.queryByRole("link", { name: /^pricing$/i })).not.toBeInTheDocument();
+    expect(mockGetPricingModel).not.toHaveBeenCalled();
+  });
+
+  it("falls back to calling getPricingModel() only when the prop is omitted", () => {
+    mockGetPricingModel.mockReturnValue({ isPublishable: true });
+    render(<MarketingFooterNav />);
+
+    expect(screen.getByRole("link", { name: /^pricing$/i })).toBeInTheDocument();
+    expect(mockGetPricingModel).toHaveBeenCalledTimes(1);
   });
 });

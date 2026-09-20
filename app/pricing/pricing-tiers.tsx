@@ -80,8 +80,15 @@ function isCheckoutTier(tier: Tier): tier is CheckoutTier {
 /** The three Paddle-formatted strings for one tier's current price, plus
  * whether tax applies (decided from the RAW totals.tax string at fetch
  * time — see the file header comment). All three strings render verbatim,
- * exactly as Paddle returned them; nothing here is computed. */
+ * exactly as Paddle returned them; nothing here is computed.
+ *
+ * `priceId` is the price ID this response was actually fetched for — kept
+ * alongside the strings (not just in a separate lookup) so the render below
+ * can derive whether a stored entry still matches the CURRENTLY selected
+ * billing cycle before ever showing it. See the "stale price" fix in
+ * PricingTiers for why that check exists. */
 export interface TierPriceDetails {
+  readonly priceId: string;
   readonly subtotal: string;
   readonly tax: string;
   readonly total: string;
@@ -109,7 +116,7 @@ function TierPrice({ tier, priceDetails, billingCycle }: TierPriceProps) {
   }
 
   return (
-    <>
+    <div className="pr-tier-price-live" aria-live="polite">
       <p className="pr-tier-price">
         {priceDetails ? (
           <span className="pr-tier-amount pr-mono">{priceDetails.subtotal}</span>
@@ -124,7 +131,7 @@ function TierPrice({ tier, priceDetails, billingCycle }: TierPriceProps) {
           total
         </p>
       ) : null}
-    </>
+    </div>
   );
 }
 
@@ -232,6 +239,7 @@ export function PricingTiers({
           const match = priceItems.find((item) => item.priceId === lineItem.price.id);
           if (match) {
             next[match.tierId] = {
+              priceId: match.priceId,
               subtotal: lineItem.formattedTotals.subtotal,
               tax: lineItem.formattedTotals.tax,
               total: lineItem.formattedTotals.total,
@@ -313,7 +321,19 @@ export function PricingTiers({
       <ul className="pr-tier-grid">
         {tiers.map((tier) => {
           const priceId = tier.kind === "checkout" ? priceIdFor(tier, billingCycle) : null;
-          const priceDetails = priceDetailsByTier[tier.id];
+          const storedDetails = priceDetailsByTier[tier.id];
+          // Derived, not stored: a stored entry only counts as "the current
+          // price" when it was fetched for the price ID the CURRENTLY
+          // selected billing cycle actually charges. Without this check, a
+          // toggle from monthly to yearly would keep showing last cycle's
+          // (now mislabeled) price/tax numbers — and leave Subscribe
+          // enabled — for however long the new PricePreview call takes to
+          // resolve. Deriving it here (rather than clearing state at the
+          // start of the effect) also means an out-of-order response for a
+          // cycle that's no longer selected can never flash onto screen,
+          // even before its own isCancelled guard below runs.
+          const priceDetails =
+            storedDetails && storedDetails.priceId === priceId ? storedDetails : undefined;
           const isReady = tier.kind === "checkout" && paddle !== null && priceId !== null && priceDetails !== undefined;
 
           const isRecommended = tier.kind === "checkout" && tier.isRecommended;

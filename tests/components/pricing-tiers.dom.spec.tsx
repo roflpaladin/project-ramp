@@ -23,7 +23,7 @@
 // IDs when toggled.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { CheckoutTier, ContactTier } from "@/lib/billing/plans";
 
 const { mockInitializePaddle, mockPricePreview, mockCheckoutOpen } = vi.hoisted(() => ({
@@ -138,6 +138,17 @@ const MIXED_TAX_PRICES: PricePreviewEntry[] = [
 ];
 
 const mockPaddleInstance = { PricePreview: mockPricePreview, Checkout: { open: mockCheckoutOpen } };
+
+/** Controllable promise for tests that need to assert an in-between,
+ * still-pending state (the HIGH fix below: no stale price/cycle mismatch
+ * while a new PricePreview call is in flight). */
+function createDeferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
+}
 
 beforeEach(() => {
   mockInitializePaddle.mockResolvedValue(mockPaddleInstance);
@@ -359,6 +370,72 @@ describe("PricingTiers — monthly/yearly toggle", () => {
     await screen.findByText("$290.00");
 
     expect(within(screen.getByTestId("pr-tier-enterprise")).getByText("Custom")).toBeInTheDocument();
+  });
+
+  it("shows the loading state and disables Subscribe while the new cycle's price is still pending — never the stale price under the new cycle label", async () => {
+    const yearlyDeferred = createDeferred<ReturnType<typeof pricePreviewResponse>>();
+    mockPricePreview
+      .mockResolvedValueOnce(pricePreviewResponse(MONTHLY_PRICES))
+      .mockImplementationOnce(() => yearlyDeferred.promise);
+
+    renderTiers({ hasYearlyPricing: true, signedInEmail: "seller@example.com" });
+    await screen.findByText("$29.00");
+
+    fireEvent.click(screen.getByRole("button", { name: "Yearly" }));
+
+    const proCard = screen.getByTestId("pr-tier-pro");
+    await waitFor(() => {
+      expect(within(proCard).queryByText("$29.00")).not.toBeInTheDocument();
+    });
+    expect(within(proCard).getByText(/loading price/i)).toBeInTheDocument();
+    expect(within(proCard).getByRole("button", { name: /subscribe/i })).toBeDisabled();
+
+    await act(async () => {
+      yearlyDeferred.resolve(pricePreviewResponse(YEARLY_PRICES));
+    });
+
+    expect(within(proCard).getByText("$290.00")).toBeInTheDocument();
+    expect(within(proCard).getByRole("button", { name: /subscribe/i })).not.toBeDisabled();
+  });
+
+  it("never lets a late (out-of-order) monthly response overwrite the yearly display after toggling", async () => {
+    const monthlyDeferred = createDeferred<ReturnType<typeof pricePreviewResponse>>();
+    mockPricePreview
+      .mockImplementationOnce(() => monthlyDeferred.promise)
+      .mockResolvedValueOnce(pricePreviewResponse(YEARLY_PRICES));
+
+    renderTiers({ hasYearlyPricing: true });
+
+    // Let Paddle finish initializing and the (deliberately never-resolving
+    // yet) initial monthly request actually start before toggling — the
+    // point of this test is a request that's already in flight when the
+    // visitor switches cycles, not one that never got sent.
+    await waitFor(() => expect(mockPricePreview).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole("button", { name: "Yearly" }));
+    await screen.findByText("$290.00");
+
+    // The stale monthly response finally arrives, after the yearly one.
+    await act(async () => {
+      monthlyDeferred.resolve(pricePreviewResponse(MONTHLY_PRICES));
+    });
+
+    const proCard = screen.getByTestId("pr-tier-pro");
+    expect(within(proCard).getByText("$290.00")).toBeInTheDocument();
+    expect(within(proCard).queryByText("$29.00")).not.toBeInTheDocument();
+  });
+});
+
+describe("PricingTiers — price wrapper announces updates to screen readers", () => {
+  it("marks the checkout-tier price wrapper aria-live=\"polite\"", async () => {
+    renderTiers();
+    const proCard = await screen.findByTestId("pr-tier-pro");
+
+    await waitFor(() => expect(within(proCard).getByText("$29.00")).toBeInTheDocument());
+
+    const liveRegion = proCard.querySelector('[aria-live="polite"]');
+    expect(liveRegion).not.toBeNull();
+    expect(liveRegion).toContainElement(within(proCard).getByText("$29.00"));
   });
 });
 

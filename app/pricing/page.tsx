@@ -74,7 +74,7 @@ export default async function PricingPage() {
         tenantId={seller?.tenantId ?? null}
       />
 
-      <MarketingFooterNav />
+      <MarketingFooterNav isPricingPublishable={pricing.isPublishable} />
     </main>
   );
 }
