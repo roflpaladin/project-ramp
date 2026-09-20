@@ -72,9 +72,19 @@ export interface ApplyBillingEventOptions {
   readonly resolveTier?: TierResolver;
 }
 
+/**
+ * STRICTLY older only. Paddle routinely emits several events with an
+ * identical occurred_at (subscription.created and subscription.activated
+ * for the same checkout, for instance) — rejecting equal timestamps would
+ * drop the activation. Genuine redeliveries are caught by the event_id
+ * primary key, not here, so this guard only has to catch out-of-ORDER
+ * delivery. The same comparison is enforced in SQL (0014's
+ * apply_tenant_subscription_event), which is the authority under
+ * concurrency; this check just avoids a pointless round trip.
+ */
 function isStale(state: SubscriptionState | null, event: PaddleSubscriptionEvent): boolean {
   if (!state?.lastEventOccurredAt) return false;
-  return Date.parse(event.occurredAt) <= Date.parse(state.lastEventOccurredAt);
+  return Date.parse(event.occurredAt) < Date.parse(state.lastEventOccurredAt);
 }
 
 /** First price ID that maps to a tier we actually sell. */

@@ -59,28 +59,39 @@ export interface VerifyPaddleSignatureInput {
 }
 
 interface ParsedSignatureHeader {
+  /** The ts substring EXACTLY as sent — this, not a re-formatted number, is what was signed. */
+  readonly rawTimestamp: string;
   readonly timestampSeconds: number;
-  readonly digest: string;
+  /** Every h1 in the header, in order: during a secret rotation Paddle sends more than one. */
+  readonly digests: readonly string[];
 }
 
+/**
+ * Deliberately NOT a Map: collapsing the header into one value per key
+ * would silently discard the second h1 during a key rotation, and the one
+ * discarded might be the one that matches.
+ */
 function parseSignatureHeader(header: string): ParsedSignatureHeader | null {
-  const parts = header.split(";");
-  const values = new Map<string, string>();
+  let rawTimestamp: string | null = null;
+  const digests: string[] = [];
 
-  for (const part of parts) {
+  for (const part of header.split(";")) {
     const separatorIndex = part.indexOf("=");
     if (separatorIndex <= 0) continue;
-    values.set(part.slice(0, separatorIndex).trim(), part.slice(separatorIndex + 1).trim());
+
+    const key = part.slice(0, separatorIndex).trim();
+    const value = part.slice(separatorIndex + 1).trim();
+
+    if (key === "ts" && rawTimestamp === null) rawTimestamp = value;
+    if (key === "h1" && value !== "") digests.push(value);
   }
 
-  const rawTimestamp = values.get("ts");
-  const digest = values.get("h1");
-  if (!rawTimestamp || !digest) return null;
+  if (!rawTimestamp || digests.length === 0) return null;
 
   const timestampSeconds = Number(rawTimestamp);
   if (!Number.isFinite(timestampSeconds)) return null;
 
-  return { timestampSeconds, digest };
+  return { rawTimestamp, timestampSeconds, digests: Object.freeze(digests) };
 }
 
 /** Constant-time compare that tolerates a length mismatch instead of throwing. */
@@ -105,11 +116,17 @@ export function verifyPaddleSignature(input: VerifyPaddleSignatureInput): Signat
     return { ok: false, reason: "timestamp_out_of_tolerance" };
   }
 
-  const expected = createHmac("sha256", secret)
-    .update(`${parsed.timestampSeconds}:${input.rawBody}`)
-    .digest("hex");
+  // Signed over the RAW ts substring: re-rendering it through Number()
+  // would change "01758..." (or any future formatting Paddle uses) into
+  // different bytes than the ones that were actually signed.
+  const expected = createHmac("sha256", secret).update(`${parsed.rawTimestamp}:${input.rawBody}`).digest("hex");
 
-  if (!digestsMatch(expected, parsed.digest)) return { ok: false, reason: "signature_mismatch" };
+  // Every candidate is compared in constant time, and all of them are
+  // compared: `some` would short-circuit, but each individual comparison is
+  // still timing-safe, and the number of digests is a property of Paddle's
+  // header, not of the secret.
+  const isMatch = parsed.digests.map((digest) => digestsMatch(expected, digest)).some(Boolean);
+  if (!isMatch) return { ok: false, reason: "signature_mismatch" };
 
   return { ok: true };
 }

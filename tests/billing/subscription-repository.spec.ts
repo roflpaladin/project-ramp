@@ -59,7 +59,15 @@ function makeQueryBuilder(table: string): Record<string, unknown> {
 }
 
 vi.mock("@/lib/supabase/admin", () => ({
-  createAdminClient: () => ({ from: (table: string) => makeQueryBuilder(table) }),
+  createAdminClient: () => ({
+    from: (table: string) => makeQueryBuilder(table),
+    // The conditional write lives in a Postgres function (0014) so the
+    // ordering check happens inside the same statement as the write.
+    rpc: (name: string, args: unknown) => {
+      calls.push({ table: name, operation: "rpc", payload: args });
+      return Promise.resolve(nextResult());
+    },
+  }),
 }));
 
 const {
@@ -203,8 +211,9 @@ describe("markEventOutcome", () => {
 });
 
 describe("upsertFromState", () => {
-  it("writes every column back in snake_case, keyed on the tenant", async () => {
+  it("writes through the conditional Postgres function, passing every column", async () => {
     // Arrange
+    results.value = [{ data: true, error: null }];
     const state = storedState({
       tierId: "advanced",
       billingCycle: "year",
@@ -214,18 +223,27 @@ describe("upsertFromState", () => {
     });
 
     // Act
-    await upsertFromState(state);
+    const written = await upsertFromState(state);
 
     // Assert
-    expect(operationPayload("tenant_subscriptions", "upsert")).toMatchObject({
-      tenant_id: TENANT_ID,
-      paddle_subscription_id: "sub_1",
-      tier_id: "advanced",
-      billing_cycle: "year",
-      status: "past_due",
-      past_due_since: "2026-09-19T00:00:00Z",
-      last_event_occurred_at: "2026-09-20T10:00:00.000Z",
+    expect(written).toBe(true);
+    expect(operationPayload("apply_tenant_subscription_event", "rpc")).toMatchObject({
+      p_tenant_id: TENANT_ID,
+      p_paddle_subscription_id: "sub_1",
+      p_tier_id: "advanced",
+      p_billing_cycle: "year",
+      p_status: "past_due",
+      p_past_due_since: "2026-09-19T00:00:00Z",
+      p_last_event_occurred_at: "2026-09-20T10:00:00.000Z",
     });
+  });
+
+  it("reports false when the database's ordering guard refuses the write", async () => {
+    // Arrange — a concurrent, newer delivery already landed.
+    results.value = [{ data: false, error: null }];
+
+    // Act + Assert
+    expect(await upsertFromState(storedState())).toBe(false);
   });
 
   it("throws when the write fails, so the webhook can answer 500 and be retried", async () => {
@@ -238,44 +256,80 @@ describe("upsertFromState", () => {
 });
 
 describe("recordEvent", () => {
-  it("reports a first delivery as recorded", async () => {
-    // Act
-    const result = await recordEvent({
+  function record() {
+    return recordEvent({
       eventId: "evt_1",
       eventType: "subscription.created",
       occurredAt: "2026-09-20T10:00:00.000Z",
       payload: { anything: true },
     });
+  }
+
+  /** Insert hits the primary key, then the existing row is read back. */
+  function conflictThenOutcome(outcome: string | null): void {
+    results.value = [
+      { data: null, error: { code: "23505", message: "duplicate key value" } },
+      { data: outcome === null ? null : { processing_outcome: outcome }, error: null },
+    ];
+  }
+
+  it("reports a first delivery as recorded", async () => {
+    // Act
+    const result = await record();
 
     // Assert
     expect(result).toBe("recorded");
     expect(operationPayload("paddle_webhook_events", "insert")).toMatchObject({ event_id: "evt_1" });
   });
 
-  it("reports a redelivery of the same event_id as a duplicate instead of throwing", async () => {
-    // Arrange — Postgres unique violation on the primary key.
-    results.value = [{ data: null, error: { code: "23505", message: "duplicate key value" } }];
+  it("reports a redelivery of a COMPLETED event as a duplicate", async () => {
+    // Arrange
+    conflictThenOutcome("applied");
 
-    // Act
-    const result = await recordEvent({
-      eventId: "evt_1",
-      eventType: "subscription.created",
-      occurredAt: "2026-09-20T10:00:00.000Z",
-      payload: {},
-    });
-
-    // Assert
-    expect(result).toBe("duplicate");
+    // Act + Assert
+    expect(await record()).toBe("duplicate");
   });
+
+  it("treats a redelivery of a FAILED event as work to redo", async () => {
+    // Arrange — C1: the customer paid; a previous attempt died mid-flight.
+    conflictThenOutcome("failed");
+
+    // Act + Assert
+    expect(await record()).toBe("reprocess");
+  });
+
+  it("treats a redelivery of an event still marked 'received' as work to redo", async () => {
+    // Arrange — the process died before it could mark any outcome at all.
+    conflictThenOutcome("received");
+
+    // Act + Assert
+    expect(await record()).toBe("reprocess");
+  });
+
+  it("treats a vanished event row as work to redo rather than silently skipping it", async () => {
+    // Arrange
+    conflictThenOutcome(null);
+
+    // Act + Assert
+    expect(await record()).toBe("reprocess");
+  });
+
+  for (const terminal of ["stale", "ignored", "duplicate"]) {
+    it(`reports a redelivery of a '${terminal}' event as a duplicate`, async () => {
+      // Arrange
+      conflictThenOutcome(terminal);
+
+      // Act + Assert
+      expect(await record()).toBe("duplicate");
+    });
+  }
 
   it("throws on any other insert error", async () => {
     // Arrange
     results.value = [{ data: null, error: { code: "08006", message: "connection failure" } }];
 
     // Act + Assert
-    await expect(
-      recordEvent({ eventId: "evt_1", eventType: "subscription.created", occurredAt: "x", payload: {} }),
-    ).rejects.toThrow(/connection failure/);
+    await expect(record()).rejects.toThrow(/connection failure/);
   });
 });
 
@@ -308,23 +362,41 @@ describe("createCheckoutRef", () => {
 });
 
 describe("consumeCheckoutRef", () => {
+  function refRow(overrides: Record<string, unknown> = {}) {
+    return {
+      tenant_id: TENANT_ID,
+      user_id: "user-1",
+      expires_at: futureIso(),
+      paddle_subscription_id: null,
+      ...overrides,
+    };
+  }
+
   it("resolves an unexpired reference to the tenant it was issued for", async () => {
     // Arrange
-    results.value = [
-      { data: { tenant_id: TENANT_ID, user_id: "user-1", expires_at: futureIso() }, error: null },
-      { data: null, error: null },
-    ];
+    results.value = [{ data: refRow(), error: null }, { data: null, error: null }];
 
     // Act
-    const owner = await consumeCheckoutRef("ref_abc");
+    const owner = await consumeCheckoutRef("ref_abc", "sub_1");
 
     // Assert
     expect(owner).toEqual({ tenantId: TENANT_ID, userId: "user-1" });
   });
 
+  it("binds the reference to the subscription it first resolved for", async () => {
+    // Arrange
+    results.value = [{ data: refRow(), error: null }, { data: null, error: null }];
+
+    // Act
+    await consumeCheckoutRef("ref_abc", "sub_1");
+
+    // Assert
+    expect(operationPayload("billing_checkout_refs", "update")).toMatchObject({ paddle_subscription_id: "sub_1" });
+  });
+
   it("resolves nothing for a reference that does not exist (tampered or invented)", async () => {
     // Act
-    const owner = await consumeCheckoutRef("ref_made_up");
+    const owner = await consumeCheckoutRef("ref_made_up", "sub_1");
 
     // Assert
     expect(owner).toBeNull();
@@ -332,27 +404,37 @@ describe("consumeCheckoutRef", () => {
 
   it("resolves nothing for an EXPIRED reference and never stamps it", async () => {
     // Arrange
-    results.value = [
-      { data: { tenant_id: TENANT_ID, user_id: "user-1", expires_at: pastIso() }, error: null },
-    ];
+    results.value = [{ data: refRow({ expires_at: pastIso() }), error: null }];
 
     // Act
-    const owner = await consumeCheckoutRef("ref_stale");
+    const owner = await consumeCheckoutRef("ref_stale", "sub_1");
 
     // Assert
     expect(owner).toBeNull();
     expect(calls.some((call) => call.operation === "update")).toBe(false);
   });
 
-  it("still resolves a reference that was already used, so a second event for one checkout works", async () => {
-    // Arrange — consumed_at is a record of first use, not a one-shot lock.
-    results.value = [
-      { data: { tenant_id: TENANT_ID, user_id: "user-1", expires_at: futureIso() }, error: null },
-      { data: null, error: null },
-    ];
+  it("REFUSES a reference already bound to a different subscription", async () => {
+    // Arrange — a replayed ref must not be able to attach a second
+    // subscription to the tenant that issued the first one.
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    results.value = [{ data: refRow({ paddle_subscription_id: "sub_first" }), error: null }];
 
     // Act
-    const owner = await consumeCheckoutRef("ref_abc");
+    const owner = await consumeCheckoutRef("ref_abc", "sub_second");
+
+    // Assert
+    expect(owner).toBeNull();
+    expect(calls.some((call) => call.operation === "update")).toBe(false);
+    expect(errorSpy).toHaveBeenCalled();
+  });
+
+  it("still resolves a reference already bound to the SAME subscription, so a second event works", async () => {
+    // Arrange — consumed_at is a record of first use, not a one-shot lock.
+    results.value = [{ data: refRow({ paddle_subscription_id: "sub_1" }), error: null }, { data: null, error: null }];
+
+    // Act
+    const owner = await consumeCheckoutRef("ref_abc", "sub_1");
 
     // Assert
     expect(owner?.tenantId).toBe(TENANT_ID);

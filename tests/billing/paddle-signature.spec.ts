@@ -61,6 +61,58 @@ describe("verifyPaddleSignature — genuine requests", () => {
     expect(result.ok).toBe(true);
   });
 
+  it("accepts a header carrying TWO h1 values when the first one matches (key rotation)", () => {
+    // Arrange — during a secret rotation Paddle signs with both keys.
+    const ours = createHmac("sha256", SECRET).update(`${NOW_SECONDS}:${RAW_BODY}`).digest("hex");
+    const theirs = createHmac("sha256", "pdl_ntfset_the_other_key").update(`${NOW_SECONDS}:${RAW_BODY}`).digest("hex");
+
+    // Act
+    const result = verify({ signatureHeader: `ts=${NOW_SECONDS};h1=${ours};h1=${theirs}` });
+
+    // Assert
+    expect(result.ok).toBe(true);
+  });
+
+  it("accepts a header carrying TWO h1 values when the SECOND one matches", () => {
+    // Arrange — the matching digest must not be lost by keeping only one
+    // value per key name (a Map would silently drop it).
+    const ours = createHmac("sha256", SECRET).update(`${NOW_SECONDS}:${RAW_BODY}`).digest("hex");
+    const theirs = createHmac("sha256", "pdl_ntfset_the_other_key").update(`${NOW_SECONDS}:${RAW_BODY}`).digest("hex");
+
+    // Act
+    const result = verify({ signatureHeader: `ts=${NOW_SECONDS};h1=${theirs};h1=${ours}` });
+
+    // Assert
+    expect(result.ok).toBe(true);
+  });
+
+  it("rejects a header whose h1 values are ALL from other keys", () => {
+    // Arrange
+    const one = createHmac("sha256", "pdl_ntfset_key_a").update(`${NOW_SECONDS}:${RAW_BODY}`).digest("hex");
+    const two = createHmac("sha256", "pdl_ntfset_key_b").update(`${NOW_SECONDS}:${RAW_BODY}`).digest("hex");
+
+    // Act
+    const result = verify({ signatureHeader: `ts=${NOW_SECONDS};h1=${one};h1=${two}` });
+
+    // Assert
+    expect(result.ok).toBe(false);
+    expect(result.ok === false && result.reason).toBe("signature_mismatch");
+  });
+
+  it("signs with the RAW ts substring from the header, not a re-formatted number", () => {
+    // Arrange — a timestamp Paddle wrote with a leading zero still has to
+    // verify: Number("01758...") would re-render differently and break the
+    // digest for a payload Paddle considers valid.
+    const rawTs = `0${NOW_SECONDS}`;
+    const digest = createHmac("sha256", SECRET).update(`${rawTs}:${RAW_BODY}`).digest("hex");
+
+    // Act
+    const result = verify({ signatureHeader: `ts=${rawTs};h1=${digest}` });
+
+    // Assert
+    expect(result.ok).toBe(true);
+  });
+
   it("accepts a timestamp at the very edge of the tolerance window", () => {
     // Act
     const result = verify({

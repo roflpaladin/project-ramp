@@ -118,12 +118,16 @@ describe("applyBillingEvent — out-of-order and replayed events", () => {
     expect(result.state).toBe(current);
   });
 
-  it("treats an event with the same occurred_at as the last applied one as stale", () => {
-    // Arrange
+  it("APPLIES an event that shares the last one's occurred_at (M6 — only strictly older is stale)", () => {
+    // Arrange — Paddle routinely emits subscription.created and
+    // subscription.activated with an identical occurred_at. Dropping the
+    // second would lose the activation; the event_id primary key already
+    // catches genuine duplicates, so this guard only has to catch
+    // out-of-ORDER delivery.
     const current = activeStarterState({ lastEventOccurredAt: "2026-09-20T12:00:00.000Z" });
     const sameInstant = event({
-      eventId: "evt_same",
-      eventType: "subscription.updated",
+      eventId: "evt_activated",
+      eventType: "subscription.activated",
       occurredAt: "2026-09-20T12:00:00.000Z",
       subscription: subscriptionPayload({ priceIds: ["pri_pro_month"] }),
     });
@@ -132,8 +136,28 @@ describe("applyBillingEvent — out-of-order and replayed events", () => {
     const result = apply(current, sameInstant);
 
     // Assert
-    expect(result.outcome).toBe("stale");
-    expect(result.state).toBe(current);
+    expect(result.outcome).toBe("applied");
+    expect(result.state?.tierId).toBe("pro");
+  });
+
+  it("applies a same-instant created + activated pair in full", () => {
+    // Arrange
+    const occurredAt = "2026-09-20T12:00:00.000Z";
+    const created = event({ eventId: "evt_created", eventType: "subscription.created", occurredAt });
+    const activated = event({
+      eventId: "evt_activated",
+      eventType: "subscription.activated",
+      occurredAt,
+      subscription: subscriptionPayload({ status: "active" }),
+    });
+
+    // Act
+    const afterCreated = apply(null, created);
+    const afterActivated = apply(afterCreated.state, activated);
+
+    // Assert
+    expect(afterCreated.outcome).toBe("applied");
+    expect(afterActivated.outcome).toBe("applied");
   });
 
   it("lands on the same state whether an out-of-order pair arrives in order or reversed", () => {

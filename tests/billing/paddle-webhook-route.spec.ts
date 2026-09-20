@@ -17,12 +17,14 @@ import type { SubscriptionState } from "@/lib/billing/subscription-reducer";
 
 const {
   mockFindByPaddleSubscriptionId,
+  mockFindByTenantId,
   mockUpsertFromState,
   mockRecordEvent,
   mockMarkEventOutcome,
   mockConsumeCheckoutRef,
 } = vi.hoisted(() => ({
   mockFindByPaddleSubscriptionId: vi.fn(),
+  mockFindByTenantId: vi.fn(),
   mockUpsertFromState: vi.fn(),
   mockRecordEvent: vi.fn(),
   mockMarkEventOutcome: vi.fn(),
@@ -31,6 +33,7 @@ const {
 
 vi.mock("@/lib/billing/subscription-repository", () => ({
   findByPaddleSubscriptionId: mockFindByPaddleSubscriptionId,
+  findByTenantId: mockFindByTenantId,
   upsertFromState: mockUpsertFromState,
   recordEvent: mockRecordEvent,
   markEventOutcome: mockMarkEventOutcome,
@@ -101,7 +104,10 @@ beforeEach(() => {
   vi.stubEnv("PADDLE_PRICE_ADVANCED_YEAR", "");
 
   mockFindByPaddleSubscriptionId.mockResolvedValue(null);
-  mockUpsertFromState.mockResolvedValue(undefined);
+  mockFindByTenantId.mockResolvedValue(null);
+  // true = the database actually wrote the row. False means its own
+  // ordering guard refused an out-of-order write (see the H2 tests).
+  mockUpsertFromState.mockResolvedValue(true);
   mockRecordEvent.mockResolvedValue("recorded");
   mockMarkEventOutcome.mockResolvedValue(undefined);
   mockConsumeCheckoutRef.mockResolvedValue({ tenantId: TENANT_ID, userId: "user-1" });
@@ -112,6 +118,7 @@ afterEach(() => {
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
   mockFindByPaddleSubscriptionId.mockReset();
+  mockFindByTenantId.mockReset();
   mockUpsertFromState.mockReset();
   mockRecordEvent.mockReset();
   mockMarkEventOutcome.mockReset();
@@ -179,17 +186,60 @@ describe("POST /api/billing/paddle/webhook — signature gate", () => {
     expect(mockUpsertFromState).not.toHaveBeenCalled();
   });
 
-  it("fails closed with a 500 when PADDLE_WEBHOOK_SECRET is not configured", async () => {
+  it("fails closed when PADDLE_WEBHOOK_SECRET is not configured, without telling the caller why", async () => {
     // Arrange
     vi.stubEnv("PADDLE_WEBHOOK_SECRET", "");
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     // Act
     const response = await post(rawBody());
 
-    // Assert
-    expect(response.status).toBe(500);
+    // Assert — externally indistinguishable from a bad signature (a probe
+    // must not learn that our billing webhook is misconfigured); the real
+    // reason is logged server-side.
+    expect(response.status).toBe(401);
     expect(mockRecordEvent).not.toHaveBeenCalled();
     expect(mockUpsertFromState).not.toHaveBeenCalled();
+    expect(errorSpy.mock.calls.flat().map(String).join(" ")).toMatch(/PADDLE_WEBHOOK_SECRET/);
+  });
+});
+
+describe("POST /api/billing/paddle/webhook — body size limit", () => {
+  it("refuses an oversized body declared in Content-Length before reading it", async () => {
+    // Arrange
+    const body = rawBody();
+
+    // Act
+    const response = await post(body, { ...signedHeaders(body), "content-length": String(64 * 1024 + 1) });
+
+    // Assert
+    expect(response.status).toBe(413);
+    expect(mockRecordEvent).not.toHaveBeenCalled();
+  });
+
+  it("refuses an oversized body even when Content-Length lies or is absent", async () => {
+    // Arrange — the real bound is the bytes actually read.
+    const padded = JSON.stringify({
+      event_id: "evt_big",
+      event_type: "subscription.created",
+      occurred_at: "2026-09-20T10:00:00.000Z",
+      filler: "x".repeat(64 * 1024),
+    });
+
+    // Act
+    const response = await post(padded, signedHeaders(padded));
+
+    // Assert
+    expect(response.status).toBe(413);
+    expect(mockRecordEvent).not.toHaveBeenCalled();
+  });
+
+  it("accepts a normal-sized body", async () => {
+    // Act
+    const response = await post(rawBody());
+
+    // Assert
+    expect(response.status).toBe(200);
   });
 });
 
@@ -204,7 +254,7 @@ describe("POST /api/billing/paddle/webhook — idempotency and ordering", () => 
     );
   });
 
-  it("is a no-op for an event_id it has already seen", async () => {
+  it("is a no-op for an event_id that was already processed to completion", async () => {
     // Arrange
     mockRecordEvent.mockResolvedValue("duplicate");
 
@@ -214,6 +264,22 @@ describe("POST /api/billing/paddle/webhook — idempotency and ordering", () => 
     // Assert
     expect(response.status).toBe(200);
     expect(mockUpsertFromState).not.toHaveBeenCalled();
+  });
+
+  it("REPROCESSES a redelivered event whose previous attempt never completed", async () => {
+    // Arrange — C1: the event row is inserted before the work is done, so a
+    // crash mid-processing leaves it 'received'/'failed'. Treating Paddle's
+    // retry as a duplicate would mean a paying customer is never
+    // provisioned, permanently.
+    mockRecordEvent.mockResolvedValue("reprocess");
+
+    // Act
+    const response = await post(rawBody());
+
+    // Assert
+    expect(response.status).toBe(200);
+    expect(mockUpsertFromState).toHaveBeenCalledTimes(1);
+    expect(mockMarkEventOutcome).toHaveBeenCalledWith("evt_1", "applied", null);
   });
 
   it("never regresses state on an event older than the stored one", async () => {
@@ -262,12 +328,12 @@ describe("POST /api/billing/paddle/webhook — idempotency and ordering", () => 
 });
 
 describe("POST /api/billing/paddle/webhook — tenant resolution", () => {
-  it("resolves the tenant from the server-issued checkout ref on a first event", async () => {
+  it("resolves the tenant from the server-issued checkout ref on a first event, binding it to this subscription", async () => {
     // Act
     await post(rawBody());
 
     // Assert
-    expect(mockConsumeCheckoutRef).toHaveBeenCalledWith("ref_abc");
+    expect(mockConsumeCheckoutRef).toHaveBeenCalledWith("ref_abc", "sub_1");
     expect(mockUpsertFromState).toHaveBeenCalledWith(
       expect.objectContaining({ tenantId: TENANT_ID, tierId: "pro", status: "active" }),
     );
@@ -322,6 +388,104 @@ describe("POST /api/billing/paddle/webhook — tenant resolution", () => {
     expect(mockUpsertFromState).toHaveBeenCalledWith(expect.objectContaining({ tenantId: TENANT_ID }));
   });
 
+  it("never overwrites a tenant's LIVE subscription with a second one (H1)", async () => {
+    // Arrange — the tenant already pays for sub_live; a second checkout
+    // produces sub_2. Looking up only by paddle_subscription_id would find
+    // nothing, and an upsert keyed on tenant_id would silently replace the
+    // paid row (and its ordering anchor).
+    mockFindByPaddleSubscriptionId.mockResolvedValue(null);
+    mockFindByTenantId.mockResolvedValue({ ...STORED_SUBSCRIPTION, paddleSubscriptionId: "sub_live" });
+
+    // Act
+    const response = await post(rawBody({}, { id: "sub_2" }));
+
+    // Assert
+    expect(response.status).toBe(200);
+    expect(mockUpsertFromState).not.toHaveBeenCalled();
+    expect(mockMarkEventOutcome).toHaveBeenCalledWith("evt_1", "ignored", "duplicate_subscription");
+  });
+
+  it("logs the refused second subscription without any customer detail", async () => {
+    // Arrange
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockFindByTenantId.mockResolvedValue({ ...STORED_SUBSCRIPTION, paddleSubscriptionId: "sub_live" });
+
+    // Act
+    await post(rawBody({}, { id: "sub_2" }));
+
+    // Assert
+    const logged = errorSpy.mock.calls.flat().map((entry) => JSON.stringify(entry)).join(" ");
+    expect(logged).toContain("duplicate_subscription");
+    expect(logged).not.toContain("ctm_1");
+  });
+
+  it("does not let a LATE event for an old subscription clobber the live one (H1)", async () => {
+    // Arrange — sub_old was replaced by sub_live; its trailing 'canceled'
+    // arrives afterwards, carrying the original checkout ref.
+    mockFindByPaddleSubscriptionId.mockResolvedValue(null);
+    mockFindByTenantId.mockResolvedValue({ ...STORED_SUBSCRIPTION, paddleSubscriptionId: "sub_live" });
+
+    // Act
+    const response = await post(
+      rawBody({ event_type: "subscription.canceled" }, { id: "sub_old", status: "canceled" }),
+    );
+
+    // Assert
+    expect(response.status).toBe(200);
+    expect(mockUpsertFromState).not.toHaveBeenCalled();
+  });
+
+  it("DOES replace a genuinely canceled subscription when the tenant subscribes again", async () => {
+    // Arrange
+    mockFindByPaddleSubscriptionId.mockResolvedValue(null);
+    mockFindByTenantId.mockResolvedValue({
+      ...STORED_SUBSCRIPTION,
+      paddleSubscriptionId: "sub_old",
+      status: "canceled",
+    });
+
+    // Act
+    const response = await post(rawBody({}, { id: "sub_2" }));
+
+    // Assert
+    expect(response.status).toBe(200);
+    expect(mockUpsertFromState).toHaveBeenCalledWith(
+      expect.objectContaining({ tenantId: TENANT_ID, paddleSubscriptionId: "sub_2", status: "active" }),
+    );
+  });
+
+  it("carries a manual entitlement across that replacement — an invoice-paying tenant never loses it", async () => {
+    // Arrange
+    mockFindByPaddleSubscriptionId.mockResolvedValue(null);
+    mockFindByTenantId.mockResolvedValue({
+      ...STORED_SUBSCRIPTION,
+      paddleSubscriptionId: "sub_old",
+      status: "canceled",
+      manualEntitlementTier: "enterprise",
+      manualEntitlementNote: "Invoiced annually",
+    });
+
+    // Act
+    await post(rawBody({}, { id: "sub_2" }));
+
+    // Assert
+    expect(mockUpsertFromState).toHaveBeenCalledWith(
+      expect.objectContaining({ manualEntitlementTier: "enterprise", manualEntitlementNote: "Invoiced annually" }),
+    );
+  });
+
+  it("does not look up by tenant when the subscription is already known", async () => {
+    // Arrange
+    mockFindByPaddleSubscriptionId.mockResolvedValue(STORED_SUBSCRIPTION);
+
+    // Act
+    await post(rawBody({ event_type: "subscription.updated" }));
+
+    // Assert
+    expect(mockFindByTenantId).not.toHaveBeenCalled();
+    expect(mockUpsertFromState).toHaveBeenCalledTimes(1);
+  });
+
   it("grants nothing for a price ID that is not in our plans config", async () => {
     // Act
     const response = await post(rawBody({}, { items: [{ price: { id: "pri_someone_elses_product" } }] }));
@@ -333,10 +497,62 @@ describe("POST /api/billing/paddle/webhook — tenant resolution", () => {
   });
 });
 
+describe("POST /api/billing/paddle/webhook — the database's own ordering guard", () => {
+  it("reports an event the database refused as out-of-order as stale, never applied", async () => {
+    // Arrange — H2: two concurrent deliveries can both pass the in-memory
+    // staleness check, so the final word belongs to the conditional write.
+    mockFindByPaddleSubscriptionId.mockResolvedValue(STORED_SUBSCRIPTION);
+    mockUpsertFromState.mockResolvedValue(false);
+
+    // Act
+    const response = await post(rawBody({ event_id: "evt_late", event_type: "subscription.updated" }));
+
+    // Assert
+    expect(response.status).toBe(200);
+    expect(mockMarkEventOutcome).toHaveBeenCalledWith("evt_late", "stale", "rejected_by_ordering_guard");
+  });
+
+  it("reports an accepted write as applied", async () => {
+    // Arrange
+    mockFindByPaddleSubscriptionId.mockResolvedValue(STORED_SUBSCRIPTION);
+    mockUpsertFromState.mockResolvedValue(true);
+
+    // Act
+    await post(rawBody({ event_id: "evt_ok", event_type: "subscription.updated" }));
+
+    // Assert
+    expect(mockMarkEventOutcome).toHaveBeenCalledWith("evt_ok", "applied", null);
+  });
+});
+
 describe("POST /api/billing/paddle/webhook — failures", () => {
   it("returns 500 when persisting the new state fails, so Paddle retries", async () => {
     // Arrange
     mockUpsertFromState.mockRejectedValue(new Error("db down"));
+
+    // Act
+    const response = await post(rawBody());
+
+    // Assert
+    expect(response.status).toBe(500);
+  });
+
+  it("marks the event failed so Paddle's retry is reprocessed rather than deduped away", async () => {
+    // Arrange
+    mockUpsertFromState.mockRejectedValue(new Error("db down"));
+
+    // Act
+    await post(rawBody());
+
+    // Assert
+    expect(mockMarkEventOutcome).toHaveBeenCalledWith("evt_1", "failed", expect.any(String));
+  });
+
+  it("still answers 500 when even marking the event failed does not work", async () => {
+    // Arrange — best-effort bookkeeping must never swallow the 5xx that
+    // makes Paddle retry.
+    mockUpsertFromState.mockRejectedValue(new Error("db down"));
+    mockMarkEventOutcome.mockRejectedValue(new Error("db down too"));
 
     // Act
     const response = await post(rawBody());

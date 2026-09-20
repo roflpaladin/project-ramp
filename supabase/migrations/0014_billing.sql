@@ -15,18 +15,40 @@
 -- change must never need a migration. This table stores only which tier id
 -- Paddle says the tenant is on.
 --
--- RLS SHAPE, per table:
---   * tenant_subscriptions — RLS on, exactly ONE policy: a seller may SELECT
---     their own tenant's row (same `auth.jwt() -> 'app_metadata' ->>
---     'tenant_id'` claim read as 0001's "AE reads own tenant"). No insert/
---     update/delete policy at all: only the webhook writes here, through the
---     service-role client (lib/supabase/admin.ts), which bypasses RLS.
---     A seller must be able to see their own plan; a seller must never be
---     able to grant themselves one.
---   * paddle_webhook_events / billing_checkout_refs — RLS on, ZERO policies
---     (default-deny for anon/authenticated), the same shape 0002's
---     portal_access_tokens, 0008's waitlist_signups and 0010's
---     crm_connections already use. Neither table has any client-side reader.
+-- RLS SHAPE: all three tables are RLS on with ZERO policies — default-deny
+-- for anon/authenticated, the same shape 0002's portal_access_tokens,
+-- 0008's waitlist_signups and 0010's crm_connections already use. Nothing
+-- client-side reads any of them: every read goes through server code on the
+-- service-role client (lib/supabase/admin.ts), which bypasses RLS.
+--   * tenant_subscriptions deliberately has NO seller-SELECT policy (review
+--     ruling, 2026-09-20). An earlier draft had one; it was dropped because
+--     nothing needs it yet and a row-level grant would expose every column
+--     (paddle ids, manual entitlement notes) to the browser. When the seller
+--     UI does need to show a plan, expose a COLUMN-LIMITED VIEW (tier,
+--     status, current_period_ends_at) with its own tenant-scoped policy —
+--     not a select policy on this table.
+--
+-- DELETE BEHAVIOUR: tenant_id carries `on delete cascade` on
+-- tenant_subscriptions and billing_checkout_refs. Trade-off, accepted
+-- deliberately: deleting a tenant must not leave an orphaned entitlement or
+-- a live checkout reference pointing at nothing, and PADDLE — not this
+-- table — is the system of record for what was actually billed, so nothing
+-- financial is lost. paddle_webhook_events has NO tenant foreign key at all
+-- and therefore retains the full event history regardless of what happens
+-- to a tenant row. (Standing founder rule: we never delete or "tidy up"
+-- Paddle entities or billing rows ourselves.)
+--
+-- KNOWN FOLLOW-UPS (not built in this slice, deliberately — each is its own
+-- ticket, none is a blocker for fulfillment):
+--   * PII retention: paddle_webhook_events.payload keeps the verified event
+--     body indefinitely. It can contain customer identifiers. A retention
+--     window (and a redaction or archival policy for anything past it) is
+--     needed before this table grows real volume.
+--   * Pruning: expired/consumed billing_checkout_refs rows are never
+--     removed. A scheduled job should delete rows past expires_at; the
+--     index on expires_at below exists so that stays cheap.
+--   * Rate limiting is still the in-memory, per-instance limiter
+--     (lib/rate-limit.ts). A DB- or Redis-backed limiter is Ticket 62.
 
 begin;
 
@@ -75,25 +97,29 @@ create table if not exists tenant_subscriptions (
   updated_at timestamptz not null default now()
 );
 
-create index if not exists idx_tenant_subscriptions_paddle_subscription
-  on tenant_subscriptions (paddle_subscription_id);
+-- No explicit index on paddle_subscription_id: the `unique` constraint on
+-- the column above already creates one, and a second would just be write
+-- amplification.
 
 alter table tenant_subscriptions enable row level security;
 
--- Read-only, own-tenant-only, for the seller's own UI. Mirrors 0001's "AE
--- reads own tenant" claim read exactly.
+-- Deliberately NO policies — see the RLS note in this file's header for why
+-- the seller-SELECT policy was dropped and what replaces it later. Idempotent
+-- cleanup in case an earlier draft of this migration was ever pasted.
 drop policy if exists "AE reads own tenant subscription" on tenant_subscriptions;
-create policy "AE reads own tenant subscription"
-  on tenant_subscriptions for select
-  using (tenant_id = (auth.jwt() -> 'app_metadata' ->> 'tenant_id')::uuid);
 
 -- 2. Webhook idempotency ---------------------------------------------------
 
 create table if not exists paddle_webhook_events (
-  -- Paddle's own event id AS THE PRIMARY KEY: that is the whole idempotency
+  -- Paddle's own event id AS THE PRIMARY KEY: that is the idempotency
   -- mechanism. The route inserts here BEFORE computing anything, so a
-  -- redelivery (normal Paddle behaviour) hits a unique violation and is
-  -- acknowledged as a no-op rather than applied twice.
+  -- redelivery (normal Paddle behaviour) hits a unique violation — and the
+  -- route then READS processing_outcome back to decide what that means. A
+  -- terminal outcome ('applied'/'stale'/'ignored'/'duplicate') is a true
+  -- duplicate and becomes a no-op; 'received' or 'failed' means the first
+  -- attempt never finished, and the retry is REPROCESSED. Assuming every
+  -- redelivery is a duplicate would turn any crash mid-processing into a
+  -- permanent "customer paid, tenant never provisioned".
   event_id text primary key,
   event_type text not null,
   occurred_at timestamptz,
@@ -135,8 +161,20 @@ create table if not exists billing_checkout_refs (
   expires_at timestamptz not null,
   -- Record of first use, not a one-shot lock: Paddle can send several events
   -- for one checkout, and each must still resolve to the same tenant.
-  consumed_at timestamptz
+  consumed_at timestamptz,
+  -- The subscription this reference resolved for the FIRST time. Set on
+  -- first use; from then on the reference only resolves for that same
+  -- subscription (lib/billing/subscription-repository.ts). Without it, a
+  -- replayed reference could attach a SECOND subscription to the tenant
+  -- that issued the first one. Nullable: null means "not used yet".
+  paddle_subscription_id text
 );
+
+-- Additive for a re-paste over an earlier draft of this file (the column was
+-- introduced after the first version was written; 0014 has not been applied
+-- anywhere, but a partially-applied paste must still converge).
+alter table billing_checkout_refs
+  add column if not exists paddle_subscription_id text;
 
 create index if not exists idx_billing_checkout_refs_tenant
   on billing_checkout_refs (tenant_id);
@@ -148,10 +186,103 @@ alter table billing_checkout_refs enable row level security;
 -- Deliberately NO policies — same default-deny shape as above. Issued and
 -- read only through the service-role client.
 
+-- 4. The ordering guard, enforced by the database --------------------------
+--
+-- Two webhook deliveries for one subscription can be in flight at the same
+-- time (Paddle retries, and events arrive out of order). If each process
+-- reads the row, decides in application code that its event is newer, and
+-- then writes, the LAST writer wins — which is exactly how an older event
+-- overwrites a newer one and silently downgrades a paying tenant.
+--
+-- This function does the write and the "is this event actually newer?"
+-- comparison in ONE statement, so the loser of a race is rejected by the
+-- database itself rather than by a check it already passed. It returns
+-- whether a row was written; the webhook records an event whose write was
+-- refused as `stale`, never as `applied`.
+--
+-- STRICTLY older is rejected (`<=` in the WHERE means "write when the
+-- incoming event is at least as new"): Paddle emits several events with an
+-- identical occurred_at (subscription.created and subscription.activated
+-- for one checkout), and dropping the second would lose the activation.
+-- True duplicates are caught by paddle_webhook_events.event_id, not here.
+--
+-- `security invoker` (NOT definer): this function must carry no privilege of
+-- its own. Only the service-role client calls it, and it is the service
+-- role's own rights that let it write — so a future caller who is not
+-- service-role gains nothing by finding this function.
+create or replace function apply_tenant_subscription_event(
+  p_tenant_id uuid,
+  p_paddle_customer_id text,
+  p_paddle_subscription_id text,
+  p_tier_id text,
+  p_billing_cycle text,
+  p_status text,
+  p_current_period_ends_at timestamptz,
+  p_scheduled_change jsonb,
+  p_past_due_since timestamptz,
+  p_last_event_occurred_at timestamptz,
+  p_manual_entitlement_tier text,
+  p_manual_entitlement_note text
+)
+returns boolean
+language plpgsql
+security invoker
+set search_path = public
+as $$
+declare
+  v_written boolean;
+begin
+  insert into tenant_subscriptions (
+    tenant_id, paddle_customer_id, paddle_subscription_id, tier_id, billing_cycle, status,
+    current_period_ends_at, scheduled_change, past_due_since, last_event_occurred_at,
+    manual_entitlement_tier, manual_entitlement_note, updated_at
+  )
+  values (
+    p_tenant_id, p_paddle_customer_id, p_paddle_subscription_id, p_tier_id, p_billing_cycle, p_status,
+    p_current_period_ends_at, p_scheduled_change, p_past_due_since, p_last_event_occurred_at,
+    p_manual_entitlement_tier, p_manual_entitlement_note, now()
+  )
+  on conflict (tenant_id) do update
+    set paddle_customer_id       = excluded.paddle_customer_id,
+        paddle_subscription_id   = excluded.paddle_subscription_id,
+        tier_id                  = excluded.tier_id,
+        billing_cycle            = excluded.billing_cycle,
+        status                   = excluded.status,
+        current_period_ends_at   = excluded.current_period_ends_at,
+        scheduled_change         = excluded.scheduled_change,
+        past_due_since           = excluded.past_due_since,
+        last_event_occurred_at   = excluded.last_event_occurred_at,
+        manual_entitlement_tier  = excluded.manual_entitlement_tier,
+        manual_entitlement_note  = excluded.manual_entitlement_note,
+        updated_at               = now()
+    where tenant_subscriptions.last_event_occurred_at is null
+       or tenant_subscriptions.last_event_occurred_at <= excluded.last_event_occurred_at
+  returning true into v_written;
+
+  -- No row returned = the WHERE above refused the update (the stored event
+  -- is newer). Not an error: the caller records the event as stale.
+  return coalesce(v_written, false);
+end;
+$$;
+
+-- Service-role only, explicitly. PUBLIC holds EXECUTE on new functions by
+-- default in Postgres; revoking it means an anon/authenticated caller cannot
+-- even attempt this (and `security invoker` means it would gain nothing if
+-- it did).
+revoke all on function apply_tenant_subscription_event(
+  uuid, text, text, text, text, text, timestamptz, jsonb, timestamptz, timestamptz, text, text
+) from public;
+grant execute on function apply_tenant_subscription_event(
+  uuid, text, text, text, text, text, timestamptz, jsonb, timestamptz, timestamptz, text, text
+) to service_role;
+
 commit;
 
 -- Down / rollback (manual -- uncomment and run only to reverse this migration):
 --   begin;
+--     drop function if exists apply_tenant_subscription_event(
+--       uuid, text, text, text, text, text, timestamptz, jsonb, timestamptz, timestamptz, text, text
+--     );
 --     drop table if exists billing_checkout_refs;
 --     drop table if exists paddle_webhook_events;
 --     drop table if exists tenant_subscriptions;

@@ -11,7 +11,10 @@
 // for their own tenant, and the other two tables have RLS enabled with zero
 // policies, so no RLS-scoped client could write any of this anyway.
 //
-// Every query is parameterized through supabase-js (.eq/.insert/.upsert) —
+// Every query is parameterized through supabase-js (.eq/.insert/.update/
+// .rpc — the one write that needs a conditional lives in a Postgres
+// function, 0014's apply_tenant_subscription_event, called with named
+// arguments) —
 // no SQL string is built anywhere in this file. A real query error always
 // throws with context rather than being folded into the "no row" case; the
 // caller must be able to tell "this tenant has no subscription" apart from
@@ -81,24 +84,6 @@ function toState(row: SubscriptionRow): SubscriptionState {
   });
 }
 
-function toRow(state: SubscriptionState): SubscriptionRow & { readonly updated_at: string } {
-  return {
-    tenant_id: state.tenantId,
-    paddle_customer_id: state.paddleCustomerId,
-    paddle_subscription_id: state.paddleSubscriptionId,
-    tier_id: state.tierId,
-    billing_cycle: state.billingCycle,
-    status: state.status,
-    current_period_ends_at: state.currentPeriodEndsAt,
-    scheduled_change: state.scheduledChange,
-    past_due_since: state.pastDueSince,
-    last_event_occurred_at: state.lastEventOccurredAt,
-    manual_entitlement_tier: state.manualEntitlementTier,
-    manual_entitlement_note: state.manualEntitlementNote,
-    updated_at: new Date().toISOString(),
-  };
-}
-
 export async function findByTenantId(tenantId: string): Promise<SubscriptionState | null> {
   const admin = createAdminClient();
   const { data, error } = await admin
@@ -124,16 +109,42 @@ export async function findByPaddleSubscriptionId(subscriptionId: string): Promis
 }
 
 /**
- * Upserts on tenant_id, not on paddle_subscription_id: the billing unit is
- * the TENANT (founder ruling — one subscription per tenant), so a tenant
- * who cancels and later subscribes again replaces their row rather than
- * accumulating a second one.
+ * Writes through apply_tenant_subscription_event (0014), NOT a plain
+ * upsert. Two webhook deliveries can be in flight at once; each would read
+ * the row, decide it is newer, and write — last writer wins, which is how
+ * an older event overwrites a newer one. The Postgres function does the
+ * insert-or-update and the "is this event actually newer?" comparison in
+ * ONE statement, so the loser of a race is rejected by the database itself.
+ *
+ * Returns whether a row was actually written. `false` is not an error: it
+ * means the stored state is already at or ahead of this event, and the
+ * caller must record the event as `stale` rather than `applied`.
+ *
+ * Conflict target is tenant_id, not paddle_subscription_id: the billing
+ * unit is the TENANT (founder ruling — one subscription per tenant). The
+ * caller is responsible for not handing us a SECOND live subscription for a
+ * tenant that already has one (see the route's duplicate_subscription
+ * guard) — this function would happily replace it.
  */
-export async function upsertFromState(state: SubscriptionState): Promise<void> {
+export async function upsertFromState(state: SubscriptionState): Promise<boolean> {
   const admin = createAdminClient();
-  const { error } = await admin.from(SUBSCRIPTIONS_TABLE).upsert(toRow(state), { onConflict: "tenant_id" });
+  const { data, error } = await admin.rpc("apply_tenant_subscription_event", {
+    p_tenant_id: state.tenantId,
+    p_paddle_customer_id: state.paddleCustomerId,
+    p_paddle_subscription_id: state.paddleSubscriptionId,
+    p_tier_id: state.tierId,
+    p_billing_cycle: state.billingCycle,
+    p_status: state.status,
+    p_current_period_ends_at: state.currentPeriodEndsAt,
+    p_scheduled_change: state.scheduledChange,
+    p_past_due_since: state.pastDueSince,
+    p_last_event_occurred_at: state.lastEventOccurredAt,
+    p_manual_entitlement_tier: state.manualEntitlementTier,
+    p_manual_entitlement_note: state.manualEntitlementNote,
+  });
 
   if (error) throw new Error(`Failed to persist the tenant subscription: ${error.message}`);
+  return data === true;
 }
 
 export interface RecordEventInput {
@@ -143,14 +154,31 @@ export interface RecordEventInput {
   readonly payload: unknown;
 }
 
-export type RecordEventResult = "recorded" | "duplicate";
+/**
+ * What a redelivery should do:
+ *   recorded  — first time we have seen this event_id; process it.
+ *   reprocess — we logged it but never finished (outcome still 'received',
+ *               or 'failed'): the customer may have paid and never been
+ *               provisioned, so Paddle's retry must actually be processed.
+ *   duplicate — a previous delivery reached a terminal outcome; no-op.
+ */
+export type RecordEventResult = "recorded" | "reprocess" | "duplicate";
+
+/** The full vocabulary of paddle_webhook_events.processing_outcome (0014). */
+export type EventProcessingOutcome = BillingEventOutcome | "received" | "failed";
+
+/** Outcomes that mean the work is finished — anything else is unfinished work. */
+const TERMINAL_OUTCOMES: readonly string[] = ["applied", "stale", "ignored", "duplicate"];
 
 /**
- * The idempotency gate. event_id is the primary key, so a redelivery of an
- * event we already logged comes back as a unique violation — reported as
- * "duplicate" rather than thrown, because a redelivery is normal Paddle
- * behaviour, not an error. Called BEFORE any state is computed, so a
- * duplicate can never be applied twice.
+ * The idempotency gate. event_id is the primary key, so a redelivery comes
+ * back as a unique violation — normal Paddle behaviour, not an error. What
+ * it means depends on how the FIRST attempt ended, which is why the
+ * existing row's outcome is read back rather than assumed: treating every
+ * redelivery as a duplicate would turn any mid-processing crash into a
+ * permanent "customer paid, tenant never provisioned".
+ *
+ * Called BEFORE the state is computed, so the row always exists to mark.
  */
 export async function recordEvent(input: RecordEventInput): Promise<RecordEventResult> {
   const admin = createAdminClient();
@@ -162,14 +190,29 @@ export async function recordEvent(input: RecordEventInput): Promise<RecordEventR
   });
 
   if (!error) return "recorded";
-  if (error.code === UNIQUE_VIOLATION_CODE) return "duplicate";
-  throw new Error(`Failed to record the Paddle webhook event: ${error.message}`);
+  if (error.code !== UNIQUE_VIOLATION_CODE) {
+    throw new Error(`Failed to record the Paddle webhook event: ${error.message}`);
+  }
+
+  const { data, error: readError } = await admin
+    .from(EVENTS_TABLE)
+    .select("processing_outcome")
+    .eq("event_id", input.eventId)
+    .maybeSingle();
+
+  if (readError) throw new Error(`Failed to read the existing webhook event: ${readError.message}`);
+
+  // A vanished row (raced deletion, manual cleanup) resolves to "redo the
+  // work": provisioning a paid tenant twice is idempotent here, never
+  // provisioning them is not.
+  const existingOutcome = (data as { processing_outcome?: string } | null)?.processing_outcome ?? null;
+  return existingOutcome !== null && TERMINAL_OUTCOMES.includes(existingOutcome) ? "duplicate" : "reprocess";
 }
 
 /** Second phase of recordEvent: what we ended up doing with the event. */
 export async function markEventOutcome(
   eventId: string,
-  outcome: BillingEventOutcome,
+  outcome: EventProcessingOutcome,
   reason: string | null,
 ): Promise<void> {
   const admin = createAdminClient();
@@ -213,34 +256,56 @@ export async function createCheckoutRef(input: CheckoutRefOwner): Promise<Checko
   return Object.freeze({ id, expiresAt });
 }
 
+interface CheckoutRefRow {
+  readonly tenant_id: string;
+  readonly user_id: string | null;
+  readonly expires_at: string;
+  readonly paddle_subscription_id: string | null;
+}
+
 /**
- * Resolves a checkout reference to the tenant it was issued for, or null
- * when it does not exist or has expired. Stamping consumed_at is a record
- * of first use, NOT a one-shot lock: Paddle can send several events for the
- * same checkout, and a second event carrying the same ref must still
- * resolve to the same tenant. The security property is that the id is
- * unguessable, server-issued, tenant-bound and short-lived — not that it is
- * single-use.
+ * Resolves a checkout reference to the tenant it was issued for, and binds
+ * it to the Paddle subscription it first resolved for.
+ *
+ * Returns null — granting nothing — when the reference does not exist, has
+ * expired, or is ALREADY BOUND TO A DIFFERENT SUBSCRIPTION. That last case
+ * is the one that matters: without it, a replayed reference could attach a
+ * second subscription to the tenant that issued the first one.
+ *
+ * Re-use by the SAME subscription is expected and allowed: Paddle sends
+ * several events for one checkout and each must resolve to the same tenant.
+ * consumed_at is a record of first use, not a one-shot lock — the security
+ * properties are unguessable, server-issued, tenant-bound, short-lived and
+ * (now) subscription-bound.
  */
-export async function consumeCheckoutRef(refId: string): Promise<CheckoutRefOwner | null> {
+export async function consumeCheckoutRef(
+  refId: string,
+  paddleSubscriptionId: string,
+): Promise<CheckoutRefOwner | null> {
   const admin = createAdminClient();
   const { data, error } = await admin
     .from(CHECKOUT_REFS_TABLE)
-    .select("tenant_id, user_id, expires_at")
+    .select("tenant_id, user_id, expires_at, paddle_subscription_id")
     .eq("id", refId)
     .maybeSingle();
 
   if (error) throw new Error(`Failed to read the checkout reference: ${error.message}`);
   if (!data) return null;
 
-  const row = data as unknown as { tenant_id: string; user_id: string | null; expires_at: string };
+  const row = data as unknown as CheckoutRefRow;
   if (Date.parse(row.expires_at) <= Date.now()) return null;
 
+  if (row.paddle_subscription_id !== null && row.paddle_subscription_id !== paddleSubscriptionId) {
+    console.error("[checkout-ref] refused a reference already bound to a different subscription");
+    return null;
+  }
+
+  // Binds the reference on first use. Re-stamping the same subscription is
+  // harmless; the guard above is what makes the binding meaningful.
   const { error: stampError } = await admin
     .from(CHECKOUT_REFS_TABLE)
-    .update({ consumed_at: new Date().toISOString() })
-    .eq("id", refId)
-    .is("consumed_at", null);
+    .update({ consumed_at: new Date().toISOString(), paddle_subscription_id: paddleSubscriptionId })
+    .eq("id", refId);
 
   if (stampError) throw new Error(`Failed to stamp the checkout reference: ${stampError.message}`);
 
