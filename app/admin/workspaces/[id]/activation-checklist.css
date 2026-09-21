@@ -147,6 +147,15 @@
   align-items: flex-end;
   gap: 4px;
 }
+/* T60: when the deal-limit notice has taken the button's place it needs the
+   row's full width for its explanation, not the button's right-aligned slot.
+   The row itself already wraps (see .ac-row's flex-wrap), so claiming the
+   whole line here costs no layout shift for the ordinary case. */
+[data-surface="activation-checklist"] .ac-live-cta[data-walled="true"] {
+  align-items: stretch;
+  flex: 1 1 100%;
+  gap: 8px;
+}
 
 [data-surface="activation-checklist"] .ac-btn {
   display: inline-flex;

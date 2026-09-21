@@ -58,6 +58,24 @@ export function formatBillingDate(value: string | null): string {
   return Number.isNaN(parsed.getTime()) ? DATE_FALLBACK : BILLING_DATE_FORMATTER.format(parsed);
 }
 
+/**
+ * Sprint 12, Ticket 60 — "how much of my plan am I actually using?".
+ * Complements activeDealsAllowanceLabel (lib/billing/active-deals-label.ts),
+ * which says what the plan INCLUDES; this says what is in use. Sample deals
+ * are already excluded upstream by countActiveDealsForTenant.
+ *
+ * `maxActiveDeals === null` is unlimited — there is no "of M" to state, so
+ * the word is said outright rather than implied by an absence. The noun
+ * follows whichever number governs it, so a Free tenant reads "1 of 1 active
+ * deal" rather than the slightly wrong "1 of 1 active deals".
+ */
+export function activeDealsUsedLabel(activeCount: number, maxActiveDeals: number | null): string {
+  if (maxActiveDeals === null) {
+    return `${activeCount} active ${activeCount === 1 ? "deal" : "deals"} — unlimited`;
+  }
+  return `${activeCount} of ${maxActiveDeals} active ${maxActiveDeals === 1 ? "deal" : "deals"}`;
+}
+
 function isScheduledCancel(subscription: SubscriptionState): boolean {
   return subscription.scheduledChange?.action === SCHEDULED_CANCEL_ACTION;
 }

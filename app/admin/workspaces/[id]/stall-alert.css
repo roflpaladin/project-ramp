@@ -82,6 +82,47 @@
   outline-offset: 2px;
 }
 
+/* T60: the same CTA, minus the shout, for when the deal-limit wall above has
+   taken this page's one Signal. Secondary weight — the link is never
+   removed, only quietened. */
+[data-surface="stall-alert"] .wsa-cta-plain {
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--ink);
+}
+[data-surface="stall-alert"] .wsa-cta-plain:hover,
+[data-surface="stall-alert"] .wsa-cta-plain:active {
+  background: var(--mist);
+}
+
+/* ---- T60: the quiet-deal line ------------------------------------------
+   Takes the full row rather than competing with the status/CTA pair above
+   it, and stays in Slate: this is a suggestion, not a state change. */
+
+[data-surface="stall-alert"] .wsa-quiet {
+  flex: 1 1 100%;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 18px;
+  color: var(--slate);
+}
+
+[data-surface="stall-alert"] .wsa-quiet-link {
+  color: var(--ink);
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  white-space: nowrap;
+}
+[data-surface="stall-alert"] .wsa-quiet-link:hover {
+  color: var(--slate);
+}
+[data-surface="stall-alert"] .wsa-quiet-link:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+
 @media (max-width: 480px) {
   [data-surface="stall-alert"] {
     padding: 10px 12px;

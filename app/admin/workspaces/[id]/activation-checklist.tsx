@@ -13,13 +13,18 @@
 // and `activation.isComplete` are both plain booleans handed down from
 // page.tsx's own reads; this file makes no Supabase call of its own.
 //
-// ZERO Signal here (`data-signal="true"` never appears in this file) — the
-// page this mounts on (app/admin/workspaces/[id]/page.tsx) already spends its
-// one-Signal-per-scope budget on StallAlert's "Review plan" CTA (only in the
-// "stalled" state) and InvitePanel's "Send invite"/"Open buyer view" pair (see
-// stall-alert.tsx's own audit comment, which this file extends). Every CTA
-// below — the two nav links and the "Make it live" button — is plain/
-// secondary styling on purpose, never a fifth loud colour.
+// Signal budget. Every CTA this file owns directly — the two nav links and
+// the "Make it live" button — is plain/secondary styling, never a fifth loud
+// colour, exactly as it was in T58. Sprint 12, Ticket 60 adds ONE conditional
+// exception: when the tenant is walled, DealLimitNotice takes the go-live
+// button's place and its upgrade CTA may carry the page's Signal. It only
+// does so when `canUseSignal` says the page has handed it over — see
+// workspace-signal-budget.ts, which resolves that once for the whole page so
+// this card and StallAlert can never both shout.
+//
+// The wall locks the go-live button and NOTHING else (founder ruling,
+// 2026-09-21): a seller at their limit still builds, invites, edits and
+// reads everything.
 //
 // Both dismissActivationChecklist and markPlanLiveAction return a result
 // union rather than throwing (T28-10's contract) — this component still
@@ -33,6 +38,14 @@ import type { ActivationState, ActivationSteps } from "@/lib/plans/activation";
 import type { PlanErrorCode } from "@/lib/plans/mutations";
 import type { PlanStatus } from "@/lib/plans/types";
 import { dismissActivationChecklist } from "./checklist-actions";
+import { DealLimitNotice } from "./deal-limit-notice";
+import {
+  dealLimitReasonForErrorCode,
+  dealLimitReasonForState,
+  type DealLimitReason,
+  type DealLimitState,
+} from "./deal-limit-state";
+import { describePlanError } from "./plan/error-messages";
 import { markPlanLiveAction } from "./plan/plan-actions";
 import "./activation-checklist.css";
 
@@ -51,6 +64,10 @@ export interface ActivationChecklistProps {
   readonly isDismissed: boolean;
   /** app/admin/workspaces/[id]/plan — same destination as StallAlert's own CTA. */
   readonly planHref: string;
+  /** T60. Where the tenant stands on active deals — built in page.tsx by deal-limit-state.ts. */
+  readonly dealLimit: DealLimitState;
+  /** T60. False when another element on this page already holds its one Signal. */
+  readonly canUseSignal: boolean;
 }
 
 interface ChecklistRowSpec {
@@ -70,48 +87,66 @@ const CHECKLIST_ROWS: readonly ChecklistRowSpec[] = [
   { key: "live", pendingLabel: "Make the plan live", doneLabel: "Plan is live" },
 ];
 
-/** Known result codes get a specific, human sentence; anything else falls back to a generic one. */
-function describeChecklistError(code: PlanErrorCode): string {
-  switch (code) {
-    case "UNAUTHENTICATED":
-      return "You need to be signed in to do that — try refreshing the page.";
-    case "NOT_FOUND":
-      return "Couldn't find this workspace or plan — try refreshing the page.";
-    default:
-      return "Something went wrong. Please try again.";
-  }
-}
+/**
+ * A Server Action's network round trip can reject before the action body
+ * ever runs, so there is no PlanErrorCode to describe — this is the only
+ * message in the card that isn't describePlanError's.
+ */
+const TRANSPORT_ERROR_MESSAGE = "Something went wrong. Please try again.";
 
-export function ActivationChecklist({ workspaceId, plan, activation, isDismissed, planHref }: ActivationChecklistProps) {
+export function ActivationChecklist({
+  workspaceId,
+  plan,
+  activation,
+  isDismissed,
+  planHref,
+  dealLimit,
+  canUseSignal,
+}: ActivationChecklistProps) {
   const [isDismissPending, startDismissTransition] = useTransition();
   const [dismissError, setDismissError] = useState<string | null>(null);
 
   const [isMarkLivePending, startMarkLiveTransition] = useTransition();
   const [markLiveError, setMarkLiveError] = useState<string | null>(null);
+  // Set only when the SERVER refuses a go-live this page believed was
+  // allowed — the page was rendered before another tab took the last seat.
+  const [refusedReason, setRefusedReason] = useState<DealLimitReason | null>(null);
 
   const canMarkLive = plan !== null && plan.status === "draft";
+
+  // The server's answer outranks the page's own read: it is newer.
+  const dealLimitReason = refusedReason ?? dealLimitReasonForState(dealLimit);
+  const isWalled = dealLimitReason === "limit" || dealLimitReason === "past-due";
 
   function handleDismiss() {
     setDismissError(null);
     startDismissTransition(async () => {
       try {
         const result = await dismissActivationChecklist(workspaceId);
-        if (!result.ok) setDismissError(describeChecklistError(result.code));
+        if (!result.ok) setDismissError(describePlanError(result.code));
       } catch {
-        setDismissError("Something went wrong. Please try again.");
+        setDismissError(TRANSPORT_ERROR_MESSAGE);
       }
     });
+  }
+
+  /** A billing refusal becomes the notice; everything else stays an inline line. */
+  function applyMarkLiveFailure(code: PlanErrorCode) {
+    const reason = dealLimitReasonForErrorCode(code);
+    setRefusedReason(reason);
+    setMarkLiveError(reason === null ? describePlanError(code) : null);
   }
 
   function handleMarkLive() {
     if (!plan) return;
     setMarkLiveError(null);
+    setRefusedReason(null);
     startMarkLiveTransition(async () => {
       try {
         const result = await markPlanLiveAction(workspaceId, plan.id);
-        if (!result.ok) setMarkLiveError(describeChecklistError(result.code));
+        if (!result.ok) applyMarkLiveFailure(result.code);
       } catch {
-        setMarkLiveError("Something went wrong. Please try again.");
+        setMarkLiveError(TRANSPORT_ERROR_MESSAGE);
       }
     });
   }
@@ -139,16 +174,28 @@ export function ActivationChecklist({ workspaceId, plan, activation, isDismissed
     // key === "live" — once live, no button: the row's own text already says so.
     if (activation.steps.live) return null;
     return (
-      <div className="ac-live-cta">
-        <button
-          type="button"
-          className="ac-btn"
-          onClick={handleMarkLive}
-          disabled={!canMarkLive || isMarkLivePending}
-          aria-busy={isMarkLivePending}
-        >
-          {isMarkLivePending ? "Making it live…" : "Make it live"}
-        </button>
+      // data-walled lets the row give the notice its full width instead of
+      // squeezing a paragraph into the button's slot — see the CSS.
+      <div className="ac-live-cta" data-walled={isWalled}>
+        {isWalled ? null : (
+          <button
+            type="button"
+            className="ac-btn"
+            onClick={handleMarkLive}
+            disabled={!canMarkLive || isMarkLivePending}
+            aria-busy={isMarkLivePending}
+          >
+            {isMarkLivePending ? "Making it live…" : "Make it live"}
+          </button>
+        )}
+        {dealLimitReason ? (
+          <DealLimitNotice
+            reason={dealLimitReason}
+            activeCount={dealLimit.activeCount}
+            maxActiveDeals={dealLimit.maxActiveDeals}
+            canUseSignal={canUseSignal}
+          />
+        ) : null}
         {markLiveError ? (
           <p className="ac-inline-error" role="alert">
             {markLiveError}

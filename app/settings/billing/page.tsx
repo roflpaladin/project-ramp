@@ -6,10 +6,11 @@ import type { Entitlement } from "@/lib/billing/entitlement";
 import { resolveEntitlement } from "@/lib/billing/entitlement";
 import { findByTenantId } from "@/lib/billing/subscription-repository";
 import type { SubscriptionState } from "@/lib/billing/subscription-reducer";
+import { countActiveDealsForTenant } from "@/lib/plans/active-deal-count";
 import { requireSeller } from "@/lib/plans/require-seller";
 import { openBillingPortalAction } from "./actions";
 import { messageForBillingErrorCode } from "./billing-errors";
-import { describeBillingStatus, formatBillingDate, planDisplayName } from "./billing-status";
+import { activeDealsUsedLabel, describeBillingStatus, formatBillingDate, planDisplayName } from "./billing-status";
 import "./billing.css";
 
 // Sprint 12, Ticket 59 (slice 2 — seller-facing billing surface). Reads the
@@ -28,6 +29,25 @@ import "./billing.css";
 const BILLING_CONTACT_EMAIL = "dimas@getbrava.tech";
 const BILLING_CONTACT_SUBJECT = "Brava billing";
 const BILLING_CONTACT_HREF = `mailto:${BILLING_CONTACT_EMAIL}?subject=${encodeURIComponent(BILLING_CONTACT_SUBJECT)}`;
+
+const LOG_PREFIX = "[billing-page]";
+
+/**
+ * T60. The usage line is informational, so it is never allowed to take the
+ * page down: a failed count omits the line and says so in the server log.
+ * countActiveDealsForTenant throws rather than returning 0 precisely so a
+ * failure cannot be mistaken here for "you are using none of your plan".
+ */
+async function readActiveDealCount(tenantId: string | null): Promise<number | null> {
+  if (!tenantId) return null;
+
+  try {
+    return await countActiveDealsForTenant(tenantId);
+  } catch (error) {
+    console.error(`${LOG_PREFIX} could not count active deals for tenant ${tenantId}`, error);
+    return null;
+  }
+}
 
 function billingCycleLabel(cycle: "month" | "year" | null): string | null {
   if (cycle === "month") return "Billed monthly";
@@ -152,6 +172,8 @@ export default async function BillingSettingsPage({
   const planName = planDisplayName(entitlement);
   const allowanceLabel = activeDealsAllowanceLabel(entitlement.maxActiveDeals);
 
+  const activeDealCount = await readActiveDealCount(seller.tenantId);
+
   return (
     <main data-surface="settings-billing" data-testid="billing-page" className="bl-page">
       <div className="bl-header">
@@ -171,6 +193,13 @@ export default async function BillingSettingsPage({
       <section className="bl-card" data-testid="billing-plan-card">
         <p className="bl-plan-name">{planName}</p>
         <p className="bl-mono bl-allowance">{allowanceLabel}</p>
+        {/* T60: what the plan includes, then what is in use. Omitted rather
+            than guessed at when the count could not be read. */}
+        {activeDealCount === null ? null : (
+          <p className="bl-mono bl-deals-used" data-testid="billing-deals-used">
+            {activeDealsUsedLabel(activeDealCount, entitlement.maxActiveDeals)}
+          </p>
+        )}
         <BillingCardBody isManual={isManual} subscription={subscription} entitlement={entitlement} />
       </section>
     </main>

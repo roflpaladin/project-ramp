@@ -2,14 +2,20 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { groupByCategoryAndType, RESOURCE_TYPE_OPTIONS } from "@/lib/links";
-import { getPlanForSeller } from "@/lib/plans/queries";
-import type { PlanStepRow } from "@/lib/plans/types";
+import { countActiveDealsForTenant } from "@/lib/plans/active-deal-count";
+import { getTenantEntitlement } from "@/lib/billing/tenant-entitlement";
+import { isClosedPlanStatus } from "@/lib/plans/closed-plans";
+import { getClosedPlanForSeller, getPlanForSeller, type PlanReadClient } from "@/lib/plans/queries";
+import type { PlanStepRow, PlanTree } from "@/lib/plans/types";
 import { computeEngagementSignal, type EngagementEventInput } from "@/lib/plans/engagement";
 import { getStallThresholdDays } from "@/lib/plans/stall-threshold";
 import { computeActivationState } from "@/lib/plans/activation";
 import { hasSentInviteForWorkspace } from "@/lib/plans/invite-status";
 import { getCrmForecastForWorkspace } from "@/lib/crm/forecast";
 import { requireSeller } from "@/lib/plans/require-seller";
+import { buildDealLimitState, UNKNOWN_DEAL_LIMIT_STATE, type DealLimitState } from "./deal-limit-state";
+import { planStatusMeta } from "./plan/status-badge";
+import { resolveWorkspaceSignalOwners } from "./workspace-signal-budget";
 import { addLink } from "./links-actions";
 import { LinkUrlField } from "./link-url-field";
 import { LinkRow } from "./link-row";
@@ -25,9 +31,57 @@ import "./workspace-links.css";
  * shape computeEngagementSignal needs. A workspace without a live plan yet
  * (plan === null) contributes zero steps, which is an ordinary state for
  * engagement.ts (see its "waiting" branch), not an error. */
-function flattenSteps(plan: Awaited<ReturnType<typeof getPlanForSeller>>): PlanStepRow[] {
+function flattenSteps(plan: PlanTree | null): PlanStepRow[] {
   if (!plan) return [];
   return plan.stages.flatMap((stage) => stage.steps);
+}
+
+const LOG_PREFIX = "[workspace-page]";
+
+/**
+ * Sprint 12, Ticket 60 — where does this tenant stand on active deals?
+ *
+ * The two reads are caught SEPARATELY and on purpose: a billing outage must
+ * not also blind the count, and a failed count must not be mistaken for a
+ * billing problem. Whatever survives goes to the pure builder
+ * (deal-limit-state.ts), which decides what can honestly be said. Neither
+ * failure 500s this page, and neither one is ever silent.
+ *
+ * An account with no tenant claim (provisioning never finished) reads as
+ * unknown rather than free: the go-live gate is the authority, and it will
+ * answer properly when the seller presses the button.
+ */
+async function readDealLimit(tenantId: string | null): Promise<DealLimitState> {
+  if (!tenantId) return UNKNOWN_DEAL_LIMIT_STATE;
+
+  const [entitlement, activeCount] = await Promise.all([
+    getTenantEntitlement(tenantId).catch((error: unknown) => {
+      console.error(`${LOG_PREFIX} could not read the billing state for tenant ${tenantId}`, error);
+      return null;
+    }),
+    countActiveDealsForTenant(tenantId).catch((error: unknown) => {
+      console.error(`${LOG_PREFIX} could not count active deals for tenant ${tenantId}`, error);
+      return null;
+    }),
+  ]);
+
+  return buildDealLimitState(entitlement, activeCount);
+}
+
+/**
+ * T60. getPlanForSeller matches draft+active only, so a workspace whose deal
+ * has been CLOSED would otherwise render here as if it had no plan at all.
+ * The fallback runs only when the first read came back empty (its own
+ * contract), and a failure in it degrades to "no plan" rather than taking
+ * the whole dashboard down.
+ */
+async function loadClosedPlanOrNull(workspaceId: string, client: PlanReadClient): Promise<PlanTree | null> {
+  try {
+    return await getClosedPlanForSeller(workspaceId, client);
+  } catch (error) {
+    console.error(`${LOG_PREFIX} closed-plan lookup failed for workspace ${workspaceId}`, error);
+    return null;
+  }
 }
 
 export default async function WorkspaceDetailPage({
@@ -75,7 +129,7 @@ export default async function WorkspaceDetailPage({
   //   1. the cached crm_* fields (lib/crm/forecast.ts, T31-2 — not modified here)
   //   2. the plan tree, for step owner_side/status (lib/plans/queries.ts, Ticket 28)
   //   3. workspace_analytics events, for real buyer engagement (T31-1's input)
-  const [crmForecast, plan, { data: analyticsRows }, seller, hasSentInvite] = await Promise.all([
+  const [crmForecast, livePlan, { data: analyticsRows }, seller, hasSentInvite] = await Promise.all([
     getCrmForecastForWorkspace(id, supabase),
     getPlanForSeller(id, supabase),
     supabase
@@ -97,6 +151,16 @@ export default async function WorkspaceDetailPage({
     hasSentInviteForWorkspace(id),
   ]);
 
+  // T60: a closed deal keeps its plan. `live ?? closed` is what stops this
+  // page telling the seller nothing ever happened here.
+  const plan = livePlan ?? (await loadClosedPlanOrNull(id, supabase));
+  const closedPlanStatus = plan !== null && isClosedPlanStatus(plan.status) ? plan.status : null;
+
+  // Not folded into the Promise.all above: both reads need the tenant claim
+  // that requireSeller() resolves IN that same batch. Their own two reads do
+  // run in parallel with each other (see readDealLimit).
+  const dealLimit = await readDealLimit(seller?.tenantId ?? null);
+
   const engagementEvents: EngagementEventInput[] = (analyticsRows ?? []).map((row) => ({
     actionType: row.action_type,
     createdAt: row.created_at,
@@ -114,6 +178,18 @@ export default async function WorkspaceDetailPage({
   // reads — plan and hasSentInvite are already resolved above, nothing new
   // to fetch here.
   const activation = computeActivationState({ plan, hasSentInvite });
+
+  const isChecklistDismissed = workspace.activation_checklist_dismissed_at !== null;
+
+  // T60: this page's one-Signal-per-scope budget, resolved once, here — the
+  // deal-limit wall and the stall alert can otherwise both claim it. See
+  // workspace-signal-budget.ts for the full rule.
+  const signalOwners = resolveWorkspaceSignalOwners({
+    isChecklistDismissed,
+    activation,
+    dealLimit,
+    engagementState: engagementSignal.state,
+  });
 
   return (
     <main data-surface="workspace-links">
@@ -155,14 +231,20 @@ export default async function WorkspaceDetailPage({
         workspaceId={id}
         plan={plan ? { id: plan.id, status: plan.status } : null}
         activation={activation}
-        isDismissed={workspace.activation_checklist_dismissed_at !== null}
+        isDismissed={isChecklistDismissed}
         planHref={`/admin/workspaces/${id}/plan`}
+        dealLimit={dealLimit}
+        canUseSignal={signalOwners.canChecklistUseSignal}
       />
 
       {/* T36-5: always-visible stall alert — independent of whether the CRM
           strip below is even mounted (it hides entirely without CRM sync,
           T31-5). Renders nothing at all when the buyer is actively engaged. */}
-      <StallAlert signal={engagementSignal} planHref={`/admin/workspaces/${id}/plan`} />
+      <StallAlert
+        signal={engagementSignal}
+        planHref={`/admin/workspaces/${id}/plan`}
+        isSignalSuppressed={signalOwners.isStallSignalSuppressed}
+      />
 
       {/* T43: seller-facing invite panel, its own card just under the chat
           section and above the links list — the seller's other real
@@ -174,9 +256,18 @@ export default async function WorkspaceDetailPage({
           comment for the full one-Signal audit within this card). */}
       <InvitePanel workspaceId={id} sellerEmail={seller?.email ?? null} />
 
+      {/* T60: a closed deal is a state this page states, never one it hides
+          by rendering an empty plan area. Dot + text label, in Slate — an
+          outcome, not an alarm. */}
       <p className="wsl-plan-nav">
+        {closedPlanStatus ? (
+          <span className="wsl-plan-status" data-testid="workspace-plan-status">
+            <span className="wsl-plan-status-dot" data-status-dot="" aria-hidden="true" />
+            Deal closed — {planStatusMeta(closedPlanStatus).label.toLowerCase()}
+          </span>
+        ) : null}
         <Link href={`/admin/workspaces/${id}/plan`} className="wsl-btn">
-          Go to plan builder
+          {closedPlanStatus ? "Open closed plan" : "Go to plan builder"}
         </Link>
       </p>
 

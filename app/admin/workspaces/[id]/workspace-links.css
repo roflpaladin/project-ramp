@@ -246,7 +246,30 @@
 /* ---- nav link to the plan builder ------------------------------------------ */
 
 [data-surface="workspace-links"] .wsl-plan-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
   margin: 4px 0 20px;
+}
+
+/* T60: the closed-deal state. Status is never colour-only — dot + text — and
+   an outcome is not an alarm, so it stays Slate rather than taking a loud
+   state colour. */
+[data-surface="workspace-links"] .wsl-plan-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--slate);
+}
+[data-surface="workspace-links"] .wsl-plan-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+  background: var(--state-wait);
 }
 
 @media (max-width: 480px) {
