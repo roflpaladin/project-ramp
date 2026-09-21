@@ -208,21 +208,31 @@ describe("seedSampleDeal", () => {
     await scopedB.auth.signOut();
   });
 
-  it("two calls for the same tenant yield two distinct workspaceIds, both present", async () => {
+  // REVERSED BY Sprint 12, Ticket 60 — REQUIRES MIGRATION 0015.
+  // T42 asserted the opposite here ("two calls yield two distinct
+  // workspaceIds"): the seed was non-idempotent by design. A sample
+  // workspace is now excluded from the active-deal limit, so a second one
+  // would be a second free, uncounted deal — 0015 forbids it with
+  // idx_workspaces_one_sample_per_tenant and lib/seed/sample-deal.ts returns
+  // the existing sample instead. The DB-free half of this rule (including
+  // the two-clicks-racing collision) lives in
+  // tests/plans/seed-sample-deal-idempotency.spec.ts and runs today.
+  it("a second call for the same tenant returns the SAME sample, and creates nothing", async () => {
     const dealA2 = await seedSampleDeal({ tenantId: sellerA.tenantId, userId: sellerA.userId });
     expect(dealA2.ok).toBe(true);
     if (!dealA2.ok) return;
-    createdDeals.push({ workspaceId: dealA2.workspaceId, planId: dealA2.planId });
 
     expect(dealA1.ok).toBe(true);
     if (!dealA1.ok) return;
-    expect(dealA2.workspaceId).not.toBe(dealA1.workspaceId);
+    expect(dealA2.workspaceId).toBe(dealA1.workspaceId);
+    expect(dealA2.planId).toBe(dealA1.planId);
 
-    const { data: workspaces } = await admin
+    const { data: samples } = await admin
       .from("workspaces")
       .select("id")
-      .in("id", [dealA1.workspaceId, dealA2.workspaceId]);
-    expect(workspaces).toHaveLength(2);
+      .eq("tenant_id", sellerA.tenantId)
+      .eq("is_sample", true);
+    expect(samples).toHaveLength(1);
   });
 
   it("seller-side steps carry the seller's real email; buyer-side steps never do", async () => {
