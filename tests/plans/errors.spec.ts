@@ -122,6 +122,25 @@ describe("mapPostgrestError", () => {
     });
   });
 
+  // Sprint 12, Ticket 60. 0015's success_plans go-live trigger raises this
+  // whenever a role other than service_role/postgres/supabase_admin tries to
+  // move a plan INTO 'active' — i.e. a seller PATCHing PostgREST directly
+  // with the anon key, which no app code path does. Mapped anyway so the
+  // refusal surfaces as its own code rather than a generic 500.
+  describe("P0001 (0015's go-live trigger)", () => {
+    it("maps GO_LIVE_NOT_PERMITTED to the GO_LIVE_NOT_PERMITTED code / 403", () => {
+      const error = pgError({ code: "P0001", message: "GO_LIVE_NOT_PERMITTED" });
+
+      expect(mapPostgrestError(error)).toEqual({ code: "GO_LIVE_NOT_PERMITTED", status: 403 });
+    });
+
+    it("still maps the reorder mismatch, which shares the SQLSTATE", () => {
+      const error = pgError({ code: "P0001", message: "REORDER_SET_MISMATCH" });
+
+      expect(mapPostgrestError(error).code).toBe("REORDER_SET_MISMATCH");
+    });
+  });
+
   describe("unknown / unmapped errors", () => {
     it("maps an unrecognised SQLSTATE to a safe generic 500 that leaks no Postgres text", () => {
       const error = pgError({ code: "08006", message: "connection failure to the database" });
