@@ -111,6 +111,50 @@ hand in the Supabase **SQL Editor**:
 
 Always dev first. New files (`0008+`) get applied to both, dev leading.
 
+### Pending: `0015_deal_limits.sql` (Sprint 12, Ticket 60)
+
+Not yet applied anywhere. It must be pasted on **dev first, then prod** — the
+app will not work without it: `workspaces.is_sample` is written by the
+sample-deal seed (so onboarding fails without the column), and going live
+calls the `mark_plan_live()` function this file creates.
+
+Read the **VERIFY FIRST** block at the top of that file before pasting. It
+carries a read-only query to run on dev first, plus the two checks to make
+afterwards (the demo/sample seed still creates active plans; a seller PATCHing
+`status='active'` straight at PostgREST is refused with `GO_LIVE_NOT_PERMITTED`).
+
+## Granting a manual entitlement by hand (invoice customers)
+
+Enterprise and design-partner tenants are invoiced by the founder, not billed
+through Paddle. They get their entitlement from
+`tenant_subscriptions.manual_entitlement_tier`, which beats every Paddle status
+and never shows a paywall or an active-deal limit. Nothing in the app writes
+it — by design. Set it in the **SQL Editor**, on the environment the customer
+actually uses:
+
+```sql
+-- 1. Find the tenant id (never guess it).
+select id, name from tenants where name ilike '%acme%';
+
+-- 2. Grant. The NOT NULLs in 0014 (tier_id, status) must be satisfied even
+--    though Paddle knows nothing about this row; 'active' + the same tier id
+--    keeps the billing page readable. Tier ids come from
+--    lib/billing/plans.ts: 'starter' | 'pro' | 'advanced' | 'enterprise'.
+insert into tenant_subscriptions (tenant_id, tier_id, status, manual_entitlement_tier, manual_entitlement_note)
+values ('<tenant-uuid>', 'enterprise', 'active', 'enterprise', 'Invoiced annually — PO 1234, 2026-09-21')
+on conflict (tenant_id) do update
+   set manual_entitlement_tier = excluded.manual_entitlement_tier,
+       manual_entitlement_note = excluded.manual_entitlement_note,
+       updated_at = now();
+
+-- 3. Confirm.
+select tenant_id, tier_id, status, manual_entitlement_tier, manual_entitlement_note
+  from tenant_subscriptions where tenant_id = '<tenant-uuid>';
+```
+
+To revoke, set `manual_entitlement_tier` (and the note) back to `null` — never
+delete the row. Standing rule: billing rows and Paddle entities are permanent.
+
 ## Verifying a project has the full schema
 
 Tables and columns are visible over the REST API; **functions are not**.
