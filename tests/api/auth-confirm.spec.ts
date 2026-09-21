@@ -1,17 +1,16 @@
 // Sprint 12, Ticket 65 — "Password Reset Flow". Route-handler coverage for
 // app/auth/confirm/route.ts. Pins the Sprint 12 panel finding: the route used
 // to cast ANY `type` straight into verifyOtp and always land on /admin. Now
-// the link type is allow-listed, a recovery link lands on /auth/reset with a
-// signed recovery marker, and every destination is a fixed internal path —
-// a `next`/`redirect_to` param in the link is ignored (no open redirect).
+// the link type is allow-listed, a recovery link is forwarded (unspent) to
+// the /auth/recover continue page, and every destination is a fixed internal
+// path — a `next`/`redirect_to` param in the link is ignored (no open
+// redirect).
 //
 // DB-free: the Supabase server client, next/headers and next/navigation are
 // mocked, so only the route's own branching runs. The real GoTrue
 // token_hash contract is pinned live in tests/security/password-reset.spec.ts.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-
-import { RECOVERY_MARKER_COOKIE, verifyRecoveryMarker } from "@/lib/auth/recovery-marker";
 
 const USER_ID = "7e570000-0000-4000-8000-000000006503";
 
@@ -69,12 +68,15 @@ beforeEach(() => {
 });
 
 describe("GET /auth/confirm — link type allow-list", () => {
-  it("sends a link with no token or no type back to sign-in without calling Supabase", async () => {
-    const location = await visit("?type=recovery");
+  it.each(["?type=recovery", "?token_hash=abc", ""])(
+    "sends a link missing its token or type (%j) back to sign-in without calling Supabase",
+    async (query) => {
+      const location = await visit(query);
 
-    expect(location.startsWith("/admin/login?error=")).toBe(true);
-    expect(verifyOtp).not.toHaveBeenCalled();
-  });
+      expect(location.startsWith("/admin/login?error=")).toBe(true);
+      expect(verifyOtp).not.toHaveBeenCalled();
+    },
+  );
 
   it.each(["invite", "email_change", "phone_change", "bogus", "RECOVERY"])(
     "rejects link type %s without calling Supabase",
@@ -105,32 +107,27 @@ describe("GET /auth/confirm — link type allow-list", () => {
 });
 
 describe("GET /auth/confirm — recovery", () => {
-  it("lands a verified recovery link on /auth/reset", async () => {
-    const location = await visit("?token_hash=abc&type=recovery");
+  // Security review MEDIUM-2/3: a GET must never spend a recovery token —
+  // mail scanners pre-open links. The route only forwards the token to the
+  // /auth/recover page, whose button POSTs it
+  // (tests/auth/continue-recovery-action.spec.ts).
+  it("forwards a recovery link to the continue page without calling Supabase", async () => {
+    const location = await visit("?token_hash=abc123DEF456ghi789&type=recovery");
 
-    expect(location).toBe("/auth/reset");
-    expect(verifyOtp).toHaveBeenCalledWith({ token_hash: "abc", type: "recovery" });
-  });
-
-  it("sets a signed, http-only recovery marker scoped to the reset page", async () => {
-    await visit("?token_hash=abc&type=recovery");
-
-    expect(cookieWrites).toHaveLength(1);
-    const [write] = cookieWrites;
-    expect(write.name).toBe(RECOVERY_MARKER_COOKIE);
-    expect(verifyRecoveryMarker(write.value, USER_ID)).toBe(true);
-    expect(write.options).toMatchObject({ httpOnly: true, sameSite: "lax", path: "/auth/reset" });
-    expect(write.options.maxAge).toBeGreaterThan(0);
-  });
-
-  it("sends an expired or used recovery link to the request page, not a raw error", async () => {
-    verifyOtp.mockResolvedValue({ data: { user: null }, error: { message: "otp_expired" } });
-
-    const location = await visit("?token_hash=abc&type=recovery");
-
-    expect(location).toBe("/forgot-password?error=link_expired");
+    expect(location).toBe("/auth/recover?token_hash=abc123DEF456ghi789");
+    expect(verifyOtp).not.toHaveBeenCalled();
     expect(cookieWrites).toHaveLength(0);
   });
+
+  it.each(["short", "has space 0123456789abcdef", "a".repeat(300), "../../admin/0123456789"])(
+    "sends a malformed recovery token (%j) to the request page",
+    async (tokenHash) => {
+      const location = await visit(`?token_hash=${encodeURIComponent(tokenHash)}&type=recovery`);
+
+      expect(location).toBe("/forgot-password?error=link_expired");
+      expect(verifyOtp).not.toHaveBeenCalled();
+    },
+  );
 
   it.each([
     "&next=https://evil.example",
@@ -138,8 +135,8 @@ describe("GET /auth/confirm — recovery", () => {
     "&redirect_to=https://evil.example",
     "&next=/admin/settings",
   ])("ignores a caller-supplied destination (%s)", async (extra) => {
-    const location = await visit(`?token_hash=abc&type=recovery${extra}`);
+    const location = await visit(`?token_hash=abc123DEF456ghi789&type=recovery${extra}`);
 
-    expect(location).toBe("/auth/reset");
+    expect(location).toBe("/auth/recover?token_hash=abc123DEF456ghi789");
   });
 });

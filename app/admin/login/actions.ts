@@ -29,6 +29,16 @@ export async function signIn(formData: FormData) {
 // here), so it's derived the same way Next's own docs recommend: prefer the
 // browser-sent Origin header on this POST, fall back to Host + a protocol
 // guess for the rare client that omits it.
+//
+// Sprint 12, Ticket 65 note: the password-reset link deliberately does NOT
+// use this — it uses lib/auth/app-origin.ts, which never trusts request
+// headers in production. The difference is who polices the result: here the
+// value is only a `emailRedirectTo` hint that Supabase checks against the
+// project's redirect allowlist (an attacker-shaped origin is refused and
+// falls back to the Site URL), whereas the reset link is built and emailed
+// by us with nothing downstream to refuse it. Moving this onto
+// resolveAppOrigin is a follow-up, held back because it changes which host
+// (bare vs www) must be on that allowlist in both Supabase projects.
 function resolveOrigin(headerList: Headers): string {
   const origin = headerList.get("origin");
   if (origin) return origin;

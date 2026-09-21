@@ -22,7 +22,7 @@ const { getUser, updateUser, signOut, cookieJar, deletedCookies } = vi.hoisted((
   updateUser: vi.fn(),
   signOut: vi.fn(),
   cookieJar: new Map<string, string>(),
-  deletedCookies: [] as string[],
+  deletedCookies: [] as Array<{ name: string; path?: string }>,
 }));
 
 vi.mock("@/lib/supabase/server", () => ({
@@ -32,8 +32,12 @@ vi.mock("@/lib/supabase/server", () => ({
 vi.mock("next/headers", () => ({
   cookies: vi.fn(async () => ({
     get: (name: string) => (cookieJar.has(name) ? { name, value: cookieJar.get(name) } : undefined),
-    delete: (options: { name: string } | string) => {
-      deletedCookies.push(typeof options === "string" ? options : options.name);
+    // Records the FULL options and really removes the entry: the marker is
+    // set with path "/auth/reset", and a delete without that same path would
+    // silently not clear it in a real browser.
+    delete: (options: { name: string; path?: string }) => {
+      deletedCookies.push(options);
+      cookieJar.delete(options.name);
     },
   })),
 }));
@@ -139,7 +143,17 @@ describe("setNewPassword — saving", () => {
     expect(location).toBe("/admin");
     expect(updateUser).toHaveBeenCalledWith({ password: GOOD_PASSWORD });
     expect(signOut).toHaveBeenCalledWith({ scope: "others" });
-    expect(deletedCookies).toEqual([RECOVERY_MARKER_COOKIE]);
+    expect(deletedCookies).toEqual([{ name: RECOVERY_MARKER_COOKIE, path: "/auth/reset" }]);
+  });
+
+  it("refuses a second submit once the marker has been spent", async () => {
+    await submit(GOOD_PASSWORD, GOOD_PASSWORD);
+    updateUser.mockClear();
+
+    const location = await submit("another-password-1", "another-password-1");
+
+    expect(location).toBe(LINK_EXPIRED_LOCATION);
+    expect(updateUser).not.toHaveBeenCalled();
   });
 
   it("maps a Supabase failure to a code, never a raw message", async () => {

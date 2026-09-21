@@ -43,6 +43,16 @@ const forgotPasswordStyle: CSSProperties = {
   fontSize: "0.9rem",
 };
 
+// app/globals.css has no `a` rule, so an unstyled link renders in the
+// browser's default blue — about 1.4:1 on dark --paper, under the 4.5:1
+// floor. --ink flips with the theme. (The two older links on this page have
+// the same gap; left alone here as out of T65 scope.)
+const forgotPasswordLinkStyle: CSSProperties = {
+  color: "var(--ink)",
+  textDecoration: "underline",
+  textUnderlineOffset: "2px",
+};
+
 export default async function LoginPage({
   searchParams,
 }: {
@@ -70,7 +80,9 @@ export default async function LoginPage({
       {/* Sprint 12, Ticket 65 — a quiet text link, not a button: "Sign in"
           stays this page's one Signal. */}
       <p style={forgotPasswordStyle}>
-        <a href="/forgot-password">Forgot password?</a>
+        <a href="/forgot-password" style={forgotPasswordLinkStyle}>
+          Forgot password?
+        </a>
       </p>
       {error ? <p role="alert">{error}</p> : null}
       {showSentConfirmation ? (

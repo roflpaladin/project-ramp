@@ -1,7 +1,7 @@
 "use server";
 
 // Sprint 12, Ticket 65 — "Password Reset Flow". The set-a-new-password half.
-// Reached only after app/auth/confirm/route.ts verified a recovery link.
+// Reached only after app/auth/recover/actions.ts verified a recovery link.
 // Same plain "use server" action + redirect-with-a-code pattern as
 // app/register: a raw Supabase message never reaches the seller —
 // app/auth/reset/page.tsx owns turning a code into human copy.
@@ -9,16 +9,17 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { RECOVERY_MARKER_COOKIE } from "@/lib/auth/recovery-marker";
-import { hasRecoverySession } from "@/lib/auth/recovery-session";
-import { validateNewPassword } from "@/lib/auth/validation";
+import { getRecoveryUser } from "@/lib/auth/recovery-session";
+import { LINK_EXPIRED_PATH, RESET_PATH, RESET_SUCCESS_PATH } from "@/lib/auth/reset-routes";
+import { validateNewPassword, type NewPasswordError } from "@/lib/auth/validation";
 import { createClient } from "@/lib/supabase/server";
 
-const LINK_EXPIRED_PATH = "/forgot-password?error=link_expired";
-const RESET_PATH = "/auth/reset";
-const SUCCESS_PATH = "/admin";
 const SAME_PASSWORD_CODE = "same_password";
 
-type ResetErrorCode = "password_required" | "password_too_short" | "password_mismatch" | "same_password" | "update_failed";
+// Type-only export: erased at build time, so it is legal in a "use server"
+// file. ./page.tsx keys its copy table on it, so a new code without copy is
+// a compile error rather than a silent "Something went wrong".
+export type ResetErrorCode = NewPasswordError | "same_password" | "update_failed";
 
 function redirectWithError(code: ResetErrorCode): never {
   redirect(`${RESET_PATH}?error=${code}`);
@@ -29,7 +30,7 @@ export async function setNewPassword(formData: FormData): Promise<void> {
   const confirmPassword = String(formData.get("confirmPassword") ?? "");
 
   const supabase = await createClient();
-  if (!(await hasRecoverySession(supabase))) {
+  if (!(await getRecoveryUser(supabase))) {
     redirect(LINK_EXPIRED_PATH);
   }
 
@@ -58,5 +59,5 @@ export async function setNewPassword(formData: FormData): Promise<void> {
   const cookieStore = await cookies();
   cookieStore.delete({ name: RECOVERY_MARKER_COOKIE, path: RESET_PATH });
 
-  redirect(SUCCESS_PATH);
+  redirect(RESET_SUCCESS_PATH);
 }

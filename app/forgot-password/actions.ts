@@ -17,11 +17,12 @@ import { after } from "next/server";
 
 import { resolveAppOrigin } from "@/lib/auth/app-origin";
 import { requestPasswordReset } from "@/lib/auth/password-reset";
+import { FORGOT_PASSWORD_PATH } from "@/lib/auth/reset-routes";
 import { isValidEmail } from "@/lib/auth/validation";
 import { checkRateLimit, PASSWORD_RESET_RATE_LIMIT } from "@/lib/rate-limit";
 
-const SENT_PATH = "/forgot-password?sent=1";
-const INVALID_EMAIL_PATH = "/forgot-password?error=invalid_email";
+const SENT_PATH = `${FORGOT_PASSWORD_PATH}?sent=1`;
+const INVALID_EMAIL_PATH = `${FORGOT_PASSWORD_PATH}?error=invalid_email`;
 
 function callerIp(headerList: Headers): string {
   const forwardedFor = headerList.get("x-forwarded-for");
@@ -56,10 +57,15 @@ export async function requestReset(formData: FormData): Promise<void> {
 
   const headerList = await headers();
 
-  // Both budgets are always charged (no short-circuit), so a caller who is
-  // over the IP budget still spends the target email's budget and vice versa.
+  // The email budget is only charged once the IP budget has passed: an
+  // over-budget caller sends nothing either way, and the email key is the
+  // limiter's one caller-supplied key — charging it unconditionally would let
+  // a single client grow the (never-pruned, interim) window map without
+  // bound. The redirect below is identical on every path, so the
+  // short-circuit is not observable. The durable per-account brake is
+  // lib/auth/recovery-cooldown.ts.
   const isIpWithinBudget = isWithinBudget(`password-reset:ip:${callerIp(headerList)}`);
-  const isEmailWithinBudget = isWithinBudget(`password-reset:email:${email}`);
+  const isEmailWithinBudget = isIpWithinBudget && isWithinBudget(`password-reset:email:${email}`);
 
   if (isIpWithinBudget && isEmailWithinBudget) {
     const origin = resolveAppOrigin(headerList);

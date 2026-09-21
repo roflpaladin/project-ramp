@@ -64,6 +64,19 @@ describe("resolveAppOrigin", () => {
     expect(resolveAppOrigin(headersOf({}))).toBe(PRODUCTION_ORIGIN);
   });
 
+  it("refuses a plain-http configured address that is not this machine (token would travel in cleartext)", () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("NEXT_PUBLIC_APP_URL", "http://www.getbrava.tech");
+
+    expect(resolveAppOrigin(headersOf({}))).toBe(PRODUCTION_ORIGIN);
+  });
+
+  it("allows plain http for a configured localhost address", () => {
+    vi.stubEnv("NEXT_PUBLIC_APP_URL", "http://localhost:3100");
+
+    expect(resolveAppOrigin(headersOf({}))).toBe("http://localhost:3100");
+  });
+
   it("derives the address from the request in local development", () => {
     vi.stubEnv("NODE_ENV", "development");
 

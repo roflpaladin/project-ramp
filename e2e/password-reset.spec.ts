@@ -1,8 +1,9 @@
 // Sprint 12, Ticket 65 — "Password Reset Flow". LOCAL-RUN ONLY, not a CI job
 // — see playwright.config.ts's header comment. Drives the seller's whole
 // path through a real browser and a real build: sign-in page -> "Forgot
-// password?" -> neutral confirmation -> recovery link -> set a new password
-// -> signed in on /admin -> the used link and the old password both stop
+// password?" -> neutral confirmation -> recovery link -> continue -> set a
+// new password -> signed in on /admin -> the used link and the old password
+// both stop
 // working. The vitest specs pin each piece; this is the only file that
 // proves they hold together across real redirects and a real cookie jar
 // (the session cookie AND the path-scoped recovery marker).
@@ -40,7 +41,7 @@ test("a seller asks for a reset link from the sign-in page and gets the neutral 
   await page.getByRole("button", { name: "Send reset link" }).click();
 
   await expect(page).toHaveURL(/\/forgot-password\?sent=1$/);
-  await expect(page.getByRole("status")).toContainText("If an account exists for that email");
+  await expect(page.getByRole("main").getByRole("status")).toContainText("If an account exists for that email");
 });
 
 test("an unknown email gets the exact same confirmation", async ({ page }) => {
@@ -49,28 +50,36 @@ test("an unknown email gets the exact same confirmation", async ({ page }) => {
   await page.getByRole("button", { name: "Send reset link" }).click();
 
   await expect(page).toHaveURL(/\/forgot-password\?sent=1$/);
-  await expect(page.getByRole("status")).toContainText("If an account exists for that email");
+  await expect(page.getByRole("main").getByRole("status")).toContainText("If an account exists for that email");
 });
 
 test("the reset page refuses a visitor who did not come through a reset link", async ({ page }) => {
   await page.goto("/auth/reset");
 
   await expect(page).toHaveURL(/\/forgot-password\?error=link_expired$/);
-  await expect(page.getByRole("alert")).toContainText("expired or was already used");
+  await expect(page.getByRole("main").getByRole("alert")).toContainText("expired or was already used");
 });
 
 test("the recovery link sets a new password, signs the seller in, and cannot be reused", async ({ page }) => {
   const linkPath = await mintRecoveryLinkPath();
 
-  // A caller-supplied destination must be ignored (no open redirect).
+  // A caller-supplied destination must be ignored (no open redirect). Opening
+  // the link spends nothing — it lands on the one-button continue step, so a
+  // mail scanner pre-opening it cannot burn the token.
   await page.goto(`${linkPath}&next=https://example.org/`);
+  await expect(page).toHaveURL(/\/auth\/recover\?token_hash=/);
+
+  // Opening it a second time still works: proof the GET did not spend it.
+  await page.goto(linkPath);
+  await page.getByRole("button", { name: "Continue to set a new password" }).click();
   await expect(page).toHaveURL(/\/auth\/reset$/);
+  await expect(page.getByText(SELLER_EMAIL)).toBeVisible();
 
   // A mismatch keeps the seller on the page with the marker intact.
   await page.getByLabel("New password", { exact: true }).fill(NEW_PASSWORD);
   await page.getByLabel("Confirm new password").fill(`${NEW_PASSWORD}-typo`);
   await page.getByRole("button", { name: "Set new password" }).click();
-  await expect(page.getByRole("alert")).toContainText("do not match");
+  await expect(page.getByRole("main").getByRole("alert")).toContainText("do not match");
 
   await page.getByLabel("New password", { exact: true }).fill(NEW_PASSWORD);
   await page.getByLabel("Confirm new password").fill(NEW_PASSWORD);
@@ -83,8 +92,9 @@ test("the recovery link sets a new password, signs the seller in, and cannot be 
   await page.goto("/auth/reset");
   await expect(page).toHaveURL(/\/forgot-password\?error=link_expired$/);
 
-  // The link is single-use.
+  // The link is single-use: the continue step now reports it as spent.
   await page.goto(linkPath);
+  await page.getByRole("button", { name: "Continue to set a new password" }).click();
   await expect(page).toHaveURL(/\/forgot-password\?error=link_expired$/);
 });
 
@@ -93,7 +103,7 @@ test("the old password is rejected and the new one signs in", async ({ page }) =
   await page.getByLabel("Email").first().fill(SELLER_EMAIL);
   await page.getByLabel("Password").fill(OLD_PASSWORD);
   await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page.getByRole("alert")).toBeVisible();
+  await expect(page.getByRole("main").getByRole("alert")).toBeVisible();
   await expect(page).toHaveURL(/\/admin\/login/);
 
   await page.getByLabel("Email").first().fill(SELLER_EMAIL);

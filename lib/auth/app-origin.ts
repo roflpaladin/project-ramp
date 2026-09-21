@@ -13,14 +13,18 @@
 // getbrava.tech is the only domain we own — never .io.
 const PRODUCTION_ORIGIN = "https://www.getbrava.tech";
 const LOCAL_FALLBACK_HOST = "localhost:3000";
+const LOCAL_HOSTNAMES: readonly string[] = ["localhost", "127.0.0.1"];
 
 function parseHttpOrigin(candidate: string | undefined | null): string | null {
   const trimmed = candidate?.trim();
   if (!trimmed) return null;
   try {
     const url = new URL(trimmed);
-    if (url.protocol !== "https:" && url.protocol !== "http:") return null;
-    return url.origin;
+    if (url.protocol === "https:") return url.origin;
+    // Plain http would carry the one-time token in cleartext — allowed for
+    // this machine only.
+    if (url.protocol === "http:" && LOCAL_HOSTNAMES.includes(url.hostname)) return url.origin;
+    return null;
   } catch {
     return null;
   }

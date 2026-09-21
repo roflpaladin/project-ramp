@@ -1,5 +1,6 @@
 import { sendPasswordResetEmail } from "@/lib/email/send-password-reset";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { isWithinRecoveryCooldown } from "./recovery-cooldown";
 
 // Sprint 12, Ticket 65 — "Password Reset Flow". Creates a one-time recovery
 // token for a seller and emails them a link to it.
@@ -11,8 +12,10 @@ import { createAdminClient } from "@/lib/supabase/admin";
 //   - No Supabase email-template edits and no redirect-allowlist entries on
 //     either project: verifyOtp({ token_hash }) runs server-side in
 //     app/auth/confirm/route.ts and involves no Supabase-side redirect.
-//   - GoTrue's own per-email send throttle does not apply to generateLink,
-//     so app/forgot-password/actions.ts's rate limits are the only ones.
+//   - GoTrue's own per-email send throttle does not apply to generateLink.
+//     ./recovery-cooldown.ts replaces it with a durable per-account cooldown
+//     (security review HIGH-1); app/forgot-password/actions.ts's in-memory
+//     limits sit in front of that.
 
 const CONFIRM_PATH = "/auth/confirm";
 const RECOVERY_TYPE = "recovery";
@@ -40,6 +43,12 @@ export async function requestPasswordReset({
   email,
   origin,
 }: RequestPasswordResetInput): Promise<RequestPasswordResetResult> {
+  // Checked BEFORE generating: a second token would invalidate the link
+  // already in the seller's inbox.
+  if (await isWithinRecoveryCooldown(email)) {
+    return { sent: false };
+  }
+
   const admin = createAdminClient();
   const { data, error } = await admin.auth.admin.generateLink({ type: RECOVERY_TYPE, email });
 

@@ -12,12 +12,22 @@ import { RECOVERY_MARKER_COOKIE, verifyRecoveryMarker } from "./recovery-marker"
 // Both conditions must hold: a signed-in Supabase user, AND a recovery
 // marker signed for that same user — see ./recovery-marker.ts for why a
 // session alone is not enough.
-export async function hasRecoverySession(client?: SupabaseClient): Promise<boolean> {
+
+export interface RecoveryUser {
+  readonly id: string;
+  /** Shown on the reset page so the visitor can see WHOSE password this is. */
+  readonly email: string;
+}
+
+/** The user this browser may set a new password for, or `null`. */
+export async function getRecoveryUser(client?: SupabaseClient): Promise<RecoveryUser | null> {
   const supabase = client ?? (await createClient());
   const { data, error } = await supabase.auth.getUser();
-  if (error || !data.user) return false;
+  if (error || !data.user) return null;
 
   const cookieStore = await cookies();
   const marker = cookieStore.get(RECOVERY_MARKER_COOKIE)?.value;
-  return verifyRecoveryMarker(marker, data.user.id);
+  if (!verifyRecoveryMarker(marker, data.user.id)) return null;
+
+  return { id: data.user.id, email: data.user.email ?? "" };
 }

@@ -2,18 +2,21 @@
 // assertions for app/auth/reset/page.tsx. /auth/* is outside the middleware
 // matcher, so the page itself must refuse anyone who did not just arrive
 // through a verified reset link — that guard
-// (lib/auth/recovery-session.ts's hasRecoverySession) is mocked here and
+// (lib/auth/recovery-session.ts's getRecoveryUser) is mocked here and
 // covered on its own in tests/auth/reset-password-action.spec.ts.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 
+const SELLER_EMAIL = "seller@example.com";
+const RECOVERY_USER = { id: "7e570000-0000-4000-8000-000000006507", email: SELLER_EMAIL };
+
 const { recoverySession } = vi.hoisted(() => ({
-  recoverySession: { value: true },
+  recoverySession: { value: null as { id: string; email: string } | null },
 }));
 
 vi.mock("@/lib/auth/recovery-session", () => ({
-  hasRecoverySession: vi.fn(async () => recoverySession.value),
+  getRecoveryUser: vi.fn(async () => recoverySession.value),
 }));
 
 class RedirectSignal extends Error {
@@ -31,7 +34,7 @@ vi.mock("next/navigation", () => ({
 const { default: ResetPasswordPage } = await import("@/app/auth/reset/page");
 
 beforeEach(() => {
-  recoverySession.value = true;
+  recoverySession.value = RECOVERY_USER;
 });
 
 afterEach(() => {
@@ -45,13 +48,21 @@ async function renderPage(error?: string) {
 
 describe("ResetPasswordPage — guard", () => {
   it("sends a visitor without a verified reset link to request a new one", async () => {
-    recoverySession.value = false;
+    recoverySession.value = null;
 
     await expect(renderPage()).rejects.toMatchObject({ location: "/forgot-password?error=link_expired" });
   });
 });
 
 describe("ResetPasswordPage — form", () => {
+  it("names the account whose password is being set", async () => {
+    // Security review MEDIUM-1: a phished link for SOMEONE ELSE'S account
+    // must be recognisable before the visitor types a password into it.
+    await renderPage();
+
+    expect(screen.getByText(SELLER_EMAIL)).toBeInTheDocument();
+  });
+
   it("renders password and confirm fields with the registration minimum length", async () => {
     await renderPage();
 
