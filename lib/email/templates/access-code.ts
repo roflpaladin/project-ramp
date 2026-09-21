@@ -4,19 +4,10 @@
 // dependency. Behaviour is unchanged from the pre-T57 nodemailer version.
 
 // Security review (T43): portalUrl can be derived from forwarded request
-// headers, which are not guaranteed proxy-sanitized on every deployment. A
-// value containing `"` or `<` must not be able to break out of the href
-// attribute or inject markup into an email we send to a third party, so it
-// is escaped before interpolation into the HTML body. Kept local to this
-// module rather than a shared lib/email/html-escape.ts -- this is still the
-// only caller.
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
-}
+// headers, which are not guaranteed proxy-sanitized on every deployment, so
+// it is escaped (lib/email/html-escape.ts) before interpolation into the
+// HTML body.
+import { escapeHtml } from "../html-escape";
 
 export interface AccessCodeEmailContent {
   readonly subject: string;
