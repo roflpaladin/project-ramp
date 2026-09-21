@@ -119,9 +119,16 @@ sample-deal seed (so onboarding fails without the column), and going live
 calls the `mark_plan_live()` function this file creates.
 
 Read the **VERIFY FIRST** block at the top of that file before pasting. It
-carries a read-only query to run on dev first, plus the two checks to make
-afterwards (the demo/sample seed still creates active plans; a seller PATCHing
-`status='active'` straight at PostgREST is refused with `GO_LIVE_NOT_PERMITTED`).
+holds four read-only queries to run on dev first — each with one expected
+answer — and two after-the-paste proofs you run the same way (a seller must
+be refused with `GO_LIVE_NOT_PERMITTED` when making a plan live, and with
+`SAMPLE_FLAG_NOT_PERMITTED` when marking a workspace as the sample).
+
+Query 4 in that block is the one to actually look at before pasting: it lists
+any tenant that already has **more than one** sample workspace (the old seed
+could create several). Rows there are not a blocker — the migration flags only
+the oldest one per tenant, and the extras just start counting as ordinary
+deals — but it is worth knowing before rather than after.
 
 ## Granting a manual entitlement by hand (invoice customers)
 
@@ -134,7 +141,7 @@ actually uses:
 
 ```sql
 -- 1. Find the tenant id (never guess it).
-select id, name from tenants where name ilike '%acme%';
+select id, company_name from tenants where company_name ilike '%acme%';
 
 -- 2. Grant. The NOT NULLs in 0014 (tier_id, status) must be satisfied even
 --    though Paddle knows nothing about this row; 'active' + the same tier id
@@ -147,9 +154,16 @@ on conflict (tenant_id) do update
        manual_entitlement_note = excluded.manual_entitlement_note,
        updated_at = now();
 
--- 3. Confirm.
-select tenant_id, tier_id, status, manual_entitlement_tier, manual_entitlement_note
-  from tenant_subscriptions where tenant_id = '<tenant-uuid>';
+-- 3. Confirm — and check the NAME, not just the id. If the company here
+--    isn't the customer you meant to grant, you pasted the wrong uuid.
+select t.company_name,
+       s.tier_id,
+       s.status,
+       s.manual_entitlement_tier,
+       s.manual_entitlement_note
+  from tenant_subscriptions s
+  join tenants t on t.id = s.tenant_id
+ where s.tenant_id = '<tenant-uuid>';
 ```
 
 To revoke, set `manual_entitlement_tier` (and the note) back to `null` — never
