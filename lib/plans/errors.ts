@@ -37,6 +37,9 @@ import {
  *   rather than merely hidden in the UI.
  * - DEAL_LIMIT_REACHED: the tenant is at their tier's active-deal cap. The
  *   upgrade wall — and ONLY ever that, never an infrastructure failure.
+ * - SAMPLE_DEAL_LOCKED: the plan is in the sample workspace, which the limit
+ *   never counts. Not a wall (no upgrade fixes it) and not an error — the
+ *   seller is told to make a real deal.
  * - BILLING_PAST_DUE: payment failed and the 7-day grace is over. Existing
  *   deals and buyers are untouched; only NEW deals are refused.
  * - BILLING_CHECK_FAILED: we could not read the tenant's billing state at
@@ -51,6 +54,7 @@ export type PlanErrorCode =
   | "PLAN_ALREADY_LIVE"
   | "PLAN_CLOSED"
   | "DEAL_LIMIT_REACHED"
+  | "SAMPLE_DEAL_LOCKED"
   | "BILLING_PAST_DUE"
   | "BILLING_CHECK_FAILED"
   | "GO_LIVE_NOT_PERMITTED"

@@ -18,6 +18,7 @@
 // for every other role, so this is the only client that can perform it.
 
 import { createAdminClient } from "@/lib/supabase/admin";
+import { mapPostgrestError, type PostgrestErrorLike } from "./errors";
 
 const MARK_PLAN_LIVE_FUNCTION = "mark_plan_live";
 
@@ -30,14 +31,20 @@ const MARK_PLAN_LIVE_FUNCTION = "mark_plan_live";
  *   limit_reached — the tenant is at their cap. Nothing was written.
  *   not_found     — no draft plan with that id in that tenant (wrong tenant,
  *                   deleted plan, or a plan that is already closed).
+ *   sample_workspace — the plan lives in the tenant's SAMPLE workspace,
+ *                   which the limit never counts. Reachable with ordinary
+ *                   clicks (close the sample as Won, start a new plan in it,
+ *                   press "make it live"), so it is a first-class verdict
+ *                   rather than an assertion.
  */
-export type MarkPlanLiveVerdict = "live" | "already_live" | "limit_reached" | "not_found";
+export type MarkPlanLiveVerdict = "live" | "already_live" | "limit_reached" | "not_found" | "sample_workspace";
 
 const MARK_PLAN_LIVE_VERDICTS: readonly string[] = Object.freeze([
   "live",
   "already_live",
   "limit_reached",
   "not_found",
+  "sample_workspace",
 ]);
 
 export interface MarkPlanLiveInput {
@@ -55,7 +62,15 @@ export async function markPlanLive(input: MarkPlanLiveInput): Promise<MarkPlanLi
     p_max_active_deals: input.maxActiveDeals,
   });
 
-  if (error) throw new Error(`Failed to mark the plan live: ${error.message}`);
+  // The mapped code rides along in the message on purpose: the most likely
+  // production failure here is 0015's role allow-list being wrong for this
+  // project (GO_LIVE_NOT_PERMITTED) or the grant being missing (NOT_FOUND,
+  // from a 42501), and a log line that says which one is the difference
+  // between a five-minute fix and an evening of guessing.
+  if (error) {
+    const { code } = mapPostgrestError(error as PostgrestErrorLike);
+    throw new Error(`Failed to mark the plan live (${code}): ${error.message}`);
+  }
 
   // Validated, not trusted — the same rule upsertFromState applies to
   // apply_tenant_subscription_event: a version of the function that is not

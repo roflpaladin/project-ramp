@@ -67,6 +67,10 @@ export async function goLivePlan(
     const verdict = await markPlanLive({ planId, tenantId, maxActiveDeals: entitlement.maxActiveDeals });
 
     if (verdict === "limit_reached") return { ok: false, code: "DEAL_LIMIT_REACHED" };
+    // The sample workspace is excluded from the count, so it must also be
+    // excluded from going live — otherwise it is a free, permanent extra
+    // deal. Deliberately NOT the upgrade wall: no plan change fixes it.
+    if (verdict === "sample_workspace") return { ok: false, code: "SAMPLE_DEAL_LOCKED" };
     if (verdict === "not_found") return { ok: false, code: "NOT_FOUND" };
 
     // 'live' and 'already_live' are both success: a second click, or a retry

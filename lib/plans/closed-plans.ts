@@ -3,10 +3,18 @@
 //
 // Founder ruling (2026-09-21): won and lost behave identically. Closing
 // frees an active-deal seat, deletes nothing, and the SELLER keeps seeing
-// the plan with its outcome. "Read-only" is therefore a server rule, not a
-// rendering choice — hidden buttons are not a boundary, and every plan /
-// stage / step mutation resolves its owning plan through ensurePlanIsOpen()
-// before it writes.
+// the plan with its outcome.
+//
+// THIS IS A PRODUCT RULE, NOT A SECURITY BOUNDARY. Be honest about what it
+// buys: a seller holds `for all` RLS over their own tenant's plans (0005),
+// so anyone with the public anon key and devtools can still edit a closed
+// plan's rows directly. What this guard guarantees is that OUR OWN surfaces
+// behave consistently — every action refuses, not just the ones whose
+// buttons we remembered to hide, so "read-only" cannot quietly become
+// "read-only unless you find the other form". The rules that DO need to
+// hold against a hostile seller (going live past the cap, flagging a
+// workspace as the sample) are enforced in the database by 0015's triggers,
+// because only the database can.
 //
 // One extra round trip per mutation, accepted deliberately: the alternative
 // is a status check inside every RLS policy in 0005, which would make the

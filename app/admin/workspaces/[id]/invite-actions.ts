@@ -32,6 +32,13 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const INVALID_EMAIL_MESSAGE = "Enter a valid email address.";
 const WORKSPACE_NOT_FOUND_MESSAGE = "Couldn't find this workspace.";
+// T60 (founder ruling, 2026-09-21). The sample deal is the one workspace the
+// active-deal limit doesn't count, so it must never carry a real customer.
+// The seller can still invite THEMSELVES — that is the whole "see what your
+// buyer sees" moment — and nobody else.
+const SAMPLE_OWN_EMAIL_ONLY_MESSAGE =
+  "This is the sample deal. You can only invite your own email here, to see what your buyer sees. " +
+  "Create a real deal to invite your buyer.";
 const SEND_FAILED_MESSAGE = "Couldn't send the invite email. Try again in a moment.";
 const RATE_LIMITED_MESSAGE = "This workspace reached its invite limit for now. Try again in an hour.";
 
@@ -110,7 +117,7 @@ export async function sendBuyerInvite(
 
   const { data: workspace } = await seller.client
     .from("workspaces")
-    .select("id, approved_emails, target_domain")
+    .select("id, approved_emails, target_domain, is_sample")
     .eq("id", workspaceId)
     .single();
 
@@ -123,8 +130,22 @@ export async function sendBuyerInvite(
     return { status: "error", email: null, message: WORKSPACE_NOT_FOUND_MESSAGE };
   }
 
+  // T60: the sample deal takes the seller's OWN login address only. Checked
+  // before anything is written or sent, and before the approval logic below
+  // — a refusal here must leave no trace at all. A session with no email on
+  // it cannot prove ownership of any address, so it is refused too.
+  if (workspace.is_sample) {
+    const ownEmail = seller.email?.trim().toLowerCase() ?? null;
+    if (ownEmail === null || email !== ownEmail) {
+      return { status: "error", email: null, message: SAMPLE_OWN_EMAIL_ONLY_MESSAGE };
+    }
+  }
+
   const approvedEmails = workspace.approved_emails ?? [];
-  if (!isEmailApproved(email, approvedEmails, workspace.target_domain)) {
+  // Domain auto-approval is off on the sample (lib/portal-access.ts), so the
+  // seller's own address gets written to the whitelist explicitly — which is
+  // exactly what the anonymous portal gate will look for later.
+  if (!isEmailApproved(email, approvedEmails, workspace.target_domain, { allowDomainMatch: !workspace.is_sample })) {
     // Immutable: a NEW array, never a mutation of `approvedEmails`. Safe to
     // simply append — isEmailApproved just proved `email` isn't already
     // present (case-insensitively) or covered by the target_domain match —
@@ -203,7 +224,7 @@ export async function flipToBuyerView(workspaceId: string, formData: FormData): 
 
   const { data: workspace } = await seller.client
     .from("workspaces")
-    .select("id, approved_emails, target_domain")
+    .select("id, approved_emails, target_domain, is_sample")
     .eq("id", workspaceId)
     .single();
 
@@ -213,8 +234,15 @@ export async function flipToBuyerView(workspaceId: string, formData: FormData): 
   // for a domain-approved address, so a literal-membership check here made
   // the flip silently refuse the most common approval path (buyer email on
   // the workspace's own target domain) right after the invite reported sent.
+  // T60: same allowDomainMatch rule as the invite path — on the sample, only
+  // an explicitly whitelisted address counts. The own-inbox check above
+  // already makes this branch sample-safe; passing the flag keeps the two
+  // approval decisions in this file from drifting apart.
   const isApproved =
-    !!workspace && isEmailApproved(email, workspace.approved_emails ?? [], workspace.target_domain);
+    !!workspace &&
+    isEmailApproved(email, workspace.approved_emails ?? [], workspace.target_domain, {
+      allowDomainMatch: !workspace.is_sample,
+    });
 
   if (!workspace || !email || !isOwnInbox || !isApproved) {
     // Refuses without minting a cookie. Deliberately the SAME redirect shape

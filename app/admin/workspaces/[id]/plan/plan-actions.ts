@@ -64,9 +64,18 @@ function planPath(workspaceId: string): string {
  * shows (its activation checklist, its deal-limit notice), not just the plan
  * page — so those two actions refresh both. Ordinary title/step edits still
  * refresh only the plan page, as before.
+ *
+ * Takes the workspace id off the ROW the write returned, never the action's
+ * own argument: the row is server-derived, the argument came from a URL.
+ * They agree in every real flow, and preferring the row costs nothing.
+ *
+ * (Both actions keep their `workspaceId` parameter even though they no
+ * longer read it — it is part of the bound-action signature the UI already
+ * uses, `markPlanLiveAction.bind(null, workspaceId, planId)`.)
  */
-function workspacePath(workspaceId: string): string {
-  return `/admin/workspaces/${workspaceId}`;
+function revalidateDealPaths(workspaceId: string): void {
+  revalidatePath(planPath(workspaceId));
+  revalidatePath(`/admin/workspaces/${workspaceId}`);
 }
 
 /** `undefined` (field absent) means "no change" on a patch; `""` means "clear to null". */
@@ -179,10 +188,7 @@ export async function closePlanAction(
   if (!gate.ok) return gate;
 
   const result = await updatePlan(planId, { status: outcome }, session.client);
-  if (result.ok) {
-    revalidatePath(planPath(workspaceId));
-    revalidatePath(workspacePath(workspaceId));
-  }
+  if (result.ok) revalidateDealPaths(result.data.workspace_id);
   return result;
 }
 
@@ -209,10 +215,7 @@ export async function markPlanLiveAction(
   if (!session) return { ok: false, code: "UNAUTHENTICATED" };
 
   const result = await goLivePlan(session, planId);
-  if (result.ok) {
-    revalidatePath(planPath(workspaceId));
-    revalidatePath(workspacePath(workspaceId));
-  }
+  if (result.ok) revalidateDealPaths(result.data.workspace_id);
   return result;
 }
 

@@ -17,6 +17,10 @@ const MESSAGES: Record<PlanErrorCode, string> = {
   // BILLING_CHECK_FAILED below.
   DEAL_LIMIT_REACHED:
     "You are using all the active deals your plan includes. Close a deal or upgrade your plan to start another.",
+  // Not a paywall: upgrading changes nothing here. The way forward is a real
+  // deal, so that is what the sentence offers.
+  SAMPLE_DEAL_LOCKED:
+    "The sample deal is for practice, so it can't go live. Create a real deal when you're ready to go live with a buyer.",
   BILLING_PAST_DUE:
     "Your last payment did not go through, so new deals are paused. Existing deals keep working — update your payment details to start another.",
   BILLING_CHECK_FAILED: "We could not check your plan just now. Try again in a moment.",
