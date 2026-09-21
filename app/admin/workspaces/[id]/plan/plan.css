@@ -231,6 +231,19 @@
   outline-offset: 2px;
 }
 
+/* T60: the closed-deal note. Bad news stated plainly, in Slate — closing a
+   deal is an outcome, not an error, so it never takes --state-risk. */
+[data-surface="plan-builder"] .plan-closed-note {
+  margin: 0;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--mist);
+  color: var(--slate);
+  font-size: 13px;
+  font-weight: 500;
+}
+
 [data-surface="plan-builder"] .plan-error {
   margin: 0;
   padding: 8px 12px;

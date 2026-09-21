@@ -17,6 +17,8 @@ interface StageRowProps {
   isFirst: boolean;
   isLast: boolean;
   isPending: boolean;
+  /** T60: a closed deal's plan — every write control here is withheld. */
+  isReadOnly?: boolean;
   liveStepId: string | null;
   onMoveStageUp: () => void;
   onMoveStageDown: () => void;
@@ -29,6 +31,7 @@ export function StageRow({
   isFirst,
   isLast,
   isPending,
+  isReadOnly = false,
   liveStepId,
   onMoveStageUp,
   onMoveStageDown,
@@ -63,27 +66,29 @@ export function StageRow({
           <h2 className="m-0 text-lg font-semibold">{stage.title}</h2>
           <StatusBadge tone={meta.tone} label={meta.label} />
         </div>
-        <div className="flex items-center gap-2">
-          <MoveButtons
-            itemLabel={stage.title}
-            isFirst={isFirst}
-            isLast={isLast}
-            isPending={isPending}
-            onMoveUp={onMoveStageUp}
-            onMoveDown={onMoveStageDown}
-          />
-          <button type="button" className="plan-btn" onClick={() => setIsEditing((current) => !current)}>
-            {isEditing ? "Cancel" : "Edit"}
-          </button>
-          <form action={handleDelete}>
-            <button type="submit" className="plan-btn">
-              Delete stage
+        {isReadOnly ? null : (
+          <div className="flex items-center gap-2">
+            <MoveButtons
+              itemLabel={stage.title}
+              isFirst={isFirst}
+              isLast={isLast}
+              isPending={isPending}
+              onMoveUp={onMoveStageUp}
+              onMoveDown={onMoveStageDown}
+            />
+            <button type="button" className="plan-btn" onClick={() => setIsEditing((current) => !current)}>
+              {isEditing ? "Cancel" : "Edit"}
             </button>
-          </form>
-        </div>
+            <form action={handleDelete}>
+              <button type="submit" className="plan-btn">
+                Delete stage
+              </button>
+            </form>
+          </div>
+        )}
       </div>
 
-      {isEditing ? (
+      {isEditing && !isReadOnly ? (
         <form action={handleUpdate} className="flex flex-col gap-3">
           <label className="plan-field">
             Stage title
@@ -120,6 +125,7 @@ export function StageRow({
             isFirst={index === 0}
             isLast={index === stage.steps.length - 1}
             isPending={isPending}
+            isReadOnly={isReadOnly}
             isLive={step.id === liveStepId}
             onMoveUp={() => onMoveStep(step.id, "up")}
             onMoveDown={() => onMoveStep(step.id, "down")}
@@ -127,7 +133,9 @@ export function StageRow({
         ))}
       </div>
 
-      <AddStepForm workspaceId={workspaceId} stageId={stage.id} nextDisplayOrder={stage.steps.length} />
+      {isReadOnly ? null : (
+        <AddStepForm workspaceId={workspaceId} stageId={stage.id} nextDisplayOrder={stage.steps.length} />
+      )}
     </section>
   );
 }
