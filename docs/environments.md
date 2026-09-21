@@ -118,13 +118,25 @@ app will not work without it: `workspaces.is_sample` is written by the
 sample-deal seed (so onboarding fails without the column), and going live
 calls the `mark_plan_live()` function this file creates.
 
+**Rollout order matters — this file is not backwards compatible with pre-T60
+code.** Once pasted, the old go-live button (which flips the status through
+the seller's own client) is refused by the new trigger. On prod, paste it
+**immediately before** merging the T60 PR: in those few minutes only "Make it
+live" fails. The other order is worse (new code without the file breaks
+go-live *and* the onboarding sample deal). On dev, any other branch's CI fails
+`tests/security/mark-plan-live-action.spec.ts` until that branch merges main
+with T60 in it.
+
+`0015` and `0016_rate_limit_windows.sql` (Ticket 62) are independent of each
+other — either can be pasted first.
+
 Read the **VERIFY FIRST** block at the top of that file before pasting. It
-holds four read-only queries to run on dev first — each with one expected
+holds two read-only queries to run on dev first — each with one expected
 answer — and two after-the-paste proofs you run the same way (a seller must
 be refused with `GO_LIVE_NOT_PERMITTED` when making a plan live, and with
 `SAMPLE_FLAG_NOT_PERMITTED` when marking a workspace as the sample).
 
-Query 4 in that block is the one to actually look at before pasting: it lists
+Query 2 in that block is the one to actually look at before pasting: it lists
 any tenant that already has **more than one** sample workspace (the old seed
 could create several). Rows there are not a blocker — the migration flags only
 the oldest one per tenant, and the extras just start counting as ordinary

@@ -1,0 +1,119 @@
+/* Scoped styles for "Close deal" (Sprint 12, Ticket 60). Same layering
+   choice as the sibling surfaces (plan.css, activation-checklist.css):
+   theme layered, utilities unlayered. Brand colour comes entirely from the
+   Ramp tokens in app/globals.css — nothing here hardcodes a hex, so both
+   themes ship from these same rules. Scoped to [data-surface="close-deal"]
+   so nothing else on the plan builder is affected.
+
+   No --signal fill anywhere in this file, by design: closing a deal is a
+   quiet decision, and the plan builder already spends its one-Signal budget
+   on the live step (step-row.tsx). Only the focus ring uses --signal, the
+   MUST-level exception plan.css documents. */
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css";
+
+@media (prefers-reduced-motion: reduce) {
+  [data-surface="close-deal"] * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+[data-surface="close-deal"] {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 16px;
+  background: var(--paper);
+}
+
+/* Tertiary weight — no fill, no border. The disclosure is an offer, not an
+   instruction. */
+[data-surface="close-deal"] .cdc-summary {
+  display: inline-flex;
+  align-items: center;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--slate);
+  cursor: pointer;
+  list-style: revert;
+}
+[data-surface="close-deal"] .cdc-summary:hover {
+  color: var(--ink);
+}
+[data-surface="close-deal"] .cdc-summary:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+[data-surface="close-deal"] .cdc-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 12px;
+}
+
+[data-surface="close-deal"] .cdc-prompt {
+  margin: 0;
+  max-width: 60ch;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 18px;
+  color: var(--slate);
+}
+
+[data-surface="close-deal"] .cdc-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Secondary shell, ink text — NOT the destructive treatment. Closing a deal
+   deletes nothing, so styling it as destruction would be a lie about what
+   the button does. */
+[data-surface="close-deal"] .cdc-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  min-width: 88px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.12s cubic-bezier(0.2, 0, 0, 1);
+}
+[data-surface="close-deal"] .cdc-btn:hover:not(:disabled) {
+  background: var(--mist);
+}
+[data-surface="close-deal"] .cdc-btn:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+[data-surface="close-deal"] .cdc-btn:disabled {
+  background: var(--mist);
+  color: var(--slate);
+  cursor: not-allowed;
+}
+
+[data-surface="close-deal"] .cdc-pending {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--slate);
+}
+
+[data-surface="close-deal"] .cdc-error {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: var(--wash-risk);
+  color: var(--state-risk);
+  font-size: 13px;
+}

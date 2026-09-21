@@ -6,44 +6,40 @@
 -- this file owns is dropped before it is created, so a re-paste converges on
 -- a fresh database AND on one that ran an earlier draft.
 --
--- ========================= VERIFY FIRST (4 queries) =======================
+-- ========================= VERIFY FIRST (2 queries) =======================
 -- Paste these on DEV **before** the migration. They change nothing. Each has
 -- one expected answer; if any disagrees, stop and say so rather than pasting.
 --
---   1. The seed and the go-live button will still work:
+--   1. ONE statement, ONE row. (Deliberately not begin / set local role /
+--      select / rollback: the SQL Editor shows only the LAST statement's
+--      result, so the answer would be hidden behind the rollback.)
 --
---        begin;
---          set local role service_role;
---          select current_user = 'service_role' as seed_and_go_live_will_work;
---        rollback;
+--        select
+--          exists (select 1 from pg_roles where rolname = 'service_role')
+--            as server_role_exists,
+--          not pg_has_role('authenticated', 'service_role', 'member')
+--            as seller_is_blocked,
+--          not pg_has_role('anon', 'service_role', 'member')
+--            as visitor_is_blocked,
+--          (select count(*)
+--             from pg_proc p
+--             join pg_namespace n on n.oid = p.pronamespace
+--            where n.nspname = 'public'
+--              and p.prosecdef
+--              and has_function_privilege('authenticated', p.oid, 'execute'))
+--            as back_doors;
 --
---      EXPECT: seed_and_go_live_will_work = true
+--      EXPECT: true | true | true | 0
+--      - server_role_exists false  -> the allow-list in is_server_write_role()
+--        is wrong for this project; the sample-deal seed would break. STOP.
+--      - seller_is_blocked / visitor_is_blocked false -> the guards would wave
+--        sellers through. STOP.
+--      - back_doors > 0 -> some owner-privileged function is callable by
+--        sellers (see THE STANDING INVARIANT below). STOP and list them.
+--      What this CANNOT prove is that the app's service key really arrives as
+--      role service_role — that is what proof C (after pasting) is for.
 --
---   2. A signed-in seller is blocked from going live behind our back:
---
---        begin;
---          set local role authenticated;
---          select not (
---            current_user in ('service_role', 'postgres', 'supabase_admin', 'dashboard_user')
---            or pg_has_role(current_user, 'service_role', 'member')
---          ) as seller_is_blocked;
---        rollback;
---
---      EXPECT: seller_is_blocked = true
---
---   3. No existing function can be used to walk around these guards (see
---      THE STANDING INVARIANT below):
---
---        select p.proname
---          from pg_proc p
---          join pg_namespace n on n.oid = p.pronamespace
---         where n.nspname = 'public'
---           and p.prosecdef
---           and has_function_privilege('authenticated', p.oid, 'execute');
---
---      EXPECT: 0 rows.
---
---   4. Does any tenant already have MORE THAN ONE sample workspace? (The
+--   2. Does any tenant already have MORE THAN ONE sample workspace? (The
 --      pre-T60 seed could create several.) This one decides whether the
 --      backfill below is a no-op or a judgement call:
 --
@@ -76,8 +72,20 @@
 --        rollback;
 --
 --      EXPECT: a red error, GO_LIVE_NOT_PERMITTED.
---      !! "UPDATE 0" (no error) means RLS hid the row — the tenant id or the
---      plan id is wrong, and the test proved NOTHING. Fix the ids and redo it.
+--      !! "Success. No rows returned" (no red error) means EITHER the guard
+--      is not working OR RLS hid the row because the tenant id / plan id is
+--      wrong — the test proved NOTHING. Re-check the ids and redo it; if the
+--      ids are right and there is still no error, STOP.
+--
+-- ROLLOUT ORDER (this migration is NOT backwards compatible with pre-T60
+-- app code): once pasted, the OLD go-live button — which flips status through
+-- the seller's own client — is refused by the trigger below. So on PROD paste
+-- this file IMMEDIATELY BEFORE merging the T60 PR (minutes, not hours): in
+-- that window only "Make it live" fails, with an ordinary error. The other
+-- order is worse — new code without this file breaks go-live AND the
+-- onboarding sample deal (it writes is_sample). On DEV the same applies to
+-- other branches' CI: tests/security/mark-plan-live-action.spec.ts fails on
+-- any branch that lacks the T60 code until it merges main.
 --
 --   B. A seller cannot mark their own workspace as the sample:
 --
