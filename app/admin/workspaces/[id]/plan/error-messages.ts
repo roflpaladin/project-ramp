@@ -10,6 +10,17 @@ const MESSAGES: Record<PlanErrorCode, string> = {
   UNAUTHENTICATED: "Your session has expired. Sign in again to keep editing this plan.",
   NOT_FOUND: "That item is no longer here. Refresh the page to see the current plan.",
   PLAN_ALREADY_LIVE: "This workspace already has a live plan. Archive it before starting a new one.",
+  // Sprint 12, Ticket 60. Closing a deal frees a seat and hides nothing: the
+  // plan stays visible with its outcome, read-only.
+  PLAN_CLOSED: "This deal is closed, so its plan is read-only. Start a new plan for this workspace to keep going.",
+  // The upgrade wall. Never shown for an infrastructure failure — that is
+  // BILLING_CHECK_FAILED below.
+  DEAL_LIMIT_REACHED:
+    "You are using all the active deals your plan includes. Close a deal or upgrade your plan to start another.",
+  BILLING_PAST_DUE:
+    "Your last payment did not go through, so new deals are paused. Existing deals keep working — update your payment details to start another.",
+  BILLING_CHECK_FAILED: "We could not check your plan just now. Try again in a moment.",
+  GO_LIVE_NOT_PERMITTED: "A plan can only go live from the go-live button. Refresh the page and try that.",
   INVALID_DATE_RANGE: "The target date is before the start date. Adjust the dates and try again.",
   INCOHERENT_COMPLETION: "That step could not be saved. Refresh the page and try again.",
   REORDER_SET_MISMATCH: "The plan changed elsewhere. Refresh the page to see the current order.",

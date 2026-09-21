@@ -8,6 +8,7 @@
 // should leak it into an HTTP response or a server action result.
 
 import {
+  GO_LIVE_NOT_PERMITTED_MESSAGE,
   PLAN_STEPS_COMPLETION_COHERENT_CHECK,
   REORDER_SET_MISMATCH_MESSAGE,
   SUCCESS_PLANS_DATE_ORDER_CHECK,
@@ -27,11 +28,32 @@ import {
  *   out-of-range enum, malformed reorder id, ...).
  * - UNKNOWN_ERROR is this module's catch-all: an unrecognised Postgres error
  *   maps here instead of leaking raw Postgres text to a caller.
+ *
+ * Sprint 12, Ticket 60 added five, four of which no Postgres error produces —
+ * they are decided above this module, by the go-live gate and the read-only
+ * guard, and live in the same union so a caller still handles ONE closed set:
+ * - PLAN_CLOSED: the plan is won/lost. Closing deletes nothing and the seller
+ *   keeps seeing the deal, so every mutation on it is refused server-side
+ *   rather than merely hidden in the UI.
+ * - DEAL_LIMIT_REACHED: the tenant is at their tier's active-deal cap. The
+ *   upgrade wall — and ONLY ever that, never an infrastructure failure.
+ * - BILLING_PAST_DUE: payment failed and the 7-day grace is over. Existing
+ *   deals and buyers are untouched; only NEW deals are refused.
+ * - BILLING_CHECK_FAILED: we could not read the tenant's billing state at
+ *   all. Fails closed (no new deal) but says so honestly, because rendering
+ *   the upgrade wall for our own outage would be a lie about money.
+ * - GO_LIVE_NOT_PERMITTED is the one Postgres DOES produce: 0015's go-live
+ *   trigger, mapped below.
  */
 export type PlanErrorCode =
   | "UNAUTHENTICATED"
   | "NOT_FOUND"
   | "PLAN_ALREADY_LIVE"
+  | "PLAN_CLOSED"
+  | "DEAL_LIMIT_REACHED"
+  | "BILLING_PAST_DUE"
+  | "BILLING_CHECK_FAILED"
+  | "GO_LIVE_NOT_PERMITTED"
   | "INVALID_DATE_RANGE"
   | "INCOHERENT_COMPLETION"
   | "REORDER_SET_MISMATCH"
@@ -89,6 +111,15 @@ export function mapPostgrestError(error: PostgrestErrorLike): PlanErrorMapping {
   // doesn't match the parent's real, RLS-scoped set.
   if (sqlState === "P0001" && message.includes(REORDER_SET_MISMATCH_MESSAGE)) {
     return { code: "REORDER_SET_MISMATCH", status: 400 };
+  }
+
+  // 0015's trg_success_plans_go_live_guard, same SQLSTATE, told apart by the
+  // same message contract. 403 rather than 404 here — unlike the 42501 case
+  // below, this trigger only fires AFTER RLS has already accepted the row as
+  // the caller's own, so the status confirms nothing a foreign caller could
+  // use to enumerate anything.
+  if (sqlState === "P0001" && message.includes(GO_LIVE_NOT_PERMITTED_MESSAGE)) {
+    return { code: "GO_LIVE_NOT_PERMITTED", status: 403 };
   }
 
   const constraintName = extractConstraintName(error);

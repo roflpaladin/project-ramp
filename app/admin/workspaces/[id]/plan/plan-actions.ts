@@ -18,6 +18,8 @@
 
 import { revalidatePath } from "next/cache";
 
+import { ensurePlanIsOpen, isClosedPlanStatus, type ClosedPlanStatus } from "@/lib/plans/closed-plans";
+import { goLivePlan } from "@/lib/plans/go-live";
 import type {
   NewPlanInput,
   NewStageInput,
@@ -55,6 +57,16 @@ import {
 
 function planPath(workspaceId: string): string {
   return `/admin/workspaces/${workspaceId}/plan`;
+}
+
+/**
+ * T60. Going live and closing a deal both change what the WORKSPACE page
+ * shows (its activation checklist, its deal-limit notice), not just the plan
+ * page — so those two actions refresh both. Ordinary title/step edits still
+ * refresh only the plan page, as before.
+ */
+function workspacePath(workspaceId: string): string {
+  return `/admin/workspaces/${workspaceId}`;
 }
 
 /** `undefined` (field absent) means "no change" on a patch; `""` means "clear to null". */
@@ -102,11 +114,19 @@ export async function updatePlanAction(
   const session = await requireSeller();
   if (!session) return { ok: false, code: "UNAUTHENTICATED" };
 
+  // T60: `status` is not a field this form may set — at all. It used to be
+  // (any legal PlanStatus was accepted here), which meant a crafted form
+  // field could make a plan live without ever meeting the active-deal limit.
+  // Going live is markPlanLiveAction; closing is closePlanAction.
+  if (formData.has("status")) return { ok: false, code: "VALIDATION_ERROR" };
+
+  const gate = await ensurePlanIsOpen(session.client, { planId });
+  if (!gate.ok) return gate;
+
   const patch: PlanPatch = {
     title: patchStringField(formData, "title") ?? undefined,
     start_date: patchStringField(formData, "start_date"),
     target_date: patchStringField(formData, "target_date"),
-    status: (patchStringField(formData, "status") ?? undefined) as PlanPatch["status"],
   };
 
   const validated = validatePlanPatch(patch);
@@ -124,20 +144,62 @@ export async function deletePlanAction(
   const session = await requireSeller();
   if (!session) return { ok: false, code: "UNAUTHENTICATED" };
 
+  const gate = await ensurePlanIsOpen(session.client, { planId });
+  if (!gate.ok) return gate;
+
   const result = await deletePlan(planId, session.client);
   if (result.ok) revalidatePath(planPath(workspaceId));
   return result;
 }
 
 /**
- * Sprint 11, Ticket 58 — "In-App Onboarding Checklist"'s "plan live" step
- * needs a way to flip a plan's status to 'active' without a full patch form.
- * A minimal, explicit wrapper around the same validate -> write -> revalidate
- * path updatePlanAction already takes for a `status` patch — status: 'active'
- * is already a legal PlanPatch value there (validatePlanPatch checks it
- * against PLAN_STATUSES), so this adds no new write behaviour, only a
- * narrower, button-bindable entry point (`markPlanLiveAction.bind(null,
- * workspaceId, planId)`) that never needs a FormData at all.
+ * Sprint 12, Ticket 60 — "close deal". Won and lost behave identically
+ * (founder ruling, 2026-09-21): the plan keeps every row it had, the seller
+ * keeps seeing it read-only with its outcome, and the tenant gets their
+ * active-deal seat back. 0005's unique index covers draft+active only, so a
+ * closed plan also leaves the workspace free for a new one.
+ *
+ * `outcome` is a bound argument, not a FormData field, for the same reason
+ * `workspaceId` is throughout this file — and it is re-validated here anyway,
+ * because a client component can send anything.
+ */
+export async function closePlanAction(
+  workspaceId: string,
+  planId: string,
+  outcome: ClosedPlanStatus,
+): Promise<PlanActionResult<SuccessPlanRow>> {
+  const session = await requireSeller();
+  if (!session) return { ok: false, code: "UNAUTHENTICATED" };
+
+  if (!isClosedPlanStatus(outcome)) return { ok: false, code: "VALIDATION_ERROR" };
+
+  // Closing an already-closed deal is refused rather than treated as a no-op:
+  // it would otherwise silently rewrite a Won deal as Lost.
+  const gate = await ensurePlanIsOpen(session.client, { planId });
+  if (!gate.ok) return gate;
+
+  const result = await updatePlan(planId, { status: outcome }, session.client);
+  if (result.ok) {
+    revalidatePath(planPath(workspaceId));
+    revalidatePath(workspacePath(workspaceId));
+  }
+  return result;
+}
+
+/**
+ * Sprint 11, Ticket 58 — the onboarding checklist's "make it live" button.
+ * Sprint 12, Ticket 60 — and now the one place the active-deal limit is
+ * applied.
+ *
+ * It no longer writes `status: 'active'` through the ordinary patch path:
+ * that path cannot count anything, and two tabs could both pass a check made
+ * in application code. The whole decision (billing state, the tier's cap, the
+ * locked count, the write) lives in lib/plans/go-live.ts and 0015's
+ * mark_plan_live(); this stays what every other action here is — requireSeller,
+ * delegate, revalidate.
+ *
+ * The signature is unchanged, so `markPlanLiveAction.bind(null, workspaceId,
+ * planId)` still works exactly as T58 wired it.
  */
 export async function markPlanLiveAction(
   workspaceId: string,
@@ -146,15 +208,21 @@ export async function markPlanLiveAction(
   const session = await requireSeller();
   if (!session) return { ok: false, code: "UNAUTHENTICATED" };
 
-  const validated = validatePlanPatch({ status: "active" });
-  if (!validated.ok) return validated;
-
-  const result = await updatePlan(planId, validated.data, session.client);
-  if (result.ok) revalidatePath(planPath(workspaceId));
+  const result = await goLivePlan(session, planId);
+  if (result.ok) {
+    revalidatePath(planPath(workspaceId));
+    revalidatePath(workspacePath(workspaceId));
+  }
   return result;
 }
 
 // --- stages ------------------------------------------------------------
+//
+// T60: every stage and step mutation resolves its owning plan through
+// ensurePlanIsOpen() before it writes. A closed deal (won/lost) stays fully
+// visible to the seller, so "read-only" has to be a server rule — hidden
+// buttons are not a boundary. One extra round trip per mutation, accepted
+// deliberately (see lib/plans/closed-plans.ts for the alternative).
 
 export async function createStageAction(
   workspaceId: string,
@@ -163,6 +231,9 @@ export async function createStageAction(
 ): Promise<PlanActionResult<PlanStageRow>> {
   const session = await requireSeller();
   if (!session) return { ok: false, code: "UNAUTHENTICATED" };
+
+  const gate = await ensurePlanIsOpen(session.client, { planId });
+  if (!gate.ok) return gate;
 
   const input: NewStageInput = {
     plan_id: planId,
@@ -186,6 +257,9 @@ export async function updateStageAction(
   const session = await requireSeller();
   if (!session) return { ok: false, code: "UNAUTHENTICATED" };
 
+  const gate = await ensurePlanIsOpen(session.client, { stageId });
+  if (!gate.ok) return gate;
+
   const patch: StagePatch = {
     title: patchStringField(formData, "title") ?? undefined,
     display_order: patchNumberField(formData, "display_order"),
@@ -207,6 +281,9 @@ export async function deleteStageAction(
   const session = await requireSeller();
   if (!session) return { ok: false, code: "UNAUTHENTICATED" };
 
+  const gate = await ensurePlanIsOpen(session.client, { stageId });
+  if (!gate.ok) return gate;
+
   const result = await deleteStage(stageId, session.client);
   if (result.ok) revalidatePath(planPath(workspaceId));
   return result;
@@ -221,6 +298,9 @@ export async function createStepAction(
 ): Promise<PlanActionResult<PlanStepRow>> {
   const session = await requireSeller();
   if (!session) return { ok: false, code: "UNAUTHENTICATED" };
+
+  const gate = await ensurePlanIsOpen(session.client, { stageId });
+  if (!gate.ok) return gate;
 
   const input: NewStepInput = {
     stage_id: stageId,
@@ -249,6 +329,9 @@ export async function updateStepAction(
   const session = await requireSeller();
   if (!session) return { ok: false, code: "UNAUTHENTICATED" };
 
+  const gate = await ensurePlanIsOpen(session.client, { stepId });
+  if (!gate.ok) return gate;
+
   const patch: StepPatch = {
     label: patchStringField(formData, "label") ?? undefined,
     owner_side: (patchStringField(formData, "owner_side") ?? undefined) as StepPatch["owner_side"],
@@ -275,6 +358,9 @@ export async function deleteStepAction(
   const session = await requireSeller();
   if (!session) return { ok: false, code: "UNAUTHENTICATED" };
 
+  const gate = await ensurePlanIsOpen(session.client, { stepId });
+  if (!gate.ok) return gate;
+
   const result = await deleteStep(stepId, session.client);
   if (result.ok) revalidatePath(planPath(workspaceId));
   return result;
@@ -295,6 +381,9 @@ export async function reorderStagesAction(
   const session = await requireSeller();
   if (!session) return { ok: false, code: "UNAUTHENTICATED" };
 
+  const gate = await ensurePlanIsOpen(session.client, { planId });
+  if (!gate.ok) return gate;
+
   const validated = validateReorderInput(order);
   if (!validated.ok) return validated;
 
@@ -307,6 +396,9 @@ export async function reorderStepsAction(
 ): Promise<PlanActionResult<PlanStepRow[]>> {
   const session = await requireSeller();
   if (!session) return { ok: false, code: "UNAUTHENTICATED" };
+
+  const gate = await ensurePlanIsOpen(session.client, { stageId });
+  if (!gate.ok) return gate;
 
   const validated = validateReorderInput(order);
   if (!validated.ok) return validated;
