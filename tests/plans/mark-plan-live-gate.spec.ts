@@ -143,6 +143,21 @@ describe("markPlanLiveAction — happy path", () => {
     ]);
   });
 
+  it("refreshes the workspace the ROW says it belongs to, not the one the caller named", async () => {
+    // B6: the read-back row is server-derived; the argument came from a URL.
+    // They agree in every real flow — preferring the row costs nothing and
+    // means a stale or tampered argument cannot misdirect the refresh.
+    const realWorkspaceId = "66666666-6666-6666-6666-666666666666";
+    clientRows = [{ data: { ...ACTIVE_PLAN_ROW, workspace_id: realWorkspaceId }, error: null }];
+
+    await markPlanLiveAction(WORKSPACE_ID, PLAN_ID);
+
+    expect(revalidatedPaths).toEqual([
+      `/admin/workspaces/${realWorkspaceId}/plan`,
+      `/admin/workspaces/${realWorkspaceId}`,
+    ]);
+  });
+
   it("treats 'already_live' as success — a second click is not a failure", async () => {
     mockMarkPlanLive.mockResolvedValue("already_live");
 
@@ -171,6 +186,18 @@ describe("markPlanLiveAction — the limit", () => {
     const result = await markPlanLiveAction(WORKSPACE_ID, PLAN_ID);
 
     expect(result).toEqual({ ok: false, code: "DEAL_LIMIT_REACHED" });
+  });
+
+  it("returns SAMPLE_DEAL_LOCKED when the plan lives in the sample workspace", async () => {
+    // Reachable with plain UI clicks: close the sample as Won, start a new
+    // plan in that same workspace, press "make it live". The sample is never
+    // counted, so it must never be able to carry a real deal.
+    mockMarkPlanLive.mockResolvedValue("sample_workspace");
+
+    const result = await markPlanLiveAction(WORKSPACE_ID, PLAN_ID);
+
+    expect(result).toEqual({ ok: false, code: "SAMPLE_DEAL_LOCKED" });
+    expect(revalidatedPaths).toEqual([]);
   });
 
   it("returns NOT_FOUND when the plan is gone, closed, or in another tenant", async () => {

@@ -14,7 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 interface RpcResult {
   readonly data: unknown;
-  readonly error: { readonly message: string } | null;
+  readonly error: { readonly code?: string; readonly message: string } | null;
 }
 
 const { rpcCalls, results } = vi.hoisted(() => ({
@@ -73,11 +73,14 @@ describe("markPlanLive — the call", () => {
 });
 
 describe("markPlanLive — verdicts", () => {
-  it.each(["live", "already_live", "limit_reached", "not_found"] as const)("returns '%s' verbatim", async (verdict) => {
-    givenVerdict(verdict);
+  it.each(["live", "already_live", "limit_reached", "not_found", "sample_workspace"] as const)(
+    "returns '%s' verbatim",
+    async (verdict) => {
+      givenVerdict(verdict);
 
-    await expect(markPlanLive({ planId: PLAN_ID, tenantId: TENANT_ID, maxActiveDeals: 1 })).resolves.toBe(verdict);
-  });
+      await expect(markPlanLive({ planId: PLAN_ID, tenantId: TENANT_ID, maxActiveDeals: 1 })).resolves.toBe(verdict);
+    },
+  );
 });
 
 describe("markPlanLive — failure", () => {
@@ -86,6 +89,24 @@ describe("markPlanLive — failure", () => {
 
     await expect(markPlanLive({ planId: PLAN_ID, tenantId: TENANT_ID, maxActiveDeals: 1 })).rejects.toThrow(
       /permission denied/,
+    );
+  });
+
+  it("names the mapped error code in the thrown message, so a wrong role list is self-describing in the logs", async () => {
+    results.value = [
+      { data: null, error: { code: "42501", message: "permission denied for function mark_plan_live" } },
+    ];
+
+    await expect(markPlanLive({ planId: PLAN_ID, tenantId: TENANT_ID, maxActiveDeals: 1 })).rejects.toThrow(
+      /NOT_FOUND/,
+    );
+  });
+
+  it("names GO_LIVE_NOT_PERMITTED when the trigger itself refused the write", async () => {
+    results.value = [{ data: null, error: { code: "P0001", message: "GO_LIVE_NOT_PERMITTED" } }];
+
+    await expect(markPlanLive({ planId: PLAN_ID, tenantId: TENANT_ID, maxActiveDeals: 1 })).rejects.toThrow(
+      /GO_LIVE_NOT_PERMITTED/,
     );
   });
 

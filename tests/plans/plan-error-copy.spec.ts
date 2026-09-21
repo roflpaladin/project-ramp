@@ -23,6 +23,7 @@ const ALL_CODES: readonly PlanErrorCode[] = [
   "PLAN_ALREADY_LIVE",
   "PLAN_CLOSED",
   "DEAL_LIMIT_REACHED",
+  "SAMPLE_DEAL_LOCKED",
   "BILLING_PAST_DUE",
   "BILLING_CHECK_FAILED",
   "GO_LIVE_NOT_PERMITTED",
@@ -73,6 +74,14 @@ describe("describePlanError — the T60 money and infrastructure codes", () => {
     expect(message).toMatch(/try again/i);
     expect(message).not.toMatch(/upgrade/i);
     expect(message).not.toBe(describePlanError("DEAL_LIMIT_REACHED"));
+  });
+
+  it("says the sample deal is for practice and points at making a real one", () => {
+    const message = describePlanError("SAMPLE_DEAL_LOCKED");
+
+    expect(message).toMatch(/sample/i);
+    expect(message).toMatch(/real deal/i);
+    expect(message).not.toMatch(/upgrade/i);
   });
 
   it("explains that a closed deal is read-only and what to do next", () => {
