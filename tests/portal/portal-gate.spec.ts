@@ -23,7 +23,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { PORTAL_VERIFY_RATE_LIMIT, SEND_TOKEN_RATE_LIMIT } from "@/lib/rate-limit";
+import { PORTAL_TARGET_VERIFY_RATE_LIMIT, PORTAL_VERIFY_RATE_LIMIT, SEND_TOKEN_RATE_LIMIT } from "@/lib/rate-limit";
 import { ACCESS_CODE_LENGTH, isWellFormedAccessCode } from "@/lib/portal-access-code";
 import { createFakeAdminDb, type FakeAdminDb, type FakeRow } from "./support/fake-supabase-admin";
 
@@ -94,10 +94,14 @@ vi.mock("@/lib/email/send-guard", () => ({
   },
 }));
 
+// `refuseKeysMatching` lets one budget (e.g. the per-target verify cap) be
+// spent while the others stay open, so layering can be tested.
+const refuseKeysMatching: { value: RegExp | null } = { value: null };
 vi.mock("@/lib/rate-limit-durable", () => ({
   checkDurableRateLimit: async (key: string, budget: LimiterCall["budget"]) => {
     limiterCalls.push({ key, budget });
-    return limiterDecision.allowed
+    const refusedByPattern = refuseKeysMatching.value?.test(key) ?? false;
+    return limiterDecision.allowed && !refusedByPattern
       ? { allowed: true, retryAfterSeconds: 0 }
       : { allowed: false, retryAfterSeconds: 42 };
   },
@@ -135,6 +139,7 @@ beforeEach(() => {
   limiterDecision.allowed = true;
   sendGuardCalls.length = 0;
   sendGuardDecision.allowed = true;
+  refuseKeysMatching.value = null;
 });
 
 afterEach(() => {
@@ -369,6 +374,61 @@ describe("verifyAccess — fails CLOSED when the database cannot answer (T62 cod
   });
 });
 
+describe("verifyAccess — security review fixes (T62)", () => {
+  it("charges an atomic per-target budget before comparing the code (C2)", async () => {
+    seedWorkspace();
+    await askForCode();
+    const issuedCode = sendCalls[0].code;
+    limiterCalls.length = 0;
+
+    await submitCode(issuedCode);
+
+    const targetCall = limiterCalls.find((call) => call.key.startsWith("portal-verify:target:"));
+    expect(targetCall?.key).toBe(`portal-verify:target:${WORKSPACE_ID}:${BUYER_EMAIL}`);
+    expect(targetCall?.budget).toEqual(PORTAL_TARGET_VERIFY_RATE_LIMIT);
+  });
+
+  it("refuses even the correct code once the per-target budget is spent, without reading the database (C2)", async () => {
+    seedWorkspace();
+    await askForCode();
+    const issuedCode = sendCalls[0].code;
+    const callsBefore = db.calls.length;
+    refuseKeysMatching.value = /^portal-verify:target:/;
+
+    await submitCode(issuedCode);
+
+    expect(cookieSets).toHaveLength(0);
+    expect(db.calls.length).toBe(callsBefore);
+  });
+
+  it("accepts a still-valid older code after a newer one was requested (M1 — no lockout by re-request)", async () => {
+    seedWorkspace();
+    await askForCode();
+    const firstCode = sendCalls[0].code;
+    // Past the resend cooldown, an attacker (or the buyer) requests again.
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.now() + 61_000);
+    await askForCode();
+    vi.useRealTimers();
+    expect(sendCalls).toHaveLength(2);
+
+    await submitCode(firstCode);
+
+    expect(cookieSets).toHaveLength(1);
+  });
+
+  it("consumes exactly one row when two submissions of the same code race (H1)", async () => {
+    seedWorkspace();
+    await askForCode();
+    const issuedCode = sendCalls[0].code;
+
+    await Promise.all([submitCode(issuedCode), submitCode(issuedCode)]);
+
+    expect(cookieSets).toHaveLength(1);
+    expect(tokenRows().filter((row) => row.consumed_at != null)).toHaveLength(1);
+  });
+});
+
 describe("verifyAccess — rate limiting (T62)", () => {
   it("refuses over-budget callers with the uniform failure and never touches the database", async () => {
     seedToken();
@@ -386,9 +446,12 @@ describe("verifyAccess — rate limiting (T62)", () => {
 
     await submitCode(CORRECT_CODE);
 
-    expect(limiterCalls).toHaveLength(1);
+    // Two budgets, in this order: the caller's IP (outer fence), then the
+    // target (workspace + email) — see the security-review block above.
+    expect(limiterCalls).toHaveLength(2);
     expect(limiterCalls[0].key).toMatch(/^portal-verify:ip:/);
     expect(limiterCalls[0].budget).toEqual(PORTAL_VERIFY_RATE_LIMIT);
+    expect(limiterCalls[1].key).toMatch(/^portal-verify:target:/);
   });
 });
 

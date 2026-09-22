@@ -104,6 +104,12 @@ export const CRM_IMPORT_RATE_LIMIT: RateLimitBudget = { limit: 5, windowMs: 15 *
 // (workspace, email): lib/portal-access-token.ts caps failed guesses across
 // every code issued in a rolling hour.
 export const PORTAL_VERIFY_RATE_LIMIT: RateLimitBudget = { limit: 20, windowMs: 15 * 60_000 };
+// T62 (security review C2) buyer portal code checks keyed per TARGET
+// (workspace + buyer email), charged atomically on the shared store before
+// the code is compared. This is what bounds guessing when the attacker
+// rotates IPs; the per-IP budget above only bounds one client. Ten guesses an
+// hour against 1,000,000 codes is ~0.024% per day.
+export const PORTAL_TARGET_VERIFY_RATE_LIMIT: RateLimitBudget = { limit: 10, windowMs: 60 * 60_000 };
 // T62 /api/scrape-meta, keyed per signed-in seller. Each call makes the
 // server fetch a third-party page, so the budget bounds outbound requests a
 // single account can cause. The prefill hook fires once per pasted URL, so a
@@ -118,8 +124,15 @@ export const TENANT_EMAIL_HOURLY_LIMIT: RateLimitBudget = { limit: 100, windowMs
 export const TENANT_EMAIL_DAILY_LIMIT: RateLimitBudget = { limit: 400, windowMs: 24 * 60 * 60_000 };
 // T62 circuit breaker across ALL tenants and ALL transactional email: the
 // last line of defence for the shared Resend quota if every per-key limit is
-// somehow side-stepped at once.
-export const GLOBAL_EMAIL_DAILY_LIMIT: RateLimitBudget = { limit: 3000, windowMs: 24 * 60 * 60_000 };
+// somehow side-stepped at once. Sized as a RUNAWAY detector, not a fairness
+// mechanism (security review C1): it must sit far above what any plausible
+// number of honest-but-busy tenants produce together, because tripping it
+// stops buyer access codes for EVERY tenant. At 400/tenant/day, 3,000 was
+// reachable by eight self-registered accounts; 25,000 needs sixty-plus
+// tenants all at their daily cap on the same day. HUMAN: confirm this is
+// under the Resend plan's daily allowance — on the free tier (100/day) the
+// per-tenant caps alone already exceed it, and the plan is the real limit.
+export const GLOBAL_EMAIL_DAILY_LIMIT: RateLimitBudget = { limit: 25_000, windowMs: 24 * 60 * 60_000 };
 
 export interface RateLimitResult {
   readonly allowed: boolean;

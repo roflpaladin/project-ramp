@@ -39,9 +39,31 @@ function firstValidIp(headerValue: string | null): string | null {
   return isIP(firstEntry) === 0 ? null : firstEntry.toLowerCase();
 }
 
+// Every caller that lands in the "unknown" bucket shares ONE budget, so on
+// the shared store a missing platform header is not a degraded key, it is a
+// switch anyone can use to lock everyone out of an endpoint (security review
+// H2). Vercel always sets the header, so this should never fire; if it does,
+// it is a deploy misconfiguration that must be visible immediately.
+let hasWarnedMissingPlatformHeader = false;
+
+function warnMissingPlatformHeader(): void {
+  if (hasWarnedMissingPlatformHeader) return;
+  hasWarnedMissingPlatformHeader = true;
+  console.error(
+    `[client-ip] VERCEL=1 but ${PLATFORM_HEADER} is missing or invalid; callers are sharing the "unknown" rate-limit bucket.`,
+  );
+}
+
+/** Test-only: re-arms the once-per-process warning above. */
+export function resetClientIpWarningForTests(): void {
+  hasWarnedMissingPlatformHeader = false;
+}
+
 export function clientIp(headers: Headers): string {
   if (isOnVercel()) {
-    return firstValidIp(headers.get(PLATFORM_HEADER)) ?? UNKNOWN_CLIENT_IP;
+    const ip = firstValidIp(headers.get(PLATFORM_HEADER));
+    if (!ip) warnMissingPlatformHeader();
+    return ip ?? UNKNOWN_CLIENT_IP;
   }
 
   for (const name of FALLBACK_HEADERS) {

@@ -3,6 +3,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { deriveSubkey } from "@/lib/app-encryption-key";
 import { isEmailApproved } from "@/lib/portal-access";
 import { ACCESS_CODE_LENGTH, isWellFormedAccessCode } from "@/lib/portal-access-code";
+import { PORTAL_TARGET_VERIFY_RATE_LIMIT } from "@/lib/rate-limit";
+import { checkDurableRateLimit } from "@/lib/rate-limit-durable";
 import { sendAccessCodeEmail } from "@/lib/email/send-access-code";
 import { reserveEmailSend } from "@/lib/email/send-guard";
 
@@ -227,9 +229,17 @@ export async function issueAccessTokenForInvite(
 // fresh guesses: ~5 guesses a minute, forever, against 10,000 codes -- about
 // a 72% chance of walking into a given deal room within a day.
 //
-// So the budget is now ALSO durable per (workspace, email), summed across
-// rows inside a rolling window, using the columns the table already has (no
-// migration): 10 guesses an hour against 1,000,000 codes is ~0.024% per day.
+// So the budget is now ALSO per (workspace, email), across rows: 10 guesses an
+// hour against 1,000,000 codes is ~0.024% per day. Two layers, on purpose
+// (T62 security review C2):
+//   1. An ATOMIC charge on the shared-store limiter (lib/rate-limit-durable.ts,
+//      one upsert under a row lock) keyed by the target, taken before the
+//      code is even compared. Parallel guesses from many IPs cannot all slip
+//      through a read-then-write window, because there is no window.
+//   2. A durable sum of `attempts` over the target's rows in the same window,
+//      using columns the table already has. It is racy under concurrency —
+//      which is why it is not the only layer — but it fails CLOSED and does
+//      not depend on the limiter's store being reachable.
 // The per-row MAX_ATTEMPTS stays as well -- it is what stops one long-lived
 // code from absorbing the whole hourly budget by itself.
 export const VERIFY_ATTEMPT_WINDOW_MS = 60 * 60_000; // 1 hour
@@ -244,6 +254,14 @@ const TOKENS_TABLE = "portal_access_tokens";
 const NO_MATCH_SENTINEL_ID = "00000000-0000-4000-8000-000000000000";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
+
+// Any live code is accepted, not only the newest (T62 security review M1):
+// verification used to read the single newest row, so anyone who could
+// request a code for a buyer's address every RESEND_COOLDOWN_MS kept
+// superseding the code that buyer actually held — an indefinite lockout for
+// the price of ordinary traffic. The read is bounded: TOKEN_TTL_MS /
+// RESEND_COOLDOWN_MS rows is the most that can be live at once.
+const MAX_LIVE_CANDIDATES = Math.ceil(TOKEN_TTL_MS / RESEND_COOLDOWN_MS);
 
 interface PendingToken {
   readonly id: string;
@@ -286,11 +304,21 @@ async function isVerifyAttemptCapReached(
   return spent >= MAX_VERIFY_ATTEMPTS_PER_WINDOW;
 }
 
-async function readNewestPendingToken(
+function toPendingToken(row: Record<string, unknown>): PendingToken {
+  return {
+    id: String(row.id),
+    tokenHash: String(row.token_hash ?? ""),
+    expiresAt: String(row.expires_at ?? ""),
+    attempts: toAttempts(row.attempts),
+  };
+}
+
+/** Newest first; every unconsumed row that could still be live. */
+async function readPendingTokens(
   supabase: AdminClient,
   workspaceId: string,
   email: string,
-): Promise<PendingToken | null> {
+): Promise<readonly PendingToken[]> {
   const { data, error } = await supabase
     .from(TOKENS_TABLE)
     .select("id, token_hash, expires_at, attempts")
@@ -298,21 +326,14 @@ async function readNewestPendingToken(
     .eq("email", email)
     .is("consumed_at", null)
     .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .limit(MAX_LIVE_CANDIDATES);
 
   if (error) {
     console.error("[portal verify] candidate read failed:", error);
-    return null;
+    return [];
   }
-  if (!data) return null;
-
-  return {
-    id: String(data.id),
-    tokenHash: String(data.token_hash ?? ""),
-    expiresAt: String(data.expires_at ?? ""),
-    attempts: toAttempts(data.attempts),
-  };
+  const rows: readonly Record<string, unknown>[] = Array.isArray(data) ? data : [];
+  return rows.map(toPendingToken);
 }
 
 function isUsable(token: PendingToken): boolean {
@@ -340,18 +361,27 @@ async function recordFailedAttempt(supabase: AdminClient, token: PendingToken): 
   }
 }
 
+/**
+ * Marks the row used — but only if nobody else did first (T62 security
+ * review H1). The `consumed_at is null` predicate plus the returned row set
+ * make this the one atomic step that gives the code its single-use meaning:
+ * two submissions of the same correct code racing each other both pass the
+ * read above, and exactly one of them updates a row here.
+ */
 async function consumeToken(supabase: AdminClient, token: PendingToken): Promise<boolean> {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from(TOKENS_TABLE)
     .update({ consumed_at: new Date().toISOString() })
-    .eq("id", token.id);
+    .eq("id", token.id)
+    .is("consumed_at", null)
+    .select("id");
   if (error) {
     // Fail CLOSED: an unconsumed row is a replayable code. Better one buyer
     // retries than a code that stays live after it was used.
     console.error("[portal verify] consuming the token failed:", error);
     return false;
   }
-  return true;
+  return Array.isArray(data) && data.length === 1;
 }
 
 export type VerifyAccessCodeResult = "verified" | "rejected";
@@ -380,20 +410,34 @@ export async function verifyAccessCode(
   if (!isWellFormedAccessCode(code)) return "rejected";
 
   const submittedHash = hashToken(code, workspaceId, email);
+
+  // Layer 1 (atomic) — charged for every well-formed attempt, right or
+  // wrong, before anything is read: a correct guess costs the same as a
+  // wrong one, so the budget cannot be probed.
+  const { allowed } = await checkDurableRateLimit(
+    `portal-verify:target:${workspaceId}:${email}`,
+    PORTAL_TARGET_VERIFY_RATE_LIMIT,
+  );
+  if (!allowed) return "rejected";
+
   const supabase = createAdminClient();
 
+  // Layer 2 (durable, fail-closed floor).
   if (await isVerifyAttemptCapReached(supabase, workspaceId, email)) return "rejected";
 
-  const candidate = await readNewestPendingToken(supabase, workspaceId, email);
-  if (!candidate || !isUsable(candidate)) {
+  const usable = (await readPendingTokens(supabase, workspaceId, email)).filter(isUsable);
+  if (usable.length === 0) {
     await burnUniformRoundTrip(supabase);
     return "rejected";
   }
 
-  if (!hashesMatch(submittedHash, candidate.tokenHash)) {
-    await recordFailedAttempt(supabase, candidate);
+  const matched = usable.find((token) => hashesMatch(submittedHash, token.tokenHash));
+  if (!matched) {
+    // Charged to the newest live row only: one wrong guess is one guess, not
+    // one per outstanding code.
+    await recordFailedAttempt(supabase, usable[0]);
     return "rejected";
   }
 
-  return (await consumeToken(supabase, candidate)) ? "verified" : "rejected";
+  return (await consumeToken(supabase, matched)) ? "verified" : "rejected";
 }

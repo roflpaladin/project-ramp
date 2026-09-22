@@ -81,6 +81,9 @@ export interface FakeQueryBuilder {
 
 export interface FakeUpdateBuilder extends PromiseLike<QueryResult> {
   eq(column: string, value: unknown): FakeUpdateBuilder;
+  is(column: string, value: unknown): FakeUpdateBuilder;
+  /** Like the real client: the update then resolves with the rows it changed. */
+  select(columns?: string): FakeUpdateBuilder;
 }
 
 function compareByColumn(column: string, ascending: boolean): (a: FakeRow, b: FakeRow) => number {
@@ -143,27 +146,33 @@ export function createFakeAdminDb(
     tables.set(table, [...rowsOf(table), ...prepared]);
   }
 
-  function updateIn(state: QueryState, patch: FakeRow): void {
-    const next = rowsOf(state.table).map((row) =>
-      state.predicates.every((test) => test(row)) ? { ...row, ...patch } : row,
-    );
+  /** Applies the patch to every matching row and returns the rows as changed. */
+  function updateIn(state: QueryState, patch: FakeRow): readonly FakeRow[] {
+    const changed: FakeRow[] = [];
+    const next = rowsOf(state.table).map((row) => {
+      if (!state.predicates.every((test) => test(row))) return row;
+      const updated = { ...row, ...patch };
+      changed.push(updated);
+      return updated;
+    });
     tables.set(state.table, next);
+    return changed;
   }
 
-  function updateBuilder(state: QueryState, patch: FakeRow): FakeUpdateBuilder {
+  function updateBuilder(state: QueryState, patch: FakeRow, returnRows = false): FakeUpdateBuilder {
+    const withPredicate = (test: RowPredicate): FakeUpdateBuilder =>
+      updateBuilder({ ...state, predicates: [...state.predicates, test] }, patch, returnRows);
     const builder: FakeUpdateBuilder = {
-      eq: (column, value) =>
-        updateBuilder(
-          { ...state, predicates: [...state.predicates, (row) => row[column] === value] },
-          patch,
-        ),
+      eq: (column, value) => withPredicate((row) => row[column] === value),
+      is: (column, value) => withPredicate((row) => (row[column] ?? null) === value),
+      select: () => updateBuilder(state, patch, true),
       then: (resolve) => {
         record(state.table, "update");
         if (takeFailure(state.table, "update")) {
           return Promise.resolve({ data: null, error: INJECTED_ERROR }).then(resolve);
         }
-        updateIn(state, patch);
-        return Promise.resolve({ data: null, error: null }).then(resolve);
+        const changed = updateIn(state, patch);
+        return Promise.resolve({ data: returnRows ? changed : null, error: null }).then(resolve);
       },
     };
     return builder;

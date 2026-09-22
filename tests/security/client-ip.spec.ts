@@ -15,7 +15,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { UNKNOWN_CLIENT_IP, clientIp } from "@/lib/client-ip";
+import { UNKNOWN_CLIENT_IP, clientIp, resetClientIpWarningForTests } from "@/lib/client-ip";
 
 function headersOf(entries: Record<string, string>): Headers {
   return new Headers(entries);
@@ -54,6 +54,18 @@ describe("clientIp — on Vercel", () => {
     const ip = clientIp(headersOf({ "x-forwarded-for": "198.51.100.99", "x-real-ip": "198.51.100.98" }));
 
     expect(ip).toBe(UNKNOWN_CLIENT_IP);
+  });
+
+  it("logs loudly (once) when the platform header is missing, since the unknown bucket is shared (H2)", () => {
+    resetClientIpWarningForTests();
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    clientIp(headersOf({}));
+    clientIp(headersOf({}));
+
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    expect(String(errorSpy.mock.calls[0][0])).toContain("x-vercel-forwarded-for");
+    errorSpy.mockRestore();
   });
 
   it("takes the first entry when the platform header carries a list", () => {
