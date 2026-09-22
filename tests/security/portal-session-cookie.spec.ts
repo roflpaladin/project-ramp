@@ -84,7 +84,17 @@ function makeQueryBuilder(result: TableResult): Record<string, unknown> {
     insert: () => builder,
     maybeSingle: async () => result,
     single: async () => result,
-    then: (resolve: (value: TableResult) => void) => resolve(result),
+    // Awaiting the chain directly (no .single/.maybeSingle) is how the real
+    // client answers a multi-row read or a `.update().select()` — with an
+    // ARRAY. Sprint 12, Ticket 62 made the gate read its candidates as a list
+    // and consume via a returning update, so a configured single row is
+    // handed back as a one-row array on that path, as Supabase would.
+    then: (resolve: (value: TableResult) => void) =>
+      resolve(
+        result.data !== null && !Array.isArray(result.data) && typeof result.data === "object"
+          ? { ...result, data: [result.data] }
+          : result,
+      ),
   };
   return builder;
 }
