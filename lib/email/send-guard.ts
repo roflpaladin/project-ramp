@@ -11,8 +11,9 @@ import { checkDurableRateLimit } from "@/lib/rate-limit-durable";
 // Sprint 12, Ticket 62 — "Self-Serve Hardening Pass". The ticket's "abuse
 // guard caps email sending per tenant".
 //
-// Why: every transactional email (buyer access codes, seller invites,
-// password resets) leaves through ONE Resend account and ONE sending domain
+// Why: every transactional email (buyer access codes and seller invites
+// today; password resets once T65 merges and its sender is wired in)
+// leaves through ONE Resend account and ONE sending domain
 // (lib/email/resend-transport.ts). Before this, nothing bounded how much of
 // that a single tenant's activity could consume: the per-(workspace, email)
 // cooldown and the per-workspace invite cap are both per WORKSPACE, so a

@@ -318,6 +318,57 @@ describe("verifyAccess — attempt cap per (workspace, email) across rows (T62)"
   });
 });
 
+describe("verifyAccess — fails CLOSED when the database cannot answer (T62 code review)", () => {
+  // Each of these branches is documented as fail-closed in
+  // lib/portal-access-token.ts; without these cases a regression to fail-open
+  // would pass every other test in this file.
+  it("rejects the correct code when the attempt-cap read fails", async () => {
+    seedWorkspace();
+    await askForCode();
+    const issuedCode = sendCalls[0].code;
+    db.failNext(TOKENS, "select"); // the cap read is the first select on verify
+
+    await submitCode(issuedCode);
+
+    expect(cookieSets).toHaveLength(0);
+    expect(tokenRows()[0].consumed_at ?? null).toBeNull();
+  });
+
+  it("rejects the correct code when the candidate read fails", async () => {
+    seedWorkspace();
+    await askForCode();
+    const issuedCode = sendCalls[0].code;
+    // Let the cap read through, fail the candidate read that follows it.
+    let selects = 0;
+    const originalFrom = db.client.from;
+    vi.spyOn(db.client, "from").mockImplementation((table: string) => {
+      const builder = originalFrom(table);
+      if (table === TOKENS) {
+        selects += 1;
+        if (selects === 2) db.failNext(TOKENS, "select");
+      }
+      return builder;
+    });
+
+    await submitCode(issuedCode);
+
+    expect(cookieSets).toHaveLength(0);
+    expect(tokenRows()[0].consumed_at ?? null).toBeNull();
+    vi.restoreAllMocks();
+  });
+
+  it("grants no session when consuming the row fails, so the code is not left both used and live", async () => {
+    seedWorkspace();
+    await askForCode();
+    const issuedCode = sendCalls[0].code;
+    db.failNext(TOKENS, "update"); // the consume write is the only update on a correct code
+
+    await submitCode(issuedCode);
+
+    expect(cookieSets).toHaveLength(0);
+  });
+});
+
 describe("verifyAccess — rate limiting (T62)", () => {
   it("refuses over-budget callers with the uniform failure and never touches the database", async () => {
     seedToken();

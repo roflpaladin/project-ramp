@@ -40,6 +40,13 @@ export interface FakeAdminDb {
   readonly calls: readonly RecordedCall[];
   rowsOf(table: string): readonly FakeRow[];
   seed(table: string, rows: readonly FakeRow[]): void;
+  /**
+   * T62 code review: makes the NEXT terminal query on `table` with that
+   * `operation` answer `{ data: null, error }` instead of running, so the
+   * fail-closed branches in lib/portal-access-token.ts can be exercised.
+   * One-shot: cleared as soon as it fires.
+   */
+  failNext(table: string, operation: FakeOperation): void;
   reset(): void;
 }
 
@@ -100,9 +107,22 @@ export function createFakeAdminDb(
 
   const rowsOf = (table: string): readonly FakeRow[] => tables.get(table) ?? [];
 
+  let pendingFailure: { table: string; operation: FakeOperation } | null = null;
+
   function record(table: string, operation: FakeOperation): void {
     calls.push({ table, operation });
   }
+
+  /** True (and consumes the switch) when this query was told to fail. */
+  function takeFailure(table: string, operation: FakeOperation): boolean {
+    if (!pendingFailure || pendingFailure.table !== table || pendingFailure.operation !== operation) {
+      return false;
+    }
+    pendingFailure = null;
+    return true;
+  }
+
+  const INJECTED_ERROR = { message: "injected failure (tests/portal/support)" };
 
   function runQuery(state: QueryState): readonly FakeRow[] {
     const matched = rowsOf(state.table).filter((row) => state.predicates.every((test) => test(row)));
@@ -139,6 +159,9 @@ export function createFakeAdminDb(
         ),
       then: (resolve) => {
         record(state.table, "update");
+        if (takeFailure(state.table, "update")) {
+          return Promise.resolve({ data: null, error: INJECTED_ERROR }).then(resolve);
+        }
         updateIn(state, patch);
         return Promise.resolve({ data: null, error: null }).then(resolve);
       },
@@ -160,6 +183,7 @@ export function createFakeAdminDb(
       limit: (count) => queryBuilder({ ...state, limitCount: count }),
       maybeSingle: async () => {
         record(state.table, "select");
+        if (takeFailure(state.table, "select")) return { data: null, error: INJECTED_ERROR };
         return { data: runQuery(state)[0] ?? null, error: null };
       },
       single: async () => {
@@ -179,6 +203,10 @@ export function createFakeAdminDb(
       update: (patch) => updateBuilder(state, patch),
       then: (resolve) => {
         record(state.table, "select");
+        if (takeFailure(state.table, "select")) {
+          resolve({ data: null, error: INJECTED_ERROR });
+          return;
+        }
         resolve({ data: runQuery(state), error: null });
       },
     };
@@ -194,9 +222,13 @@ export function createFakeAdminDb(
     seed: (table, rows) => {
       tables.set(table, [...rowsOf(table), ...rows]);
     },
+    failNext: (table, operation) => {
+      pendingFailure = { table, operation };
+    },
     reset: () => {
       tables.clear();
       calls.length = 0;
+      pendingFailure = null;
     },
   };
 }

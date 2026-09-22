@@ -6,7 +6,7 @@
 
 ## Context
 
-The only transactional email this app sends today is the buyer's 4-digit
+The only transactional email this app sends today is the buyer's 4-digit (6-digit since Sprint 12, Ticket 62)
 portal access code (`lib/email/send-access-code.ts`), used by the buyer-gate
 resend flow, the seller-invite flow, and `POST /api/auth/send-token`. Through
 Sprint 10 it sent via Google Workspace's SMTP relay (`smtp.gmail.com`) using
