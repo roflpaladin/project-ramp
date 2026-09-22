@@ -14,7 +14,7 @@ import { hasSentInviteForWorkspace } from "@/lib/plans/invite-status";
 import { getCrmForecastForWorkspace } from "@/lib/crm/forecast";
 import { requireSeller } from "@/lib/plans/require-seller";
 import { buildDealLimitState, UNKNOWN_DEAL_LIMIT_STATE, type DealLimitState } from "./deal-limit-state";
-import { planStatusMeta } from "./plan/status-badge";
+import { planStatusMeta, StatusBadge } from "./plan/status-badge";
 import { resolveWorkspaceSignalOwners } from "./workspace-signal-budget";
 import { addLink } from "./links-actions";
 import { LinkUrlField } from "./link-url-field";
@@ -248,22 +248,33 @@ export default async function WorkspaceDetailPage({
 
       {/* T43: seller-facing invite panel, its own card just under the chat
           section and above the links list — the seller's other real
-          destination for sending a buyer into their own portal, complementing
-          rather than competing with the stall alert's Signal above (that
-          Signal only renders in the "stalled" state; this panel's Signal only
-          renders once an invite has actually been sent, so the two are never
-          both live in the same render — see invite-panel.tsx's own header
-          comment for the full one-Signal audit within this card). */}
-      <InvitePanel workspaceId={id} sellerEmail={seller?.email ?? null} />
+          destination for sending a buyer into their own portal. T60 CRITICAL
+          fix: its post-send "Open buyer view" flip is a third candidate for
+          this page's one Signal (it depends only on this card's own client
+          state, not on dealLimit/engagement, so it CAN coexist with the wall
+          or the stall alert). `canFlipUseSignal` is resolved by the same
+          workspace-signal-budget.ts call above and is the lowest priority of
+          the three — see invite-panel.tsx's own header comment. The "Send
+          invite" button itself never carries Signal, in any state. */}
+      <InvitePanel
+        workspaceId={id}
+        sellerEmail={seller?.email ?? null}
+        canFlipUseSignal={signalOwners.canInviteUseSignal}
+      />
 
-      {/* T60: a closed deal is a state this page states, never one it hides
-          by rendering an empty plan area. Dot + text label, in Slate — an
-          outcome, not an alarm. */}
+      {/* T60 MUST fix: a closed deal is a state this page states, never one
+          it hides by rendering an empty plan area — reusing the shared
+          StatusBadge (plan/status-badge.tsx) rather than a bespoke
+          always-Slate dot, so Won reads as `done` tone and Lost as `risk`
+          tone (dot + text label either way, never colour-only). */}
       <p className="wsl-plan-nav">
         {closedPlanStatus ? (
-          <span className="wsl-plan-status" data-testid="workspace-plan-status">
-            <span className="wsl-plan-status-dot" data-status-dot="" aria-hidden="true" />
-            Deal closed — {planStatusMeta(closedPlanStatus).label.toLowerCase()}
+          <span data-testid="workspace-plan-status">
+            <StatusBadge
+              tone={planStatusMeta(closedPlanStatus).tone}
+              label={`Deal closed — ${planStatusMeta(closedPlanStatus).label.toLowerCase()}`}
+              className="wsl-plan-status"
+            />
           </span>
         ) : null}
         <Link href={`/admin/workspaces/${id}/plan`} className="wsl-btn">
