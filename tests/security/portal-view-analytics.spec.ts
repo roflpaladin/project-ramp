@@ -19,7 +19,13 @@
 // insert() call per table, which portal-session-cookie.spec.ts's version
 // does not need.
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+// Sprint 12, Ticket 62 update: mirrors portal-session-cookie.spec.ts's own
+// T62 note — headers() is mocked for the new per-IP rate limit, the durable
+// limiter is stubbed to "allowed", the builder gained `gte` for the attempt
+// budget read, codes are six digits, and APP_ENCRYPTION_KEY is stubbed
+// because hashToken() is now keyed by it.
+
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DEMO_TENANT_ID } from "@/lib/demo";
 import { hashToken } from "@/lib/portal-access-token";
@@ -50,6 +56,7 @@ function makeQueryBuilder(table: string, result: TableResult): Record<string, un
     select: () => builder,
     eq: () => builder,
     is: () => builder,
+    gte: () => builder,
     order: () => builder,
     limit: () => builder,
     update: () => builder,
@@ -68,6 +75,11 @@ vi.mock("next/headers", () => ({
   cookies: vi.fn(async () => ({
     set: () => {},
   })),
+  headers: vi.fn(async () => new Headers({ "x-forwarded-for": "203.0.113.8" })),
+}));
+
+vi.mock("@/lib/rate-limit-durable", () => ({
+  checkDurableRateLimit: vi.fn(async () => ({ allowed: true, retryAfterSeconds: 0 })),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -90,14 +102,19 @@ function portalViewInsertsFor(workspaceId: string): RecordedInsert[] {
 
 describe("portal_view analytics — normalised to the gate action on both surfaces (T34-4)", () => {
   beforeEach(() => {
+    vi.stubEnv("APP_ENCRYPTION_KEY", "a".repeat(64));
     insertCalls.length = 0;
     tableConfig.clear();
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   it("verifyAccess (/portal/[id]) writes exactly one portal_view row, on successful verification", async () => {
     const workspaceId = "7e570000-0000-4000-8000-0000000000d1";
     const email = "buyer@portal-analytics-test.invalid";
-    const token = "3140";
+    const token = "314077";
 
     tableConfig.set("portal_access_tokens", {
       data: {
@@ -132,7 +149,7 @@ describe("portal_view analytics — normalised to the gate action on both surfac
     tableConfig.set("portal_access_tokens", {
       data: {
         id: "candidate-token-id-2",
-        token_hash: hashToken("0000", workspaceId, email),
+        token_hash: hashToken("000000", workspaceId, email),
         expires_at: new Date(Date.now() + 60_000).toISOString(),
         attempts: 0,
       },
@@ -142,7 +159,7 @@ describe("portal_view analytics — normalised to the gate action on both surfac
     const { verifyAccess } = await import("@/app/portal/[id]/gate-actions");
     const formData = new FormData();
     formData.set("email", email);
-    formData.set("token", "9999"); // wrong code
+    formData.set("token", "999999"); // wrong code
 
     await expect(verifyAccess(workspaceId, formData)).rejects.toBe(redirectSentinel);
 

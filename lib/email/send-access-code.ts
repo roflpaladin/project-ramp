@@ -2,7 +2,7 @@ import { Resend } from "resend";
 
 import { buildAccessCodeEmail } from "./templates/access-code";
 
-// Sends the buyer's 4-digit portal access code via Resend (T57, Sprint 11,
+// Sends the buyer's portal access code via Resend (T57, Sprint 11,
 // Ticket 57 -- "Transactional email deliverability"). Replaces the Google
 // Workspace SMTP relay this repo sent through via nodemailer through
 // Sprint 10: Workspace SMTP gives no bounce/delivery visibility, which is a
@@ -17,6 +17,8 @@ export async function sendAccessCodeEmail({
   portalUrl,
 }: {
   to: string;
+  /** ACCESS_CODE_LENGTH digits (six since Sprint 12, Ticket 62 — four was
+   *  10,000 possibilities); see lib/portal-access-code.ts. */
   code: string;
   /**
    * T43 (Sprint 8, Ticket 43). When present, adds an "Open your deal room"

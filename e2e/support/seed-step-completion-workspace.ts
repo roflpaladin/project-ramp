@@ -8,9 +8,12 @@
 // outside Next's own bundler, and Playwright Test has no resolve-alias
 // equivalent to vitest.config.ts's stub — so the service-role client below
 // reconstructs createAdminClient()'s body verbatim, and hashToken() below
-// reconstructs lib/portal-access-token.ts's hashToken() verbatim (sha256 of
-// "<token>.<workspaceId>.<email>"), rather than importing either guarded
-// module.
+// reconstructs lib/portal-access-token.ts's hashToken() verbatim, rather than
+// importing either guarded module.
+//
+// Sprint 12, Ticket 62: that hash is now an HMAC-SHA256 under an HKDF subkey
+// of APP_ENCRYPTION_KEY, and codes are six digits — same change, same
+// reasoning, as seed-portal-view-workspace.ts's own header note.
 //
 // Own dedicated "7e5a…" sentinel prefix — distinct from seed-leaky-
 // workspace.ts's "7e57…", seed-plan-builder-workspace.ts's "7e58…" and
@@ -23,7 +26,7 @@
 // seed-portal-view-workspace.ts seeds a known code directly rather than
 // exercising requestAccess's email-send step (already covered elsewhere).
 
-import { createHash } from "node:crypto";
+import { createHmac, hkdfSync } from "node:crypto";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 
 export const TENANT_ID = "7e5a0000-0000-4000-8000-000000000001";
@@ -34,7 +37,7 @@ export const BUYER_STEP_ID = "7e5a0000-0000-4000-8000-000000000005";
 
 export const OWNER_EMAIL = "t35-9-step-completion-e2e@projectramp.invalid";
 export const BUYER_EMAIL = "buyer.t35-9-step-completion-e2e@step-completion-check.invalid";
-export const KNOWN_CODE = "8140";
+export const KNOWN_CODE = "814027";
 export const BUYER_STEP_LABEL = "Confirm rollout readiness (E2E)";
 
 export interface SeededStepCompletionWorkspace {
@@ -59,9 +62,14 @@ function adminClient() {
   });
 }
 
-/** See this file's header comment — verbatim reimplementation of lib/portal-access-token.ts's hashToken(). */
+/** See this file's header comment — verbatim reimplementation of
+ *  lib/portal-access-token.ts's hashToken() and the HKDF subkey it uses
+ *  (lib/app-encryption-key.ts's deriveSubkey: SHA-256, empty salt, the same
+ *  `info` string, 32 bytes). */
 function hashToken(token: string, workspaceId: string, email: string): string {
-  return createHash("sha256").update(`${token}.${workspaceId}.${email}`).digest("hex");
+  const masterKey = Buffer.from(requireEnv("APP_ENCRYPTION_KEY"), "hex");
+  const key = Buffer.from(hkdfSync("sha256", masterKey, Buffer.alloc(0), "portal-access-code-hmac", 32));
+  return createHmac("sha256", key).update(`${token}.${workspaceId}.${email}`).digest("hex");
 }
 
 function failOn(label: string, error: { message: string } | null): void {

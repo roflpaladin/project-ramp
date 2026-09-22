@@ -8,17 +8,23 @@
 // resolve-alias equivalent to vitest.config.ts's stub — so the service-role
 // client below reconstructs createAdminClient()'s body verbatim, and
 // hashToken() below reconstructs lib/portal-access-token.ts's hashToken()
-// verbatim (sha256 of "<token>.<workspaceId>.<email>"), rather than
-// importing either guarded module. Both are pure/two-line functions; the
-// duplication is the same trade seed-plan-builder-workspace.ts already made,
-// not a new one.
+// verbatim, rather than importing either guarded module. Both are pure
+// functions; the duplication is the same trade seed-plan-builder-workspace.ts
+// already made, not a new one.
+//
+// Sprint 12, Ticket 62: that hash is no longer a bare sha256 — it is an
+// HMAC-SHA256 under an HKDF subkey of APP_ENCRYPTION_KEY (see
+// lib/portal-access-token.ts's header for why), so this fixture now needs
+// that variable too. playwright.config.ts loads .env.local, the same file the
+// live server this spec drives reads, so both sides derive the same key; a
+// mismatch would show up as the seeded code simply not verifying.
 //
 // Own dedicated "7e59…" sentinel prefix — distinct from seed-leaky-
 // workspace.ts's "7e57…", seed-plan-builder-workspace.ts's "7e58…" and
 // lib/demo.ts's "de30…" — so this fixture can never collide with, or be
 // torn down by, any other suite's cleanup.
 //
-// This fixture seeds a KNOWN 4-digit code directly into portal_access_tokens
+// This fixture seeds a KNOWN six-digit code directly into portal_access_tokens
 // (bypassing requestAccess/issueAccessToken's real email-send step, which
 // T34-10's tests/api/send-token.spec.ts already covers and which would
 // otherwise burn nodemailer's ~2-minute connection timeout against this
@@ -29,7 +35,7 @@
 // real: the code-entry form, a real click, a real redirect, a real cookie
 // the browser then carries into the granted render and any reload.
 
-import { createHash } from "node:crypto";
+import { createHmac, hkdfSync } from "node:crypto";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 
 export const TENANT_ID = "7e590000-0000-4000-8000-000000000001";
@@ -37,7 +43,7 @@ export const WORKSPACE_ID = "7e590000-0000-4000-8000-000000000002";
 
 export const OWNER_EMAIL = "t34-9-portal-view-e2e@projectramp.invalid";
 export const BUYER_EMAIL = "buyer.t34-9-portal-view-e2e@portal-view-check.invalid";
-export const KNOWN_CODE = "4269";
+export const KNOWN_CODE = "426913";
 
 export interface SeededPortalViewWorkspace {
   readonly workspaceId: string;
@@ -60,9 +66,14 @@ function adminClient() {
   });
 }
 
-/** See this file's header comment — verbatim reimplementation of lib/portal-access-token.ts's hashToken(). */
+/** See this file's header comment — verbatim reimplementation of
+ *  lib/portal-access-token.ts's hashToken() and the HKDF subkey it uses
+ *  (lib/app-encryption-key.ts's deriveSubkey: SHA-256, empty salt, the same
+ *  `info` string, 32 bytes). */
 function hashToken(token: string, workspaceId: string, email: string): string {
-  return createHash("sha256").update(`${token}.${workspaceId}.${email}`).digest("hex");
+  const masterKey = Buffer.from(requireEnv("APP_ENCRYPTION_KEY"), "hex");
+  const key = Buffer.from(hkdfSync("sha256", masterKey, Buffer.alloc(0), "portal-access-code-hmac", 32));
+  return createHmac("sha256", key).update(`${token}.${workspaceId}.${email}`).digest("hex");
 }
 
 function failOn(label: string, error: { message: string } | null): void {

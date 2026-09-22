@@ -16,6 +16,18 @@ export interface TestEnv {
    * and so can never demonstrate it working.
    */
   readonly anonKey: string;
+  /**
+   * Sprint 12, Ticket 62. The buyer portal's access-code hash is now an HMAC
+   * keyed by an HKDF subkey of APP_ENCRYPTION_KEY (lib/portal-access-token.ts),
+   * so the live buyer-gate specs — tests/api/send-token.spec.ts,
+   * tests/api/issue-access-token-invite.spec.ts,
+   * tests/security/invite-actions.spec.ts — cannot issue or verify a single
+   * code without it. It was already passed to the CI `test` job
+   * (.github/workflows/ci.yml) for the CRM token cipher, but was NOT asserted
+   * here, so a run missing it would have failed deep inside a crypto call
+   * instead of naming the variable.
+   */
+  readonly appEncryptionKey: string;
 }
 
 const REQUIRED = [
@@ -23,6 +35,7 @@ const REQUIRED = [
   "NEXT_PUBLIC_SUPABASE_ANON_KEY",
   "SUPABASE_SERVICE_ROLE_KEY",
   "PORTAL_SESSION_SECRET",
+  "APP_ENCRYPTION_KEY",
 ] as const;
 
 export function requireTestEnv(): TestEnv {
@@ -42,5 +55,6 @@ export function requireTestEnv(): TestEnv {
     serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY as string,
     portalSessionSecret: process.env.PORTAL_SESSION_SECRET as string,
     anonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string,
+    appEncryptionKey: process.env.APP_ENCRYPTION_KEY as string,
   };
 }
