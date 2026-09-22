@@ -189,12 +189,20 @@ alter table workspaces
 -- WORKSPACE_TARGET_COMPANY_NAME in lib/seed/sample-deal-data.ts (note the em
 -- dash in the company name). This is the LAST time those strings are used as
 -- an identity: from here on the column is the fact.
+-- workspaces has NO timestamp column (0001), so "oldest" is decided by the
+-- seeded plan inside each workspace (success_plans.created_at, 0005); a
+-- sample workspace with no plan left sorts last, and ties fall back to id.
 with ranked as (
-  select id,
-         row_number() over (partition by tenant_id order by created_at, id) as rn
-    from workspaces
-   where target_domain = 'meridian-retail.example.com'
-     and target_company_name = 'Sample deal — Meridian Retail Group'
+  select w.id,
+         row_number() over (
+           partition by w.tenant_id
+           order by min(sp.created_at) nulls last, w.id
+         ) as rn
+    from workspaces w
+    left join success_plans sp on sp.workspace_id = w.id
+   where w.target_domain = 'meridian-retail.example.com'
+     and w.target_company_name = 'Sample deal — Meridian Retail Group'
+   group by w.tenant_id, w.id
 )
 update workspaces w
    set is_sample = true
