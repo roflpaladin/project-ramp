@@ -133,6 +133,8 @@ describe("check_rate_limit — access (live)", () => {
     });
 
     expect(error).not.toBeNull();
+    // Postgres's own permission check, not PostgREST's "function not found".
+    expect(error?.code).toBe("42501");
     expect(data).toBeNull();
   });
 

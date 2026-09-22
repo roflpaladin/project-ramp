@@ -23,8 +23,9 @@
 -- hashes the key before calling; this table never sees, and has no need for,
 -- either one.
 --
--- Independent of 0015 (Ticket 60, plan limits): neither file references an
--- object the other creates, so they may be applied in either order.
+-- Independent of 0015 (Ticket 60, plan limits — on a separate branch at the
+-- time of writing): neither file references an object the other creates, so
+-- they may be applied in either order.
 --
 -- Purely additive (one new table, one new index, one new function), so per
 -- docs/environments.md it is applied to prod BEFORE the code that uses it is
@@ -33,7 +34,13 @@
 
 begin;
 
-create table if not exists rate_limit_windows (
+-- UNLOGGED: every row is a disposable counter. Losing the table on a crash
+-- resets every caller to a fresh budget for one window — a few seconds of
+-- looser limiting, not a security hole — and it never needs to survive into
+-- a replica or a backup. Skipping WAL on a table written on every
+-- rate-limited request (exactly the burst traffic this exists to absorb) is
+-- real I/O saved for no durability that matters.
+create unlogged table if not exists rate_limit_windows (
   key_hash text primary key,
   window_start timestamptz not null,
   -- Capped at (limit + 1) by check_rate_limit: enough to tell "refused" from
@@ -108,13 +115,26 @@ begin
     end,
     request_count = case
       when w.window_start + v_window <= v_now then 1
+      -- ASSUMES every caller for a given key_hash passes the same p_limit
+      -- within one window (true today: each key namespace uses one fixed
+      -- budget constant). A call with a SMALLER p_limit than a prior call
+      -- would lower the stored count as a side effect of this cap.
       else least(w.request_count + 1, p_limit + 1)
     end,
     updated_at = v_now
   returning w.* into v_row;
 
+  -- SKIP LOCKED: a plain range delete could take row locks in scan order
+  -- while concurrent upserts take theirs in arrival order — a deadlock the
+  -- detector would resolve by killing one call. The prune is opportunistic,
+  -- so a row another call holds is simply left for a later pass.
   if random() < c_prune_probability then
-    delete from rate_limit_windows where window_start < v_now - c_prune_older_than;
+    delete from rate_limit_windows
+    where ctid in (
+      select ctid from rate_limit_windows
+      where window_start < v_now - c_prune_older_than
+      for update skip locked
+    );
   end if;
 
   allowed := v_row.request_count <= p_limit;
