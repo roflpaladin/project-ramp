@@ -73,8 +73,9 @@ function firstPlanId(embedded: unknown): string | null {
  * The tenant's existing sample, if it has one. Ordered + limited rather than
  * .maybeSingle(): the unique index guarantees at most one row, but this code
  * also has to behave sanely on a database where 0015 has not been applied
- * yet (several pre-T60 samples can coexist there) — the oldest wins, which
- * matches the migration's own backfill rule.
+ * yet (several pre-T60 samples can coexist there). workspaces has NO
+ * timestamp column (0001), so the tie-break is the id — deterministic, and
+ * irrelevant once 0015's index makes the row unique.
  *
  * Returns null on a failed read too, after logging: the caller then attempts
  * the insert, and the unique index catches the collision for real.
@@ -85,7 +86,7 @@ async function findExistingSample(admin: AdminClient, tenantId: string): Promise
     .select("id, success_plans (id)")
     .eq("tenant_id", tenantId)
     .eq("is_sample", true)
-    .order("created_at", { ascending: true })
+    .order("id", { ascending: true })
     .limit(1);
 
   if (error) {
