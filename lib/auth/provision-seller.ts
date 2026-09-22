@@ -1,3 +1,4 @@
+import { EMAIL_PATTERN, MIN_PASSWORD_LENGTH } from "@/lib/auth/validation";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 // Sprint 8, Ticket 39 — seller self-serve registration core. Registration and
@@ -13,11 +14,10 @@ import { createAdminClient } from "@/lib/supabase/admin";
 // Email uniqueness is enforced by GoTrue itself, mirroring the provisioner's
 // unique-index race pattern (lib/crm/provisioner.ts).
 
-const MIN_PASSWORD_LENGTH = 8;
-
-// Deliberately shallow: GoTrue is the authority on address validity; this
-// only rejects obvious non-addresses before any DB write happens.
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// MIN_PASSWORD_LENGTH and EMAIL_PATTERN live in ./validation.ts (shared with
+// app/register and the T65 reset flow). The email check is deliberately
+// shallow: GoTrue is the authority on address validity; this only rejects
+// obvious non-addresses before any DB write happens.
 
 export type ProvisionSellerError = "email_taken" | "invalid_input" | "provisioning_failed";
 
