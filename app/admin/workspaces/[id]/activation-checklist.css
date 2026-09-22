@@ -29,6 +29,9 @@
   border: 1px solid var(--line);
   border-radius: 12px;
   background: var(--paper);
+  /* T60 MUST fix: the admin/plan surfaces never declared Geist — see
+     app/globals.css's system-ui body default. */
+  font-family: "Geist", "Inter", system-ui, -apple-system, sans-serif;
 }
 
 [data-surface="activation-checklist"] .ac-header {

@@ -27,6 +27,9 @@
   border-radius: 12px;
   border: 1px solid var(--line);
   background: var(--mist);
+  /* T60 MUST fix: the admin/plan surfaces never declared Geist — see
+     app/globals.css's system-ui body default. */
+  font-family: "Geist", "Inter", system-ui, -apple-system, sans-serif;
 }
 
 [data-surface="stall-alert"] .wsa-status {

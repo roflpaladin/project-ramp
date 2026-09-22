@@ -32,6 +32,9 @@
   border: 1px solid var(--line);
   border-radius: 12px;
   background: var(--paper);
+  /* T60 MUST fix: the admin/plan surfaces never declared Geist — see
+     app/globals.css's system-ui body default. */
+  font-family: "Geist", "Inter", system-ui, -apple-system, sans-serif;
 }
 
 [data-surface="deal-limit-notice"] .dln-status {
@@ -57,6 +60,10 @@
 [data-surface="deal-limit-notice"] .dln-label {
   font-size: 14px;
   font-weight: 600;
+  /* T60 type-scale fix: body scale (14/21) at 600 weight, matching this
+     page's other dot+label pairs (stall-alert.css's .wsa-label,
+     activation-checklist.css's .ac-row-text). */
+  line-height: 21px;
   color: var(--ink);
 }
 
@@ -75,6 +82,8 @@
   font-family: "Geist Mono", "SFMono-Regular", ui-monospace, monospace;
   font-size: 12px;
   font-weight: 500;
+  /* T60 type-scale fix: micro scale (12/16), explicit line-height. */
+  line-height: 16px;
   color: var(--slate);
 }
 
@@ -83,8 +92,10 @@
 [data-surface="deal-limit-notice"] .dln-cta {
   display: inline-flex;
   align-items: center;
-  height: 32px;
-  padding: 0 14px;
+  /* T60 button-scale fix: 36px height / 16px horizontal padding, per the
+     design system's button spec. */
+  height: 36px;
+  padding: 0 16px;
   border-radius: 10px;
   border: 1px solid var(--line);
   background: var(--paper);
@@ -121,6 +132,7 @@
 
 @media (max-width: 480px) {
   [data-surface="deal-limit-notice"] {
-    padding: 10px 12px;
+    /* T60 spacing-scale fix: 10px was off-scale; 8/12 both are. */
+    padding: 8px 12px;
   }
 }
