@@ -133,6 +133,13 @@ export const TENANT_EMAIL_DAILY_LIMIT: RateLimitBudget = { limit: 400, windowMs:
 // under the Resend plan's daily allowance — on the free tier (100/day) the
 // per-tenant caps alone already exceed it, and the plan is the real limit.
 export const GLOBAL_EMAIL_DAILY_LIMIT: RateLimitBudget = { limit: 25_000, windowMs: 24 * 60 * 60_000 };
+// T65 password-reset requests (app/forgot-password/actions.ts). Same threat
+// class as REGISTRATION_RATE_LIMIT and WAITLIST_RATE_LIMIT (public,
+// unauthenticated, and each allowed call sends an email), so it carries the
+// same budget. Applied twice per request under separate keys: per caller IP
+// (one machine spraying many addresses) and per target email (many machines
+// flooding one seller's inbox).
+export const PASSWORD_RESET_RATE_LIMIT: RateLimitBudget = { limit: 5, windowMs: 15 * 60_000 };
 
 export interface RateLimitResult {
   readonly allowed: boolean;

@@ -15,12 +15,10 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { provisionSeller } from "@/lib/auth/provision-seller";
+import { EMAIL_PATTERN, MIN_PASSWORD_LENGTH } from "@/lib/auth/validation";
 import { clientIp } from "@/lib/client-ip";
 import { REGISTRATION_RATE_LIMIT } from "@/lib/rate-limit";
 import { checkDurableRateLimit } from "@/lib/rate-limit-durable";
-
-const MIN_PASSWORD_LENGTH = 8;
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function redirectWithError(code: string): never {
   redirect(`/register?error=${encodeURIComponent(code)}`);
