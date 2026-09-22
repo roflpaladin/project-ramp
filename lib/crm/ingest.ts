@@ -40,7 +40,7 @@ function isAuthorizedWebhook(request: Request): boolean {
 // trigger to compare against. The skip path performs reads only (owner lookup
 // + config read against our own Supabase project); the route makes no external
 // network egress — scraper egress lives inside the provisioner behind
-// lib/ssrf-guard.ts.
+// lib/ssrf/fetch-public-html.ts (pinned, redirect-revalidating fetch; T62).
 export async function ingestCrmWebhook(request: Request, parse: (body: unknown) => ParseResult) {
   // Authenticate BEFORE reading or parsing the body: a forged/unauthorized call
   // must not reach request.json(), the owner lookup, or any DB write.

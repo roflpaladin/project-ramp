@@ -82,6 +82,18 @@ vi.mock("@/lib/email/send-access-code", () => ({
   },
 }));
 
+// The tenant email cap (lib/email/send-guard.ts, T62) is a separate guard
+// with its own spec (tests/email/send-guard.spec.ts); here it is a switch, so
+// issuance can be tested with and without its refusal.
+const sendGuardDecision = { allowed: true };
+const sendGuardCalls: Array<{ tenantId: string | null }> = [];
+vi.mock("@/lib/email/send-guard", () => ({
+  reserveEmailSend: async ({ tenantId }: { tenantId: string | null }) => {
+    sendGuardCalls.push({ tenantId });
+    return sendGuardDecision.allowed ? { allowed: true } : { allowed: false, reason: "tenant_hourly" };
+  },
+}));
+
 vi.mock("@/lib/rate-limit-durable", () => ({
   checkDurableRateLimit: async (key: string, budget: LimiterCall["budget"]) => {
     limiterCalls.push({ key, budget });
@@ -106,6 +118,7 @@ const {
 } = await import("@/lib/portal-access-token");
 
 const WORKSPACE_ID = "7e620000-0000-4000-8000-000000000010";
+const TENANT_ID = "7e620000-0000-4000-8000-000000000001";
 const BUYER_EMAIL = "buyer@gate-test.invalid";
 const CORRECT_CODE = "426913";
 const WRONG_CODE = "000001";
@@ -120,6 +133,8 @@ beforeEach(() => {
   sendCalls.length = 0;
   limiterCalls.length = 0;
   limiterDecision.allowed = true;
+  sendGuardCalls.length = 0;
+  sendGuardDecision.allowed = true;
 });
 
 afterEach(() => {
@@ -128,7 +143,7 @@ afterEach(() => {
 
 function seedWorkspace(): void {
   db.seed("workspaces", [
-    { id: WORKSPACE_ID, target_domain: "gate-test.invalid", approved_emails: [BUYER_EMAIL] },
+    { id: WORKSPACE_ID, tenant_id: TENANT_ID, target_domain: "gate-test.invalid", approved_emails: [BUYER_EMAIL] },
   ]);
 }
 
@@ -373,6 +388,25 @@ describe("requestAccess — issuance", () => {
     expect(refusedUrl).toBe(allowedUrl);
     expect(sendCalls).toHaveLength(1);
     expect(db.calls.length).toBe(callsAfterAllowed);
+  });
+
+  it("charges the workspace's tenant against the email cap before writing a row (T62)", async () => {
+    seedWorkspace();
+
+    await askForCode();
+
+    expect(sendGuardCalls).toEqual([{ tenantId: TENANT_ID }]);
+  });
+
+  it("sends nothing and writes no row when the tenant's email cap is spent (T62)", async () => {
+    seedWorkspace();
+    sendGuardDecision.allowed = false;
+
+    const url = await askForCode();
+
+    expect(sendCalls).toHaveLength(0);
+    expect(tokenRows()).toHaveLength(0);
+    expect(url).toContain("stage=verify");
   });
 
   it("still refuses an empty email before anything else", async () => {

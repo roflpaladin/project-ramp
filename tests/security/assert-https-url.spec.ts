@@ -31,7 +31,7 @@ describe("assertHttpsUrl", () => {
     );
   });
 
-  it("rejects a plain http: URL — https only, unlike assertPublicHttpUrl", () => {
+  it("rejects a plain http: URL — https only, unlike lib/ssrf/fetch-public-html which also allows http", () => {
     expect(() => assertHttpsUrl("http://example.com")).toThrow(
       "URL scheme must be https.",
     );

@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 
 import { parseMeta } from "@/lib/meta-scrape";
 import { requireSeller } from "@/lib/plans/require-seller";
+import { SCRAPE_META_RATE_LIMIT } from "@/lib/rate-limit";
+import { checkDurableRateLimit } from "@/lib/rate-limit-durable";
 import { BlockedUrlError } from "@/lib/ssrf/errors";
 import { fetchPublicHtml, type FetchedPage } from "@/lib/ssrf/fetch-public-html";
 
@@ -37,7 +39,18 @@ export async function POST(request: Request): Promise<NextResponse> {
   if (!session) {
     return NextResponse.json({ error: "Sign in to continue." }, { status: 401 });
   }
-  // T62: rate limit wired in by lib/rate-limit-durable.ts — see follow-up commit
+  // Each call makes this server fetch a third-party page on the seller's
+  // behalf, so the budget is per seller, not per IP.
+  const { allowed, retryAfterSeconds } = await checkDurableRateLimit(
+    `scrape-meta:${session.userId}`,
+    SCRAPE_META_RATE_LIMIT,
+  );
+  if (!allowed) {
+    return NextResponse.json(
+      { error: "Too many requests. Try again in a few minutes." },
+      { status: 429, headers: { "Retry-After": String(retryAfterSeconds) } },
+    );
+  }
 
   let body: unknown;
   try {

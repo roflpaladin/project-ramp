@@ -22,6 +22,7 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { SCRAPE_META_RATE_LIMIT } from "@/lib/rate-limit";
 import { BlockedUrlError } from "@/lib/ssrf/errors";
 
 interface FetchedPage {
@@ -37,6 +38,18 @@ const { sessionResult, fetchResult, fetchCalls } = vi.hoisted(() => ({
 
 vi.mock("@/lib/plans/require-seller", () => ({
   requireSeller: async () => sessionResult.value,
+}));
+
+const { limiterDecision, limiterCalls } = vi.hoisted(() => ({
+  limiterDecision: { allowed: true },
+  limiterCalls: [] as Array<{ key: string; budget: { limit: number; windowMs: number } }>,
+}));
+
+vi.mock("@/lib/rate-limit-durable", () => ({
+  checkDurableRateLimit: async (key: string, budget: { limit: number; windowMs: number }) => {
+    limiterCalls.push({ key, budget });
+    return limiterDecision.allowed ? { allowed: true, retryAfterSeconds: 0 } : { allowed: false, retryAfterSeconds: 77 };
+  },
 }));
 
 vi.mock("@/lib/ssrf/fetch-public-html", () => ({
@@ -73,6 +86,8 @@ function rejectWith(error: unknown): void {
 
 beforeEach(() => {
   fetchCalls.length = 0;
+  limiterCalls.length = 0;
+  limiterDecision.allowed = true;
   sessionResult.value = SIGNED_IN;
   resolveWith({ html: "<title>Default</title>", finalUrl: new URL("https://example.com/") });
 });
@@ -181,5 +196,33 @@ describe("POST /api/scrape-meta — success", () => {
     await postJson({ url: "  https://acme.example/page  " });
 
     expect(fetchCalls).toEqual(["https://acme.example/page"]);
+  });
+});
+
+describe("POST /api/scrape-meta — rate limit (T62)", () => {
+  it("keys the budget per signed-in seller under the scrape-meta budget", async () => {
+    await postJson({ url: "https://example.com/" });
+
+    expect(limiterCalls).toHaveLength(1);
+    expect(limiterCalls[0].key).toBe("scrape-meta:seller-1");
+    expect(limiterCalls[0].budget).toEqual(SCRAPE_META_RATE_LIMIT);
+  });
+
+  it("answers 429 with Retry-After when over budget, and never fetches", async () => {
+    limiterDecision.allowed = false;
+
+    const response = await postJson({ url: "https://example.com/" });
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get("Retry-After")).toBe("77");
+    expect(fetchCalls).toHaveLength(0);
+  });
+
+  it("does not charge the budget for a signed-out caller", async () => {
+    sessionResult.value = null;
+
+    await postJson({ url: "https://example.com/" });
+
+    expect(limiterCalls).toHaveLength(0);
   });
 });

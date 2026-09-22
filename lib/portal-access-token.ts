@@ -4,6 +4,7 @@ import { deriveSubkey } from "@/lib/app-encryption-key";
 import { isEmailApproved } from "@/lib/portal-access";
 import { ACCESS_CODE_LENGTH, isWellFormedAccessCode } from "@/lib/portal-access-code";
 import { sendAccessCodeEmail } from "@/lib/email/send-access-code";
+import { reserveEmailSend } from "@/lib/email/send-guard";
 
 export const TOKEN_TTL_MS = 1000 * 60 * 15; // 15 minutes
 export const MAX_ATTEMPTS = 5;
@@ -80,7 +81,7 @@ async function issueAccessTokenCore(
   const supabase = createAdminClient();
   const { data: workspace } = await supabase
     .from("workspaces")
-    .select("target_domain, approved_emails")
+    .select("target_domain, approved_emails, tenant_id")
     .eq("id", workspaceId)
     .single();
 
@@ -109,6 +110,16 @@ async function issueAccessTokenCore(
     if (elapsedMs < RESEND_COOLDOWN_MS) {
       return { status: "cooldown", retryAfterMs: RESEND_COOLDOWN_MS - elapsedMs };
     }
+  }
+
+  // T62 email abuse guard: charged BEFORE the row is written, so a refused
+  // send never leaves an unverifiable code behind (that would also burn the
+  // buyer's resend cooldown for nothing). Reported as "send-failed" — the
+  // same outcome a provider failure gives, which the invite panel already
+  // words as "try again shortly", and which the anonymous callers discard.
+  const reservation = await reserveEmailSend({ tenantId: String(workspace.tenant_id ?? "") || null });
+  if (!reservation.allowed) {
+    return { status: "send-failed" };
   }
 
   // crypto.randomInt is a CSPRNG (unbiased over the range); the LENGTH is
