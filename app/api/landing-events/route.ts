@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { checkRateLimit, LANDING_EVENT_RATE_LIMIT } from "@/lib/rate-limit";
+import { clientIp } from "@/lib/client-ip";
+import { LANDING_EVENT_RATE_LIMIT } from "@/lib/rate-limit";
+import { checkDurableRateLimit } from "@/lib/rate-limit-durable";
 import { isHeadlineVariantId } from "@/app/landing-variants";
 
 // Sprint 9, Ticket 48 — headline variant impression instrumentation for the
@@ -49,12 +51,6 @@ const GENERIC_ERROR_MESSAGE = "Something went wrong. Try again.";
 const INVALID_BODY_MESSAGE = "Invalid request body.";
 const RATE_LIMITED_MESSAGE = "Too many requests. Try again in a few minutes.";
 
-function callerIp(request: Request): string {
-  const forwardedFor = request.headers.get("x-forwarded-for");
-  const firstEntry = forwardedFor?.split(",")[0]?.trim();
-  return firstEntry || "unknown";
-}
-
 /** Cheap pre-parse size gate -- see MAX_BODY_BYTES above for the
  * untrusted-header caveat. Missing or non-numeric Content-Length is treated
  * as "unknown," not "too large," so the happy path never regresses just
@@ -95,10 +91,9 @@ function validateBody(body: unknown): ValidationResult {
 }
 
 export async function POST(request: Request): Promise<Response> {
-  const { allowed, retryAfterSeconds } = checkRateLimit(
-    `landing-events:${callerIp(request)}`,
-    LANDING_EVENT_RATE_LIMIT.limit,
-    LANDING_EVENT_RATE_LIMIT.windowMs,
+  const { allowed, retryAfterSeconds } = await checkDurableRateLimit(
+    `landing-events:${clientIp(request.headers)}`,
+    LANDING_EVENT_RATE_LIMIT,
   );
   if (!allowed) {
     return NextResponse.json(

@@ -26,6 +26,10 @@ async function main() {
   // a prod-build server action's real stack (browser shows just a digest)
   // can be recovered from a failed run.
   process.env.LIVE_SERVER_FORWARD_OUTPUT = "1";
+  // Sprint 12, Ticket 62 — same reason as vitest.config.ts: the shared-store
+  // rate limiter would otherwise carry spent budgets from one Playwright run
+  // into the next (every run arrives from the same loopback address).
+  process.env.RATE_LIMIT_STORE = "memory";
   const server = await startLiveServer();
   // Signals global-setup.ts (reading this process's stdout) that the real,
   // already-built Next.js server is actually accepting connections.

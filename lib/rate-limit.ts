@@ -1,9 +1,16 @@
-// Interim fixed-window rate limiter (Sprint 8, Ticket 39 — pulled forward
-// from R7 per the planning-poker ruling: the public signup surface ships
-// with its guard, not nine weeks later in the hardening pass). Deliberately
-// in-memory and per-instance: on a multi-instance deployment each instance
-// keeps its own budget, so the effective global limit is (instances × limit).
-// That is accepted interim scope; distributed limiting is Ticket 62 (R7).
+// In-memory fixed-window rate limiter (Sprint 8, Ticket 39 — pulled forward
+// from R7 per the planning-poker ruling: the public signup surface shipped
+// with its guard, not nine weeks later in the hardening pass). Per-instance
+// by construction: on a multi-instance deployment each instance keeps its own
+// budget, so the effective global limit is (instances x limit).
+//
+// Sprint 12, Ticket 62 (R7) added the shared-store limiter,
+// lib/rate-limit-durable.ts, and moved the public, unauthenticated surfaces
+// onto it. This module stays for three jobs: (1) the named budgets below,
+// shared by both limiters; (2) the durable limiter's fallback when its store
+// cannot answer; (3) authenticated per-seller call sites, where the key is a
+// user id an attacker cannot mint and the (instances x limit) slack is
+// tolerable — moving those is follow-up work, not a hole.
 
 interface WindowEntry {
   readonly count: number;
@@ -90,6 +97,29 @@ export const LANDING_EVENT_RATE_LIMIT: RateLimitBudget = { limit: 10, windowMs: 
 // providers earn one shared, provider-agnostic name rather than two
 // identically-shaped constants.
 export const CRM_IMPORT_RATE_LIMIT: RateLimitBudget = { limit: 5, windowMs: 15 * 60_000 };
+// T62 buyer portal code CHECKS (app/portal/[id]/gate-actions.ts verifyAccess),
+// keyed per caller IP. Looser than the send budgets because a real buyer
+// mistypes, and a shared office IP may have several buyers verifying at once;
+// it is the outer fence only — the inner one is durable and per
+// (workspace, email): lib/portal-access-token.ts caps failed guesses across
+// every code issued in a rolling hour.
+export const PORTAL_VERIFY_RATE_LIMIT: RateLimitBudget = { limit: 20, windowMs: 15 * 60_000 };
+// T62 /api/scrape-meta, keyed per signed-in seller. Each call makes the
+// server fetch a third-party page, so the budget bounds outbound requests a
+// single account can cause. The prefill hook fires once per pasted URL, so a
+// seller building a workspace by hand uses a handful.
+export const SCRAPE_META_RATE_LIMIT: RateLimitBudget = { limit: 30, windowMs: 15 * 60_000 };
+// T62 email abuse guard (lib/email/send-guard.ts): how many transactional
+// emails one tenant's activity may cause, per hour and per day. Sized well
+// above honest use — inviting a buying committee of 10 across 5 deals in an
+// hour is 50 — and far below what would dent the Resend quota every tenant's
+// buyer access codes share.
+export const TENANT_EMAIL_HOURLY_LIMIT: RateLimitBudget = { limit: 100, windowMs: 60 * 60_000 };
+export const TENANT_EMAIL_DAILY_LIMIT: RateLimitBudget = { limit: 400, windowMs: 24 * 60 * 60_000 };
+// T62 circuit breaker across ALL tenants and ALL transactional email: the
+// last line of defence for the shared Resend quota if every per-key limit is
+// somehow side-stepped at once.
+export const GLOBAL_EMAIL_DAILY_LIMIT: RateLimitBudget = { limit: 3000, windowMs: 24 * 60 * 60_000 };
 
 export interface RateLimitResult {
   readonly allowed: boolean;

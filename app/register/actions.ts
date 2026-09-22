@@ -15,19 +15,15 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { provisionSeller } from "@/lib/auth/provision-seller";
-import { checkRateLimit, REGISTRATION_RATE_LIMIT } from "@/lib/rate-limit";
+import { clientIp } from "@/lib/client-ip";
+import { REGISTRATION_RATE_LIMIT } from "@/lib/rate-limit";
+import { checkDurableRateLimit } from "@/lib/rate-limit-durable";
 
 const MIN_PASSWORD_LENGTH = 8;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function redirectWithError(code: string): never {
   redirect(`/register?error=${encodeURIComponent(code)}`);
-}
-
-function callerIp(headerList: Headers): string {
-  const forwardedFor = headerList.get("x-forwarded-for");
-  const firstEntry = forwardedFor?.split(",")[0]?.trim();
-  return firstEntry || "unknown";
 }
 
 export async function registerSeller(formData: FormData): Promise<void> {
@@ -46,11 +42,9 @@ export async function registerSeller(formData: FormData): Promise<void> {
   }
 
   const headerList = await headers();
-  const ip = callerIp(headerList);
-  const { allowed } = checkRateLimit(
-    `register:${ip}`,
-    REGISTRATION_RATE_LIMIT.limit,
-    REGISTRATION_RATE_LIMIT.windowMs,
+  const { allowed } = await checkDurableRateLimit(
+    `register:${clientIp(headerList)}`,
+    REGISTRATION_RATE_LIMIT,
   );
   if (!allowed) {
     redirectWithError("rate_limited");

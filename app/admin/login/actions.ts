@@ -3,7 +3,9 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { checkRateLimit, SEND_TOKEN_RATE_LIMIT } from "@/lib/rate-limit";
+import { clientIp } from "@/lib/client-ip";
+import { SEND_TOKEN_RATE_LIMIT } from "@/lib/rate-limit";
+import { checkDurableRateLimit } from "@/lib/rate-limit-durable";
 
 export async function signIn(formData: FormData) {
   const email = String(formData.get("email") ?? "");
@@ -51,11 +53,9 @@ export async function sendMagicLink(formData: FormData) {
   // interim rate-limit scope — same budget as /api/auth/send-token. The
   // uniform `sent=1` outcome below also covers the rate-limited case:
   // distinguishing it would hand back a probe signal.
-  const ip = headerList.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
-  const { allowed } = checkRateLimit(
-    `send-magic-link:${ip}`,
-    SEND_TOKEN_RATE_LIMIT.limit,
-    SEND_TOKEN_RATE_LIMIT.windowMs,
+  const { allowed } = await checkDurableRateLimit(
+    `send-magic-link:${clientIp(headerList)}`,
+    SEND_TOKEN_RATE_LIMIT,
   );
   if (!allowed) {
     redirect("/admin/login?sent=1");
