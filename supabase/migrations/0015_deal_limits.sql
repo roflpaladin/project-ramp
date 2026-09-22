@@ -36,6 +36,8 @@
 --        sellers through. STOP.
 --      - back_doors > 0 -> some owner-privileged function is callable by
 --        sellers (see THE STANDING INVARIANT below). STOP and list them.
+--        (2026-09-22 on DEV: 2 = 0006's test_add_crm_arr / test_drop_crm_arr;
+--        section 0 below closes them, so after the paste this reads 0.)
 --      What this CANNOT prove is that the app's service key really arrives as
 --      role service_role — that is what proof C (after pasting) is for.
 --
@@ -163,6 +165,19 @@ begin;
 -- Never let this migration sit behind a long-running lock on a live table;
 -- fail fast and be re-pasted instead.
 set local lock_timeout = '5s';
+
+-- 0. Close the two back doors query 1 found ---------------------------------
+--
+-- On DEV, VERIFY FIRST query 1 returned back_doors = 2: 0006's test helpers
+-- test_add_crm_arr() / test_drop_crm_arr() are `security definer` (they run
+-- as postgres) and 0006 revoked EXECUTE only from PUBLIC. Supabase grants
+-- EXECUTE to `anon` and `authenticated` separately through its default
+-- privileges, so both were callable by any signed-in seller. They only add or
+-- drop one test column and never touch deals, so this is not a paywall hole —
+-- but it is exactly the class of function THE STANDING INVARIANT warns about,
+-- and it must be 0 before the guards below are trusted. Idempotent.
+revoke execute on function test_add_crm_arr() from anon, authenticated;
+revoke execute on function test_drop_crm_arr() from anon, authenticated;
 
 -- 1. The sample-deal marker ------------------------------------------------
 
