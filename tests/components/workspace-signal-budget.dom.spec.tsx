@@ -2,45 +2,66 @@
 //
 // The design system's hardest colour rule ("exactly one Signal element per
 // decision scope") gained a second candidate this ticket: the deal-limit
-// wall's upgrade CTA, alongside stall-alert.tsx's "Review plan". This file
-// renders the two components TOGETHER, wired exactly as
+// wall's upgrade CTA, alongside stall-alert.tsx's "Review plan". A CRITICAL
+// review fix then found a THIRD: invite-panel.tsx's post-send "Open buyer
+// view" flip, which renders purely from the invite form's own client state
+// and so can appear alongside either of the other two. This file renders all
+// three components TOGETHER, wired exactly as
 // app/admin/workspaces/[id]/page.tsx wires them — through
 // resolveWorkspaceSignalOwners, the one function that decides ownership —
 // and counts `[data-signal="true"]` across the whole tree for every
-// combination of deal-limit state and engagement state.
+// combination of deal-limit state, engagement state, and invite state (idle
+// vs. post-send flip).
 //
 // It deliberately does NOT re-implement page.tsx's wiring: the harness below
 // calls the same resolver the page does, so a change to that rule is caught
 // here rather than silently agreed with. (page.tsx itself is a Server
-// Component doing five Supabase reads; the two components it composes are
+// Component doing five Supabase reads; the three components it composes are
 // what carry Signal, and they are what this file mounts.)
 //
-// Runs under the "components" Vitest project (happy-dom). DB-free: the two
-// "use server" modules the checklist imports are mocked wholesale.
+// Runs under the "components" Vitest project (happy-dom). DB-free: the
+// "use server" modules the three components import are mocked wholesale.
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import type { ActivationState } from "@/lib/plans/activation";
 import type { EngagementSignal, EngagementState } from "@/lib/plans/engagement";
 import type { DealLimitState } from "@/app/admin/workspaces/[id]/deal-limit-state";
+import type { SendInviteState } from "@/app/admin/workspaces/[id]/invite-state";
 
-const { mockMarkPlanLiveAction } = vi.hoisted(() => ({ mockMarkPlanLiveAction: vi.fn() }));
+const { mockMarkPlanLiveAction, mockSendBuyerInvite, mockFlipToBuyerView } = vi.hoisted(() => ({
+  mockMarkPlanLiveAction: vi.fn(),
+  mockSendBuyerInvite: vi.fn(),
+  mockFlipToBuyerView: vi.fn(),
+}));
 
 vi.mock("@/app/admin/workspaces/[id]/checklist-actions", () => ({ dismissActivationChecklist: vi.fn() }));
 vi.mock("@/app/admin/workspaces/[id]/plan/plan-actions", () => ({ markPlanLiveAction: mockMarkPlanLiveAction }));
+vi.mock("@/app/admin/workspaces/[id]/invite-actions", () => ({
+  sendBuyerInvite: mockSendBuyerInvite,
+  flipToBuyerView: mockFlipToBuyerView,
+}));
 
 const { ActivationChecklist } = await import("@/app/admin/workspaces/[id]/activation-checklist");
 const { StallAlert } = await import("@/app/admin/workspaces/[id]/stall-alert");
+const { InvitePanel } = await import("@/app/admin/workspaces/[id]/invite-panel");
 const { resolveWorkspaceSignalOwners } = await import("@/app/admin/workspaces/[id]/workspace-signal-budget");
 
 afterEach(() => {
   cleanup();
   mockMarkPlanLiveAction.mockReset();
+  mockSendBuyerInvite.mockReset();
+  mockFlipToBuyerView.mockReset();
 });
 
 const WORKSPACE_ID = "ws-1";
 const PLAN_HREF = `/admin/workspaces/${WORKSPACE_ID}/plan`;
+const SELLER_EMAIL = "ae@getbrava.tech";
+
+function sentState(email: string): SendInviteState {
+  return { status: "sent", email, message: `Invite sent to ${email}.` };
+}
 
 const DEAL_LIMITS: Readonly<Record<string, DealLimitState>> = {
   ok: { activeCount: 0, maxActiveDeals: 3, isAtLimit: false, isBlockedFromNewDeals: false, isUnknown: false },
@@ -73,7 +94,7 @@ interface HarnessProps {
 }
 
 /**
- * The two Signal-bearing components of the workspace page, composed and
+ * The three Signal-bearing components of the workspace page, composed and
  * wired the way page.tsx wires them.
  */
 function WorkspaceSignalHarness({
@@ -100,6 +121,7 @@ function WorkspaceSignalHarness({
         planHref={PLAN_HREF}
         isSignalSuppressed={owners.isStallSignalSuppressed}
       />
+      <InvitePanel workspaceId={WORKSPACE_ID} sellerEmail={SELLER_EMAIL} canFlipUseSignal={owners.canInviteUseSignal} />
     </>
   );
 }
@@ -207,4 +229,57 @@ describe("Workspace dashboard — the hand-off itself", () => {
     // The complete checklist auto-hides, so the one Signal left is the stall alert's.
     expect(container.querySelector('[data-signal="true"]')).toHaveAttribute("href", PLAN_HREF);
   });
+});
+
+// T60 CRITICAL fix — the invite panel's post-send "Open buyer view" flip is
+// a THIRD Signal candidate, live entirely on the invite form's own client
+// state, so it must never coexist with the wall or the stall alert either.
+describe("Workspace dashboard — the invite flip never doubles the Signal", () => {
+  async function sendToOwnInbox(): Promise<void> {
+    mockSendBuyerInvite.mockResolvedValueOnce(sentState(SELLER_EMAIL));
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: SELLER_EMAIL } });
+    fireEvent.click(screen.getByRole("button", { name: "Send invite" }));
+    await screen.findByRole("button", { name: "Open buyer view" });
+  }
+
+  it("keeps the flip plain when the wall is showing, and stays at one Signal total", async () => {
+    const { container } = render(<WorkspaceSignalHarness dealLimit={DEAL_LIMITS.limit} engagementState="waiting" />);
+
+    await sendToOwnInbox();
+
+    expect(countSignals(container)).toBe(1);
+    expect(screen.getByRole("button", { name: "Open buyer view" })).not.toHaveAttribute("data-signal");
+    expect(container.querySelector('[data-signal="true"]')).toHaveAttribute("href", "/pricing");
+  });
+
+  it("keeps the flip plain when the stall alert's CTA is showing, and stays at one Signal total", async () => {
+    const { container } = render(<WorkspaceSignalHarness dealLimit={DEAL_LIMITS.ok} engagementState="stalled" />);
+
+    await sendToOwnInbox();
+
+    expect(countSignals(container)).toBe(1);
+    expect(screen.getByRole("button", { name: "Open buyer view" })).not.toHaveAttribute("data-signal");
+    expect(container.querySelector('[data-signal="true"]')).toHaveAttribute("href", PLAN_HREF);
+  });
+
+  it("lets the flip take the Signal when neither the wall nor the stall alert wants it", async () => {
+    const { container } = render(<WorkspaceSignalHarness dealLimit={DEAL_LIMITS.ok} engagementState="waiting" />);
+
+    await sendToOwnInbox();
+
+    expect(countSignals(container)).toBe(1);
+    const flipButton = screen.getByRole("button", { name: "Open buyer view" });
+    expect(flipButton).toHaveAttribute("data-signal", "true");
+  });
+
+  for (const [name, dealLimit] of Object.entries(DEAL_LIMITS)) {
+    for (const engagementState of ENGAGEMENT_STATES) {
+      it(`renders at most one Signal after the flip appears (dealLimit=${name}, engagement=${engagementState})`, async () => {
+        const { container } = render(<WorkspaceSignalHarness dealLimit={dealLimit} engagementState={engagementState} />);
+
+        await sendToOwnInbox();
+        await waitFor(() => expect(countSignals(container)).toBeLessThanOrEqual(1));
+      });
+    }
+  }
 });

@@ -113,7 +113,7 @@ describe("resolveWorkspaceSignalOwners — the wall wins", () => {
   it("gives the Signal to the wall and mutes the stall alert's CTA", () => {
     const owners = resolveWorkspaceSignalOwners(makeInput({ dealLimit: AT_LIMIT, engagementState: "stalled" }));
 
-    expect(owners).toEqual({ canChecklistUseSignal: true, isStallSignalSuppressed: true });
+    expect(owners).toEqual({ canChecklistUseSignal: true, isStallSignalSuppressed: true, canInviteUseSignal: false });
   });
 });
 
@@ -121,19 +121,48 @@ describe("resolveWorkspaceSignalOwners — no wall", () => {
   it("leaves the stall alert's Signal alone and refuses the checklist a Signal it could only double up with", () => {
     const owners = resolveWorkspaceSignalOwners(makeInput({ dealLimit: WITHIN_LIMIT, engagementState: "stalled" }));
 
-    expect(owners).toEqual({ canChecklistUseSignal: false, isStallSignalSuppressed: false });
+    expect(owners).toEqual({
+      canChecklistUseSignal: false,
+      isStallSignalSuppressed: false,
+      canInviteUseSignal: false,
+    });
   });
 
   it("lets the checklist use the Signal when the stall alert has no CTA of its own", () => {
     const owners = resolveWorkspaceSignalOwners(makeInput({ dealLimit: WITHIN_LIMIT, engagementState: "waiting" }));
 
-    expect(owners).toEqual({ canChecklistUseSignal: true, isStallSignalSuppressed: false });
+    expect(owners).toEqual({ canChecklistUseSignal: true, isStallSignalSuppressed: false, canInviteUseSignal: true });
   });
 
   it("lets the checklist use the Signal when the buyer is active (the stall alert renders nothing at all)", () => {
     const owners = resolveWorkspaceSignalOwners(makeInput({ dealLimit: UNKNOWN, engagementState: "active" }));
 
-    expect(owners).toEqual({ canChecklistUseSignal: true, isStallSignalSuppressed: false });
+    expect(owners).toEqual({ canChecklistUseSignal: true, isStallSignalSuppressed: false, canInviteUseSignal: true });
+  });
+});
+
+// T60 CRITICAL fix — invite-panel.tsx's post-send "Open buyer view" flip is a
+// THIRD candidate for this page's one Signal (it renders independently of
+// dealLimit/engagement state, purely from the invite form's own client-side
+// result). It is the lowest priority of the three: plain whenever the wall
+// or the stall alert's CTA could also be on screen.
+describe("resolveWorkspaceSignalOwners — the invite flip is the lowest priority", () => {
+  it("refuses the invite flip a Signal whenever the wall is visible", () => {
+    const owners = resolveWorkspaceSignalOwners(makeInput({ dealLimit: AT_LIMIT, engagementState: "waiting" }));
+
+    expect(owners.canInviteUseSignal).toBe(false);
+  });
+
+  it("refuses the invite flip a Signal whenever the stall alert's CTA is showing, even with no wall", () => {
+    const owners = resolveWorkspaceSignalOwners(makeInput({ dealLimit: WITHIN_LIMIT, engagementState: "stalled" }));
+
+    expect(owners.canInviteUseSignal).toBe(false);
+  });
+
+  it("lets the invite flip use the Signal only when neither the wall nor the stall CTA wants it", () => {
+    const owners = resolveWorkspaceSignalOwners(makeInput({ dealLimit: WITHIN_LIMIT, engagementState: "waiting" }));
+
+    expect(owners.canInviteUseSignal).toBe(true);
   });
 });
 
@@ -154,6 +183,17 @@ describe("resolveWorkspaceSignalOwners — at most one Signal, for every combina
           const isStallSignal = engagementState === "stalled" && !owners.isStallSignalSuppressed;
 
           expect(Number(isWallSignal) + Number(isStallSignal)).toBeLessThanOrEqual(1);
+        });
+
+        it(`never lets the invite flip claim the Signal alongside the wall or the stall alert (${description})`, () => {
+          const input = makeInput({ dealLimit, engagementState, isChecklistDismissed });
+
+          const owners = resolveWorkspaceSignalOwners(input);
+          const isWallSignal = isDealLimitWallVisible(input) && owners.canChecklistUseSignal;
+          const isStallSignal = engagementState === "stalled" && !owners.isStallSignalSuppressed;
+          const isInviteSignal = owners.canInviteUseSignal;
+
+          expect(Number(isWallSignal) + Number(isStallSignal) + Number(isInviteSignal)).toBeLessThanOrEqual(1);
         });
       }
     }

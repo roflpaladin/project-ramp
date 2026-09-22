@@ -18,6 +18,16 @@
 // whenever the stall alert is already showing its own CTA — the
 // late-arriving wall still renders and still links somewhere useful, it
 // just doesn't shout over a Signal that is already on screen.
+//
+// Post-launch review (CRITICAL fix): invite-panel.tsx's post-send "Open
+// buyer view" flip button is a THIRD candidate — it renders purely from the
+// invite form's own client-side result (own-inbox send succeeded), entirely
+// independent of dealLimit/engagement state, so it could appear alongside
+// either of the other two. It gets the LOWEST priority of the three:
+// `canInviteUseSignal` is true only when NEITHER the wall NOR the stall
+// alert's CTA could be on screen. The invite panel's ordinary "Send invite"
+// button never carries Signal at all any more (see invite-panel.tsx) — only
+// the flip is ever conditional.
 
 import type { ActivationState } from "@/lib/plans/activation";
 import type { EngagementState } from "@/lib/plans/engagement";
@@ -36,6 +46,13 @@ export interface WorkspaceSignalOwners {
   readonly canChecklistUseSignal: boolean;
   /** The stall alert renders "Review plan" as a plain link instead of Signal. */
   readonly isStallSignalSuppressed: boolean;
+  /**
+   * T60 CRITICAL fix. invite-panel.tsx's post-send "Open buyer view" flip
+   * button may render as Signal only when this is true — the lowest
+   * priority of the page's three candidates (see this file's header
+   * comment).
+   */
+  readonly canInviteUseSignal: boolean;
 }
 
 /**
@@ -63,5 +80,6 @@ export function resolveWorkspaceSignalOwners(input: WorkspaceSignalInput): Works
   return Object.freeze({
     canChecklistUseSignal: isWallVisible || !isStallCtaVisible,
     isStallSignalSuppressed: isWallVisible,
+    canInviteUseSignal: !isWallVisible && !isStallCtaVisible,
   });
 }
