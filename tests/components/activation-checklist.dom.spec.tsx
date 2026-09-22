@@ -258,9 +258,19 @@ describe("ActivationChecklist — make it live", () => {
     expect(screen.getByRole("button", { name: "Make it live" })).toBeDisabled();
   });
 
-  it("disables the button when the plan exists but isn't in draft (e.g. 'won')", () => {
-    renderChecklist({ plan: { id: "plan-1", status: "won" }, activation: makeActivation({}) });
+  it("disables the button when the plan exists but isn't in draft and isn't closed (e.g. 'active')", () => {
+    renderChecklist({ plan: { id: "plan-1", status: "active" }, activation: makeActivation({}) });
     expect(screen.getByRole("button", { name: "Make it live" })).toBeDisabled();
+  });
+
+  it("hides the whole card once the plan is closed (won) — there is nothing left to activate (T60 HIGH fix)", () => {
+    renderChecklist({ plan: { id: "plan-1", status: "won" }, activation: makeActivation({}) });
+    expect(screen.queryByTestId("activation-checklist")).not.toBeInTheDocument();
+  });
+
+  it("hides the whole card once the plan is closed (lost) too", () => {
+    renderChecklist({ plan: { id: "plan-1", status: "lost" }, activation: makeActivation({}) });
+    expect(screen.queryByTestId("activation-checklist")).not.toBeInTheDocument();
   });
 
   it("enables the button when a plan exists and is still draft, and calls the action with workspace+plan id", async () => {
@@ -295,6 +305,60 @@ describe("ActivationChecklist — make it live", () => {
 
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("Something went wrong. Please try again.");
+  });
+});
+
+describe("ActivationChecklist — focus hand-off after going live (T60 HIGH fix)", () => {
+  // The "Make it live" button doesn't unmount synchronously with the click's
+  // own promise resolving — it unmounts later, when the PARENT re-renders
+  // this card with the new `activation` prop (steps.live: true) once the
+  // page revalidates. That later prop flip is simulated here via `rerender`;
+  // an effect watching that same transition redirects focus onto the card's
+  // own heading before the button's removal can drop it to <body>.
+  it("moves focus onto the card's heading once activation.steps.live flips true", async () => {
+    mockMarkPlanLiveAction.mockResolvedValueOnce({
+      ok: true,
+      data: {
+        id: "plan-1",
+        workspace_id: WORKSPACE_ID,
+        title: "Plan",
+        start_date: null,
+        target_date: null,
+        status: "active",
+        created_at: "2026-01-01T00:00:00+00:00",
+      },
+    });
+    const activationBeforeLive = makeActivation({ populated: true, invited: false, live: false });
+    const { rerender } = renderChecklist({ plan: DRAFT_PLAN, activation: activationBeforeLive });
+
+    fireEvent.click(screen.getByRole("button", { name: "Make it live" }));
+    await waitFor(() => expect(mockMarkPlanLiveAction).toHaveBeenCalled());
+
+    // Simulate the page's later re-render with the server's new activation
+    // state — the card stays visible (isComplete is still false: invited
+    // hasn't happened) so its heading remains a valid focus target.
+    const activationAfterLive = makeActivation({ populated: true, invited: false, live: true });
+    rerender(
+      <ActivationChecklist
+        workspaceId={WORKSPACE_ID}
+        plan={{ id: "plan-1", status: "active" }}
+        activation={activationAfterLive}
+        isDismissed={false}
+        planHref={PLAN_HREF}
+        dealLimit={WITHIN_LIMIT}
+        canUseSignal
+      />,
+    );
+
+    const heading = screen.getByRole("heading", { name: "Get this deal room moving" });
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+  });
+
+  it("never steals focus on first paint", () => {
+    renderChecklist({ plan: DRAFT_PLAN, activation: makeActivation({}) });
+
+    const heading = screen.getByRole("heading", { name: "Get this deal room moving" });
+    expect(document.activeElement).not.toBe(heading);
   });
 });
 

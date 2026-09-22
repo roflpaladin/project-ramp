@@ -32,8 +32,19 @@ import type { PlanStatus } from "@/lib/plans/types";
 const WORKSPACE_ID = "ws-1";
 const PLAN_ID = "plan-1";
 
-function renderControls(planStatus: PlanStatus = "active") {
-  return render(<CloseDealControls workspaceId={WORKSPACE_ID} planId={PLAN_ID} planStatus={planStatus} />);
+interface RenderOptions {
+  readonly onClosed?: () => void;
+}
+
+function renderControls(planStatus: PlanStatus = "active", options: RenderOptions = {}) {
+  return render(
+    <CloseDealControls
+      workspaceId={WORKSPACE_ID}
+      planId={PLAN_ID}
+      planStatus={planStatus}
+      onClosed={options.onClosed}
+    />,
+  );
 }
 
 /** Opens the <details> the way a keyboard or mouse user would. */
@@ -187,6 +198,61 @@ describe("CloseDealControls — closing", () => {
     expect(screen.getByRole("button", { name: "Closing…" })).toBeDisabled();
 
     release();
+  });
+});
+
+describe("CloseDealControls — focus hand-off on success (T60 HIGH fix)", () => {
+  // The confirm button unmounts once the PARENT (plan-builder.tsx) later
+  // re-renders with the plan's new closed status — by then this component is
+  // gone and cannot manage focus itself. It notifies the parent instead, via
+  // onClosed, called exactly once, synchronously with the resolved result —
+  // well before that later unmount — so the parent can move focus onto
+  // something that survives it (see plan-builder.tsx's own heading ref).
+  it("calls onClosed exactly once after the action resolves ok", async () => {
+    const onClosed = vi.fn();
+    renderControls("draft", { onClosed });
+    openDisclosure();
+    fireEvent.click(screen.getByRole("button", { name: "Won" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Close as won" }));
+
+    await waitFor(() => expect(onClosed).toHaveBeenCalledTimes(1));
+  });
+
+  it("does NOT call onClosed when the action refuses", async () => {
+    mockClosePlanAction.mockResolvedValueOnce({ ok: false, code: "PLAN_CLOSED" });
+    const onClosed = vi.fn();
+    renderControls("draft", { onClosed });
+    openDisclosure();
+    fireEvent.click(screen.getByRole("button", { name: "Won" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Close as won" }));
+
+    await screen.findByRole("alert");
+    expect(onClosed).not.toHaveBeenCalled();
+  });
+
+  it("does NOT call onClosed when the round trip itself rejects", async () => {
+    mockClosePlanAction.mockRejectedValueOnce(new Error("network down"));
+    const onClosed = vi.fn();
+    renderControls("draft", { onClosed });
+    openDisclosure();
+    fireEvent.click(screen.getByRole("button", { name: "Lost" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Close as lost" }));
+
+    await screen.findByRole("alert");
+    expect(onClosed).not.toHaveBeenCalled();
+  });
+
+  it("tolerates a missing onClosed prop (optional)", async () => {
+    renderControls("draft");
+    openDisclosure();
+    fireEvent.click(screen.getByRole("button", { name: "Won" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Close as won" }));
+
+    await waitFor(() => expect(mockClosePlanAction).toHaveBeenCalled());
   });
 });
 

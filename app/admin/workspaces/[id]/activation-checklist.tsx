@@ -6,8 +6,9 @@
 // live) into something the seller can actually act on from this one page.
 //
 // This component owns its OWN visibility rule ("show only when !dismissedAt
-// && !isComplete", per the ticket), rather than the caller deciding whether
-// to mount it at all — the alternative (page.tsx conditionally rendering
+// && !isComplete && plan isn't closed", the last clause added by T60's HIGH
+// fix below), rather than the caller deciding whether to mount it at all —
+// the alternative (page.tsx conditionally rendering
 // `{shouldShow ? <ActivationChecklist .../> : null}`) would move that
 // decision out of the one place a test can exercise it directly. `isDismissed`
 // and `activation.isComplete` are both plain booleans handed down from
@@ -33,8 +34,9 @@
 // runs. Either failure mode surfaces as the same quiet inline message, never
 // an uncaught rejection or a thrown error.
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import type { ActivationState, ActivationSteps } from "@/lib/plans/activation";
+import { isClosedPlanStatus } from "@/lib/plans/closed-plans";
 import type { PlanErrorCode } from "@/lib/plans/mutations";
 import type { PlanStatus } from "@/lib/plans/types";
 import { dismissActivationChecklist } from "./checklist-actions";
@@ -106,6 +108,21 @@ export function ActivationChecklist({
   const [isDismissPending, startDismissTransition] = useTransition();
   const [dismissError, setDismissError] = useState<string | null>(null);
 
+  // T60 HIGH fix. "Make it live" doesn't unmount synchronously with its own
+  // click resolving — it unmounts LATER, when the page revalidates and hands
+  // this card a new `activation` prop (steps.live: true), which is also the
+  // render where renderRowCta's live branch stops returning the button.
+  // Watching that prop transition (rather than the local pending state)
+  // catches the exact render that would otherwise drop focus to <body>.
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const wasLiveRef = useRef(activation.steps.live);
+  useEffect(() => {
+    if (!wasLiveRef.current && activation.steps.live) {
+      headingRef.current?.focus();
+    }
+    wasLiveRef.current = activation.steps.live;
+  }, [activation.steps.live]);
+
   const [isMarkLivePending, startMarkLiveTransition] = useTransition();
   const [markLiveError, setMarkLiveError] = useState<string | null>(null);
   // Set only when the SERVER refuses a go-live this page believed was
@@ -151,10 +168,16 @@ export function ActivationChecklist({
     });
   }
 
-  // Auto-hide rule (T58): once dismissed, or once every step is satisfied,
-  // this card renders nothing at all — hooks above still ran, so their order
-  // never changes between renders.
-  if (isDismissed || activation.isComplete) return null;
+  // T60 HIGH fix: a won/lost plan has nothing left to activate — without
+  // this, a closed deal kept a permanent, disabled "Make it live" row
+  // forever (isComplete can never become true once the plan can no longer
+  // go live from here).
+  const isClosedPlan = plan !== null && isClosedPlanStatus(plan.status);
+
+  // Auto-hide rule (T58): once dismissed, once every step is satisfied, or
+  // once the plan is closed, this card renders nothing at all — hooks above
+  // still ran, so their order never changes between renders.
+  if (isDismissed || activation.isComplete || isClosedPlan) return null;
 
   function renderRowCta(key: keyof ActivationSteps) {
     if (key === "populated") {
@@ -208,7 +231,11 @@ export function ActivationChecklist({
   return (
     <section className="ac-card" data-surface="activation-checklist" data-testid="activation-checklist">
       <div className="ac-header">
-        <h2 className="ac-title">Get this deal room moving</h2>
+        {/* tabIndex={-1}: not a tab stop, only a programmatic focus target
+            (T60 HIGH fix, see the headingRef effect above). */}
+        <h2 ref={headingRef} tabIndex={-1} className="ac-title">
+          Get this deal room moving
+        </h2>
         <button
           type="button"
           className="ac-dismiss"

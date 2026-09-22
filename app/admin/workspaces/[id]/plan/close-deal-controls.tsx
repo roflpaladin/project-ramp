@@ -36,6 +36,17 @@ export interface CloseDealControlsProps {
   readonly workspaceId: string;
   readonly planId: string;
   readonly planStatus: PlanStatus;
+  /**
+   * T60 HIGH fix. Called exactly once, synchronously, right after a
+   * successful close — never on a refusal or a rejected round trip. This
+   * component's own confirm button unmounts shortly afterwards (the PARENT
+   * re-renders once planStatus flips to won/lost, at which point this whole
+   * disclosure returns null above), so it cannot manage its own focus
+   * hand-off; the parent (plan-builder.tsx) uses this to move focus onto
+   * something that survives that unmount instead of letting it drop to
+   * <body>.
+   */
+  readonly onClosed?: () => void;
 }
 
 interface OutcomeCopy {
@@ -66,7 +77,7 @@ const OUTCOMES: readonly ClosedPlanStatus[] = ["won", "lost"];
 /** No PlanErrorCode describes a dropped connection, so this one sentence isn't describePlanError's. */
 const TRANSPORT_ERROR_MESSAGE = "Something went wrong. Please try again.";
 
-export function CloseDealControls({ workspaceId, planId, planStatus }: CloseDealControlsProps) {
+export function CloseDealControls({ workspaceId, planId, planStatus, onClosed }: CloseDealControlsProps) {
   const [outcome, setOutcome] = useState<ClosedPlanStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -93,7 +104,11 @@ export function CloseDealControls({ workspaceId, planId, planStatus }: CloseDeal
     startTransition(async () => {
       try {
         const result = await closePlanAction(workspaceId, planId, outcome);
-        if (!result.ok) setError(describePlanError(result.code));
+        if (result.ok) {
+          onClosed?.();
+        } else {
+          setError(describePlanError(result.code));
+        }
       } catch {
         setError(TRANSPORT_ERROR_MESSAGE);
       }

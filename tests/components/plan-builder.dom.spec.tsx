@@ -6,14 +6,29 @@
 // never invokes a real server action (those need next/headers' request
 // scope and a live Supabase session, neither of which exist here).
 
-import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, render, within } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { PlanStage, PlanStepRow } from "@/lib/plans/types";
-import { PlanBuilder } from "@/app/admin/workspaces/[id]/plan/plan-builder";
 import { StepRow } from "@/app/admin/workspaces/[id]/plan/step-row";
+
+// Only closePlanAction is overridden — every other export of plan-actions.ts
+// stays the real implementation (house style: none of the OTHER tests in
+// this file ever invoke a real action, they only inspect rendered/disabled
+// state, so the real "use server" exports are safe to keep loaded). The
+// focus hand-off test below is the one exception that needs a resolvable
+// result to react to.
+const { mockClosePlanAction } = vi.hoisted(() => ({ mockClosePlanAction: vi.fn() }));
+
+vi.mock("@/app/admin/workspaces/[id]/plan/plan-actions", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/app/admin/workspaces/[id]/plan/plan-actions")>();
+  return { ...actual, closePlanAction: mockClosePlanAction };
+});
+
+const { PlanBuilder } = await import("@/app/admin/workspaces/[id]/plan/plan-builder");
 
 afterEach(() => {
   cleanup();
+  mockClosePlanAction.mockReset();
 });
 
 function makeStep(overrides: Partial<PlanStepRow> & Pick<PlanStepRow, "id" | "label">): PlanStepRow {
@@ -177,5 +192,28 @@ describe("PlanBuilder — stage move buttons respect list boundaries", () => {
 
     expect(firstStageUp).toBeDisabled();
     expect(lastStageDown).toBeDisabled();
+  });
+});
+
+describe("PlanBuilder — focus hand-off after closing a deal (T60 HIGH fix)", () => {
+  it("moves focus onto the plan's own heading, so it never drops to <body> once Close Deal Controls unmounts", async () => {
+    mockClosePlanAction.mockResolvedValueOnce({ ok: true, data: { id: PLAN.id, status: "won" } });
+    render(<PlanBuilder workspaceId="workspace-1" plan={PLAN} initialStages={STAGES} />);
+
+    fireEvent.click(screen.getByText("Close this deal"));
+    fireEvent.click(screen.getByRole("button", { name: "Won" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close as won" }));
+
+    await waitFor(() => expect(mockClosePlanAction).toHaveBeenCalled());
+
+    const heading = screen.getByRole("heading", { name: PLAN.title });
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+  });
+
+  it("never steals focus on first paint — only after a real close", () => {
+    render(<PlanBuilder workspaceId="workspace-1" plan={PLAN} initialStages={STAGES} />);
+
+    const heading = screen.getByRole("heading", { name: PLAN.title });
+    expect(document.activeElement).not.toBe(heading);
   });
 });

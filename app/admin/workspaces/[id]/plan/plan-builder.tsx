@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useOptimistic, useState, useTransition } from "react";
+import { useEffect, useOptimistic, useRef, useState, useTransition } from "react";
 import type { PlanStage, SuccessPlanRow } from "@/lib/plans/types";
 import { reorderStagesAction, reorderStepsAction } from "./plan-actions";
 import { describePlanError } from "./error-messages";
@@ -45,6 +45,13 @@ interface PlanBuilderProps {
 // matching `setStages` call, which is exactly the "visibly revert on
 // reject" behaviour a failed reorder needs.
 export function PlanBuilder({ workspaceId, plan, initialStages, isReadOnly = false }: PlanBuilderProps) {
+  // T60 HIGH fix. CloseDealControls's own confirm button unmounts once the
+  // plan's closed status round-trips back through this page (isReadOnly
+  // flips true and the whole "Add stage / Close deal" fragment below
+  // disappears) — dropping keyboard focus onto <body> otherwise. The plan
+  // title heading (PlanDetailsForm/PlanHeader) renders in BOTH modes, so
+  // it's the one stable target on this page a close can hand focus to.
+  const headingRef = useRef<HTMLHeadingElement>(null);
   const [stages, setStages] = useState<PlanStage[]>(initialStages);
   const [optimisticStages, setOptimisticStages] = useOptimistic<PlanStage[], PlanStage[]>(
     stages,
@@ -111,7 +118,7 @@ export function PlanBuilder({ workspaceId, plan, initialStages, isReadOnly = fal
 
   return (
     <div className="flex flex-col gap-6">
-      <PlanDetailsForm workspaceId={workspaceId} plan={plan} isReadOnly={isReadOnly} />
+      <PlanDetailsForm workspaceId={workspaceId} plan={plan} isReadOnly={isReadOnly} headingRef={headingRef} />
 
       {reorderError ? (
         <p className="plan-error" role="alert">
@@ -142,7 +149,12 @@ export function PlanBuilder({ workspaceId, plan, initialStages, isReadOnly = fal
           <AddStageForm workspaceId={workspaceId} planId={plan.id} nextDisplayOrder={stages.length} />
           {/* T60: last on the page on purpose — closing a deal is the thing
               you do after you've finished with everything above it. */}
-          <CloseDealControls workspaceId={workspaceId} planId={plan.id} planStatus={plan.status} />
+          <CloseDealControls
+            workspaceId={workspaceId}
+            planId={plan.id}
+            planStatus={plan.status}
+            onClosed={() => headingRef.current?.focus()}
+          />
         </>
       )}
     </div>
