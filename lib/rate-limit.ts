@@ -115,13 +115,6 @@ export const PORTAL_TARGET_VERIFY_RATE_LIMIT: RateLimitBudget = { limit: 10, win
 // single account can cause. The prefill hook fires once per pasted URL, so a
 // seller building a workspace by hand uses a handful.
 export const SCRAPE_META_RATE_LIMIT: RateLimitBudget = { limit: 30, windowMs: 15 * 60_000 };
-// T62 email abuse guard (lib/email/send-guard.ts): how many transactional
-// emails one tenant's activity may cause, per hour and per day. Sized well
-// above honest use — inviting a buying committee of 10 across 5 deals in an
-// hour is 50 — and far below what would dent the Resend quota every tenant's
-// buyer access codes share.
-export const TENANT_EMAIL_HOURLY_LIMIT: RateLimitBudget = { limit: 100, windowMs: 60 * 60_000 };
-export const TENANT_EMAIL_DAILY_LIMIT: RateLimitBudget = { limit: 400, windowMs: 24 * 60 * 60_000 };
 // T62 circuit breaker across ALL tenants and ALL transactional email: the
 // last line of defence for the shared Resend quota if every per-key limit is
 // somehow side-stepped at once. Sized as a RUNAWAY detector, not a fairness
@@ -135,7 +128,7 @@ export const TENANT_EMAIL_DAILY_LIMIT: RateLimitBudget = { limit: 400, windowMs:
 // 3,000/month), so the plan IS the real limit and the breaker sits under it:
 // 90/day leaves headroom because our 24h window never lines up with Resend's
 // day boundary, and 90 x 31 = 2,790 stays under the monthly cap. On the free
-// plan the per-tenant budgets above can never bind before this one does.
+// plan the per-tenant budgets below are what keep one tenant from tripping it.
 // EMAIL_DAILY_LIMIT overrides it, so a plan upgrade is a Vercel env change
 // (plus the redeploy any env change needs), not a code change.
 export const DEFAULT_EMAIL_DAILY_LIMIT = 90;
@@ -158,6 +151,45 @@ export const GLOBAL_EMAIL_DAILY_LIMIT: RateLimitBudget = {
   limit: resolveEmailDailyLimit(process.env.EMAIL_DAILY_LIMIT),
   windowMs: 24 * 60 * 60_000,
 };
+
+// T62 email abuse guard (lib/email/send-guard.ts): how many transactional
+// emails one tenant's activity may cause, per hour and per day.
+//
+// T63: derived from the global budget, so one tenant can never spend the
+// whole shared quota (on the free plan a single busy tenant would otherwise
+// block every other tenant's invites and every password reset), and a plan
+// upgrade raises both with no second change. A tenant gets a third of the
+// global day and half of its own day per hour, with floors so a tiny global
+// budget still lets one small committee through, and ceilings at the T62
+// values (400/100), which were sized above honest use: a committee of 10
+// across 5 deals in one hour is 50. Free plan: 30/day, 15/hour.
+const TENANT_SHARE_OF_GLOBAL_DAILY = 3;
+const TENANT_HOURLY_SHARE_OF_DAILY = 2;
+const TENANT_EMAIL_DAILY_FLOOR = 10;
+const TENANT_EMAIL_HOURLY_FLOOR = 5;
+const TENANT_EMAIL_DAILY_CEILING = 400;
+const TENANT_EMAIL_HOURLY_CEILING = 100;
+
+export interface TenantEmailLimits {
+  readonly daily: number;
+  readonly hourly: number;
+}
+
+export function deriveTenantEmailLimits(globalDailyLimit: number): TenantEmailLimits {
+  const daily = Math.min(
+    TENANT_EMAIL_DAILY_CEILING,
+    Math.max(TENANT_EMAIL_DAILY_FLOOR, Math.floor(globalDailyLimit / TENANT_SHARE_OF_GLOBAL_DAILY)),
+  );
+  const hourly = Math.min(
+    TENANT_EMAIL_HOURLY_CEILING,
+    Math.max(TENANT_EMAIL_HOURLY_FLOOR, Math.floor(daily / TENANT_HOURLY_SHARE_OF_DAILY)),
+  );
+  return { daily, hourly };
+}
+
+const TENANT_EMAIL_LIMITS = deriveTenantEmailLimits(GLOBAL_EMAIL_DAILY_LIMIT.limit);
+export const TENANT_EMAIL_HOURLY_LIMIT: RateLimitBudget = { limit: TENANT_EMAIL_LIMITS.hourly, windowMs: 60 * 60_000 };
+export const TENANT_EMAIL_DAILY_LIMIT: RateLimitBudget = { limit: TENANT_EMAIL_LIMITS.daily, windowMs: 24 * 60 * 60_000 };
 // T65 password-reset requests (app/forgot-password/actions.ts). Same threat
 // class as REGISTRATION_RATE_LIMIT and WAITLIST_RATE_LIMIT (public,
 // unauthenticated, and each allowed call sends an email), so it carries the

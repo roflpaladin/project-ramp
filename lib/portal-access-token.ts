@@ -70,9 +70,13 @@ function hashesMatch(expectedHex: string, storedHex: string): boolean {
 // (issueAccessTokenCore) computes and returns the real outcome; issueAccessToken
 // keeps its exact original public contract by discarding everything the core
 // function learned.
+/** Which email budget refused a send: the tenant's hourly one, or a daily one (tenant or global). */
+export type EmailLimitWindow = "hour" | "day";
+
 interface CoreIssueOutcome {
-  readonly status: "sent" | "cooldown" | "not-approved" | "send-failed";
+  readonly status: "sent" | "cooldown" | "not-approved" | "send-failed" | "email-limit";
   readonly retryAfterMs?: number;
+  readonly window?: EmailLimitWindow;
 }
 
 async function issueAccessTokenCore(
@@ -127,12 +131,12 @@ async function issueAccessTokenCore(
 
   // T62 email abuse guard: charged BEFORE the row is written, so a refused
   // send never leaves an unverifiable code behind (that would also burn the
-  // buyer's resend cooldown for nothing). Reported as "send-failed" — the
-  // same outcome a provider failure gives, which the invite panel already
-  // words as "try again shortly", and which the anonymous callers discard.
+  // buyer's resend cooldown for nothing). T63: reported as its own outcome
+  // so the seller's invite can say when to retry (a daily cap can mean
+  // tomorrow, not "in a moment"); the anonymous callers still discard it.
   const reservation = await reserveEmailSend({ tenantId: String(workspace.tenant_id ?? "") || null });
   if (!reservation.allowed) {
-    return { status: "send-failed" };
+    return { status: "email-limit", window: reservation.reason === "tenant_hourly" ? "hour" : "day" };
   }
 
   // crypto.randomInt is a CSPRNG (unbiased over the range); the LENGTH is
@@ -204,7 +208,8 @@ export type InviteIssueResult =
   | { readonly status: "cooldown"; readonly retryAfterMs: number }
   | { readonly status: "not-approved" }
   | { readonly status: "send-failed" }
-  | { readonly status: "rate-limited" };
+  | { readonly status: "rate-limited" }
+  | { readonly status: "email-limit"; readonly window: EmailLimitWindow };
 
 export async function issueAccessTokenForInvite(
   workspaceId: string,
@@ -226,6 +231,8 @@ export async function issueAccessTokenForInvite(
       return { status: "not-approved" };
     case "send-failed":
       return { status: "send-failed" };
+    case "email-limit":
+      return { status: "email-limit", window: outcome.window ?? "day" };
   }
 }
 

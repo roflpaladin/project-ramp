@@ -10,10 +10,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_EMAIL_DAILY_LIMIT,
   GLOBAL_EMAIL_DAILY_LIMIT,
+  TENANT_EMAIL_DAILY_LIMIT,
+  TENANT_EMAIL_HOURLY_LIMIT,
+  deriveTenantEmailLimits,
   resolveEmailDailyLimit,
 } from "@/lib/rate-limit";
 
-const DAY_MS = 24 * 60 * 60_000;
+const HOUR_MS = 60 * 60_000;
+const DAY_MS = 24 * HOUR_MS;
 const RESEND_FREE_DAILY_QUOTA = 100;
 const RESEND_FREE_MONTHLY_QUOTA = 3_000;
 const DAYS_IN_LONGEST_MONTH = 31;
@@ -61,5 +65,34 @@ describe("GLOBAL_EMAIL_DAILY_LIMIT", () => {
   it("keeps the default under the Resend free plan's daily and monthly quotas", () => {
     expect(DEFAULT_EMAIL_DAILY_LIMIT).toBeLessThan(RESEND_FREE_DAILY_QUOTA);
     expect(DEFAULT_EMAIL_DAILY_LIMIT * DAYS_IN_LONGEST_MONTH).toBeLessThanOrEqual(RESEND_FREE_MONTHLY_QUOTA);
+  });
+});
+
+// Session A ruling (Sep 26): per-tenant budgets follow the global one, so a
+// plan upgrade raises them with no second change. daily = max(10, global/3),
+// hourly = max(5, daily/2), both floored and capped at the pre-T63 400/100.
+describe("deriveTenantEmailLimits", () => {
+  it.each([
+    [90, { daily: 30, hourly: 15 }],
+    [25_000, { daily: 400, hourly: 100 }],
+    [1_000_000, { daily: 400, hourly: 100 }],
+    [1_200, { daily: 400, hourly: 100 }],
+    [300, { daily: 100, hourly: 50 }],
+    [100, { daily: 33, hourly: 16 }],
+    [20, { daily: 10, hourly: 5 }],
+    [1, { daily: 10, hourly: 5 }],
+  ])("global %i/day gives a tenant %o", (globalDaily, expected) => {
+    expect(deriveTenantEmailLimits(globalDaily)).toEqual(expected);
+  });
+
+  it("never lets one tenant spend more than a third of a free-plan global budget", () => {
+    const { daily } = deriveTenantEmailLimits(DEFAULT_EMAIL_DAILY_LIMIT);
+
+    expect(daily * 3).toBeLessThanOrEqual(DEFAULT_EMAIL_DAILY_LIMIT);
+  });
+
+  it("loads the tenant budgets from the default global budget when the env var is unset", () => {
+    expect(TENANT_EMAIL_DAILY_LIMIT).toEqual({ limit: 30, windowMs: DAY_MS });
+    expect(TENANT_EMAIL_HOURLY_LIMIT).toEqual({ limit: 15, windowMs: HOUR_MS });
   });
 });

@@ -35,6 +35,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { sendAccessCodeEmail as SendAccessCodeEmail } from "@/lib/email/send-access-code";
+import type { EmailSendRefusal } from "@/lib/email/send-guard";
 import type { SellerSession } from "@/lib/plans/require-seller";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { portalCookieName, verifyPortalSessionValue } from "@/lib/portal-session";
@@ -96,6 +97,24 @@ const sendAccessCodeEmail = vi.fn<typeof SendAccessCodeEmail>(async () => ({ ok:
 vi.mock("@/lib/email/send-access-code", () => ({
   sendAccessCodeEmail: (...args: Parameters<typeof SendAccessCodeEmail>) => sendAccessCodeEmail(...args),
 }));
+
+// T63: passes through to the real guard unless a test queues a refusal, so
+// every other test still exercises the real budgets.
+const { queuedEmailRefusal } = vi.hoisted(() => ({
+  queuedEmailRefusal: { value: null as EmailSendRefusal | null },
+}));
+vi.mock("@/lib/email/send-guard", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@/lib/email/send-guard")>();
+  return {
+    ...real,
+    reserveEmailSend: async (context: Parameters<typeof real.reserveEmailSend>[0]) => {
+      const reason = queuedEmailRefusal.value;
+      if (reason === null) return real.reserveEmailSend(context);
+      queuedEmailRefusal.value = null;
+      return { allowed: false, reason };
+    },
+  };
+});
 
 vi.mock("@/lib/plans/require-seller", () => ({
   requireSeller: vi.fn(async () => currentSellerSession.value),
@@ -178,6 +197,7 @@ beforeEach(() => {
 
 afterEach(async () => {
   sendAccessCodeEmail.mockClear();
+  queuedEmailRefusal.value = null;
   sendAccessCodeEmail.mockImplementation(async () => ({ ok: true }));
   await resetInviteWorkspace();
 });
@@ -264,6 +284,24 @@ describe("sendBuyerInvite (T43)", () => {
     expect(await approvedEmailsOf(seeded.workspaceId)).toEqual([email]);
     expect(await pendingTokenCount(seeded.workspaceId, email)).toBe(1);
   });
+
+  it.each([
+    ["global_daily", "Daily email limit reached. Try again tomorrow."],
+    ["tenant_daily", "Daily email limit reached. Try again tomorrow."],
+    ["tenant_hourly", "Hourly email limit reached. Try again in an hour."],
+  ] as const)(
+    "email budget refused (%s): tells the seller when to retry, sends nothing, writes no code (T63)",
+    async (reason, message) => {
+      const email = `email-limit-${reason.replace("_", "-")}@buyer-inbox-test.invalid`;
+      queuedEmailRefusal.value = reason;
+
+      const result = await sendBuyerInvite(seeded.workspaceId, INITIAL_SEND_INVITE_STATE, formDataWithEmail(email));
+
+      expect(result).toMatchObject({ status: "error", email, message });
+      expect(sendAccessCodeEmail).not.toHaveBeenCalled();
+      expect(await pendingTokenCount(seeded.workspaceId, email)).toBe(0);
+    },
+  );
 
   it("approves via the workspace's target_domain match too, without duplicating the domain-covered email into approved_emails", async () => {
     const email = `domain-match-invite@${INVITE_TARGET_DOMAIN}`;
