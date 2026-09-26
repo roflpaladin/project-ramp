@@ -20,6 +20,8 @@ import { revalidatePath } from "next/cache";
 
 import { ensurePlanIsOpen, isClosedPlanStatus, type ClosedPlanStatus } from "@/lib/plans/closed-plans";
 import { goLivePlan } from "@/lib/plans/go-live";
+import { PLAN_LIFECYCLE_RATE_LIMIT } from "@/lib/rate-limit";
+import { checkDurableRateLimit } from "@/lib/rate-limit-durable";
 import type {
   NewPlanInput,
   NewStageInput,
@@ -30,7 +32,7 @@ import type {
   StagePatch,
   StepPatch,
 } from "@/lib/plans/mutations";
-import { requireSeller } from "@/lib/plans/require-seller";
+import { requireSeller, type SellerSession } from "@/lib/plans/require-seller";
 import type { PlanStageRow, PlanStepRow, SuccessPlanRow } from "@/lib/plans/types";
 import {
   validateNewPlanInput,
@@ -76,6 +78,25 @@ function planPath(workspaceId: string): string {
 function revalidateDealPaths(workspaceId: string): void {
   revalidatePath(planPath(workspaceId));
   revalidatePath(`/admin/workspaces/${workspaceId}`);
+}
+
+/**
+ * T62 follow-up. markPlanLiveAction and closePlanAction had no budget at
+ * all — both are stable Server Action POSTs a script can replay, and
+ * going live re-reads billing state and takes mark_plan_live()'s
+ * per-tenant lock on every call. Keyed per TENANT, not per user (unlike
+ * this action's own session check, which is per user): the thing being
+ * bounded — repeated billing reads and lock contention — is a tenant-wide
+ * cost regardless of which teammate's session triggers it. Falls back to
+ * the user id on the rare session that carries no tenant claim
+ * (provisioning never completed) — goLivePlan refuses that case outright
+ * anyway, but the caller still gets a rate-limited response rather than an
+ * unbounded one.
+ */
+async function checkPlanLifecycleRateLimit(session: SellerSession, action: "go-live" | "close-deal"): Promise<boolean> {
+  const key = `${action}:${session.tenantId ?? session.userId}`;
+  const { allowed } = await checkDurableRateLimit(key, PLAN_LIFECYCLE_RATE_LIMIT);
+  return allowed;
 }
 
 /** `undefined` (field absent) means "no change" on a patch; `""` means "clear to null". */
@@ -182,6 +203,8 @@ export async function closePlanAction(
 
   if (!isClosedPlanStatus(outcome)) return { ok: false, code: "VALIDATION_ERROR" };
 
+  if (!(await checkPlanLifecycleRateLimit(session, "close-deal"))) return { ok: false, code: "RATE_LIMITED" };
+
   // Closing an already-closed deal is refused rather than treated as a no-op:
   // it would otherwise silently rewrite a Won deal as Lost.
   const gate = await ensurePlanIsOpen(session.client, { planId });
@@ -213,6 +236,8 @@ export async function markPlanLiveAction(
 ): Promise<PlanActionResult<SuccessPlanRow>> {
   const session = await requireSeller();
   if (!session) return { ok: false, code: "UNAUTHENTICATED" };
+
+  if (!(await checkPlanLifecycleRateLimit(session, "go-live"))) return { ok: false, code: "RATE_LIMITED" };
 
   const result = await goLivePlan(session, planId);
   if (result.ok) revalidateDealPaths(result.data.workspace_id);

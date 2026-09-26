@@ -41,6 +41,46 @@ const emptyStateCtaStyle: CSSProperties = {
   textDecoration: "none",
 };
 
+// A non-empty seller's "Create workspace" is a secondary utility action next
+// to an existing list to navigate into — not this scope's one primary
+// decision — so it takes the app's plain secondary-button treatment (same
+// shape/tokens as workspace-links.css's .wsl-btn: bordered, --paper/--ink,
+// no Signal amber) rather than the empty state's Signal CTA above.
+const createWorkspaceLinkStyle: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  width: "fit-content",
+  height: "36px",
+  padding: "0 14px",
+  borderRadius: "10px",
+  border: "1px solid var(--line)",
+  background: "var(--paper)",
+  color: "var(--ink)",
+  fontWeight: 500,
+  fontSize: "0.9rem",
+  textDecoration: "none",
+};
+
+const workspaceListStyle: CSSProperties = {
+  listStyle: "none",
+  margin: "0.75rem 0 0",
+  padding: 0,
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.5rem",
+};
+
+// Matches workspace-links.css's .wsl-link-anchor treatment: plain ink text,
+// underlined, so it reads as a link without the browser's default
+// blue/purple visited-link colours.
+const workspaceLinkStyle: CSSProperties = {
+  color: "var(--ink)",
+  fontWeight: 500,
+  textDecoration: "underline",
+  textUnderlineOffset: "2px",
+};
+
 export default async function AdminHome() {
   const supabase = await createClient();
   const {
@@ -66,11 +106,13 @@ export default async function AdminHome() {
       <h2>Workspaces</h2>
       {hasWorkspaces ? (
         <>
-          <Link href="/admin/workspaces/new">Create Workspace</Link>
-          <ul>
+          <Link href="/admin/workspaces/new" style={createWorkspaceLinkStyle}>
+            Create workspace
+          </Link>
+          <ul style={workspaceListStyle}>
             {(workspaces ?? []).map((workspace) => (
               <li key={workspace.id}>
-                <Link href={`/admin/workspaces/${workspace.id}`}>
+                <Link href={`/admin/workspaces/${workspace.id}`} style={workspaceLinkStyle}>
                   {workspace.target_company_name} ({workspace.target_domain})
                 </Link>
               </li>
