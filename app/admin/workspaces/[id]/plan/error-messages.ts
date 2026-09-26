@@ -29,6 +29,9 @@ const MESSAGES: Record<PlanErrorCode, string> = {
   INCOHERENT_COMPLETION: "That step could not be saved. Refresh the page and try again.",
   REORDER_SET_MISMATCH: "The plan changed elsewhere. Refresh the page to see the current order.",
   VALIDATION_ERROR: "Check the highlighted fields and try again.",
+  // T62 follow-up. markPlanLiveAction/closePlanAction's own budget — see
+  // PLAN_LIFECYCLE_RATE_LIMIT in lib/rate-limit.ts.
+  RATE_LIMITED: "Too many attempts. Try again in a few minutes.",
   UNKNOWN_ERROR: "Something went wrong saving that change. Try again in a moment.",
 };
 

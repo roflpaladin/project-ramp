@@ -18,6 +18,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { resolveEntitlement } from "@/lib/billing/entitlement";
 import type { SellerSession } from "@/lib/plans/require-seller";
+import { resetRateLimiterForTests } from "@/lib/rate-limit";
 import type { SubscriptionState } from "@/lib/billing/subscription-reducer";
 
 const { currentSellerSession, revalidatedPaths, mockGetTenantEntitlement, mockMarkPlanLive } = vi.hoisted(() => ({
@@ -88,6 +89,13 @@ function givenEntitlement(sub: SubscriptionState | null): void {
 }
 
 beforeEach(() => {
+  // T62 follow-up: markPlanLiveAction now checks a durable, per-tenant
+  // budget (PLAN_LIFECYCLE_RATE_LIMIT) before delegating to goLivePlan.
+  // RATE_LIMIT_STORE=memory (vitest.config.ts) means that budget is the
+  // real in-memory limiter in this process, so it must be reset between
+  // tests — every test here shares the same TENANT_ID key, and this file
+  // makes well over PLAN_LIFECYCLE_RATE_LIMIT.limit calls across its cases.
+  resetRateLimiterForTests();
   revalidatedPaths.length = 0;
   clientRows = [{ data: ACTIVE_PLAN_ROW, error: null }];
   currentSellerSession.value = {

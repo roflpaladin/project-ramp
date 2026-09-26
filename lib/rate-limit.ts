@@ -140,6 +140,28 @@ export const GLOBAL_EMAIL_DAILY_LIMIT: RateLimitBudget = { limit: 25_000, window
 // (one machine spraying many addresses) and per target email (many machines
 // flooding one seller's inbox).
 export const PASSWORD_RESET_RATE_LIMIT: RateLimitBudget = { limit: 5, windowMs: 15 * 60_000 };
+// T62 follow-up (R7 tail) — the Paddle webhook (app/api/billing/paddle/webhook/route.ts),
+// keyed per caller IP via lib/client-ip.ts. This route is the only
+// unauthenticated POST that can change what a tenant is entitled to, and
+// its one real caller is Paddle itself, retrying on its own schedule — a
+// 429 here must never look like the reason a legitimate retry storm gets
+// swallowed. Sized deliberately generous (well above anything Paddle's own
+// retry behaviour would produce from one source IP) so it only ever catches
+// a genuine flood, not backoff-and-retry traffic; the signature check right
+// after it is unaffected either way.
+export const PADDLE_WEBHOOK_RATE_LIMIT: RateLimitBudget = { limit: 300, windowMs: 60_000 };
+// T62 follow-up — markPlanLiveAction and closePlanAction
+// (app/admin/workspaces/[id]/plan/plan-actions.ts), keyed per SIGNED-IN
+// SELLER'S TENANT. Neither had any budget before this: both are stable
+// Server Action POSTs a script can replay, and going live re-reads billing
+// state and takes mark_plan_live()'s per-tenant lock on every call. Same
+// threat shape as CHECKOUT_REF_RATE_LIMIT/BILLING_PORTAL_RATE_LIMIT (an
+// authenticated, low-write, click-triggered action bounding a scripted
+// caller, not real use) but a little looser: closing out several deals in
+// one working session is ordinary, ownership can cross the two actions in
+// the same sitting, and the two share this one budget rather than each
+// getting its own with no reason for the numbers to differ.
+export const PLAN_LIFECYCLE_RATE_LIMIT: RateLimitBudget = { limit: 15, windowMs: 15 * 60_000 };
 
 export interface RateLimitResult {
   readonly allowed: boolean;

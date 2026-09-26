@@ -47,6 +47,12 @@ import {
  *   the upgrade wall for our own outage would be a lie about money.
  * - GO_LIVE_NOT_PERMITTED is the one Postgres DOES produce: 0015's go-live
  *   trigger, mapped below.
+ *
+ * T62 follow-up added RATE_LIMITED: like the five above, no Postgres error
+ * produces it. markPlanLiveAction and closePlanAction check a durable,
+ * per-tenant budget (lib/rate-limit-durable.ts, PLAN_LIFECYCLE_RATE_LIMIT)
+ * before they delegate, and this is the one code both return when it's
+ * spent.
  */
 export type PlanErrorCode =
   | "UNAUTHENTICATED"
@@ -62,6 +68,7 @@ export type PlanErrorCode =
   | "INCOHERENT_COMPLETION"
   | "REORDER_SET_MISMATCH"
   | "VALIDATION_ERROR"
+  | "RATE_LIMITED"
   | "UNKNOWN_ERROR";
 
 export interface PlanErrorMapping {
