@@ -478,7 +478,10 @@ describe("ActivationChecklist — a stale page refused by the server (T60)", () 
 
     const notice = await screen.findByTestId("deal-limit-notice");
     expect(notice).toHaveAttribute("data-reason", "limit");
-    expect(screen.queryByRole("button", { name: "Make it live" })).not.toBeInTheDocument();
+    // Button removal and the notice both come from the same isWalled render,
+    // but waitFor (rather than a bare sync query) keeps this from racing the
+    // transition the same way the BILLING_CHECK_FAILED case below did.
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Make it live" })).not.toBeInTheDocument());
     // The wall carries the message — no duplicate raw error line beside it.
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
