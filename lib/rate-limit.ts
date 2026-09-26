@@ -129,10 +129,35 @@ export const TENANT_EMAIL_DAILY_LIMIT: RateLimitBudget = { limit: 400, windowMs:
 // number of honest-but-busy tenants produce together, because tripping it
 // stops buyer access codes for EVERY tenant. At 400/tenant/day, 3,000 was
 // reachable by eight self-registered accounts; 25,000 needs sixty-plus
-// tenants all at their daily cap on the same day. HUMAN: confirm this is
-// under the Resend plan's daily allowance — on the free tier (100/day) the
-// per-tenant caps alone already exceed it, and the plan is the real limit.
-export const GLOBAL_EMAIL_DAILY_LIMIT: RateLimitBudget = { limit: 25_000, windowMs: 24 * 60 * 60_000 };
+// tenants all at their daily cap on the same day.
+//
+// T63 founder ruling (Sep 26): Resend stays on the FREE plan (100/day,
+// 3,000/month), so the plan IS the real limit and the breaker sits under it:
+// 90/day leaves headroom because our 24h window never lines up with Resend's
+// day boundary, and 90 x 31 = 2,790 stays under the monthly cap. On the free
+// plan the per-tenant budgets above can never bind before this one does.
+// EMAIL_DAILY_LIMIT overrides it, so a plan upgrade is a Vercel env change
+// (plus the redeploy any env change needs), not a code change.
+export const DEFAULT_EMAIL_DAILY_LIMIT = 90;
+
+/** Parses EMAIL_DAILY_LIMIT: a positive whole number, else the default (logged when set but invalid). */
+export function resolveEmailDailyLimit(raw: string | undefined): number {
+  const trimmed = raw?.trim() ?? "";
+  if (trimmed === "") return DEFAULT_EMAIL_DAILY_LIMIT;
+
+  const parsed = /^\d+$/.test(trimmed) ? Number(trimmed) : Number.NaN;
+  if (Number.isSafeInteger(parsed) && parsed > 0) return parsed;
+
+  console.error(
+    `[rate-limit] EMAIL_DAILY_LIMIT must be a positive whole number; using the default of ${DEFAULT_EMAIL_DAILY_LIMIT}.`,
+  );
+  return DEFAULT_EMAIL_DAILY_LIMIT;
+}
+
+export const GLOBAL_EMAIL_DAILY_LIMIT: RateLimitBudget = {
+  limit: resolveEmailDailyLimit(process.env.EMAIL_DAILY_LIMIT),
+  windowMs: 24 * 60 * 60_000,
+};
 // T65 password-reset requests (app/forgot-password/actions.ts). Same threat
 // class as REGISTRATION_RATE_LIMIT and WAITLIST_RATE_LIMIT (public,
 // unauthenticated, and each allowed call sends an email), so it carries the
