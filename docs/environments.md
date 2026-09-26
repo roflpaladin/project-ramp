@@ -260,7 +260,19 @@ data), which defeats the whole split.
 | `RESEND_API_KEY` | prod Resend API key | dev/test Resend API key (or unset) |
 | `RESEND_FROM` | prod verified sender | dev/test verified sender (or unset) |
 | `EMAIL_DAILY_LIMIT` | unset (defaults to 90, under Resend's free plan); set to the new plan's daily quota minus headroom after upgrading | unset |
+| `NEXT_PUBLIC_APP_URL` | `https://www.getbrava.tech` (invite links, OAuth callbacks) | unset, or the preview origin |
+| `NEXT_PUBLIC_PADDLE_ENV` | `production` | `sandbox` |
+| `NEXT_PUBLIC_PADDLE_CLIENT_TOKEN` | live client token (`live_…`) | sandbox client token (`test_…`) |
+| `PADDLE_API_KEY` | live API key | sandbox API key |
+| `PADDLE_WEBHOOK_SECRET` | live notification destination's secret key | sandbox destination's secret key |
+| `PADDLE_PRICE_<TIER>_MONTH` / `_YEAR` | live price ids (`pri_…`); `_YEAR` for every checkout tier or none | sandbox price ids |
 | ~~`SMTP_*`~~ | retired (T57) — no longer read | retired (T57) — no longer read |
+
+**Health check (T63).** `GET https://www.getbrava.tech/api/health` answers
+`{"ok":true}` (200) or `{"ok":false}` (503), nothing more. It fails when any var
+in `REQUIRED_PROD_ENV` (lib/health.ts) is empty or the database can't be read,
+and the server log (Vercel → Logs, search `[health]`) names the reason. The
+CRM integration vars are deliberately not required. Rate limited per IP.
 
 The Preview/Development values are exactly what's in your local `.env.local`. To
 split an existing "All Environments" entry: edit it down to **Production** only,
