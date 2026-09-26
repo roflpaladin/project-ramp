@@ -44,7 +44,12 @@ openssl rand -hex 32   # run once each for dev, once each for prod
   `lib/crm-connections/token-store.ts`) and signs each provider's own OAuth
   `state` param (`lib/hubspot/oauth-state.ts`, `lib/salesforce/oauth-state.ts`
   — independently keyed HKDF subkeys per provider and per purpose, see
-  `lib/app-encryption-key.ts`). **Not** `openssl rand -hex 32`'s general
+  `lib/app-encryption-key.ts`). Sprint 12, Ticket 62 added a third subkey on
+  the same master key: the buyer portal's access-code hash
+  (`lib/portal-access-token.ts`) is now an HMAC, so **without this variable no
+  buyer can be issued or verify a code at all** — it is required in every
+  environment, and `tests/fixtures/env.ts` now asserts it before the live
+  suites run. **Not** `openssl rand -hex 32`'s general
   shape by convention only — it's a hard requirement here:
   `lib/encrypt-secret.ts` refuses to run against anything other than exactly
   64 hex characters (32 bytes), the AES-256 key length.
@@ -213,6 +218,19 @@ select proname from pg_proc
 where proname in ('reorder_plan_stages','reorder_plan_steps',
                   'reject_demo_tenant_hijack','test_add_crm_arr','test_drop_crm_arr');
 ```
+
+Migration `0016` (shared-store rate limiter, Sprint 12 Ticket 62) — paste in
+the SQL Editor (expect **1 row**, with `rowsecurity` = `true`, then **1 row**):
+
+```sql
+select relname, relrowsecurity as rowsecurity from pg_class where relname = 'rate_limit_windows';
+select proname from pg_proc where proname = 'check_rate_limit';
+```
+
+Until `0016` is applied the app still rate-limits — `lib/rate-limit-durable.ts`
+falls back to the in-memory limiter and logs `[rate-limit] shared store
+unavailable` on each check. Seeing that line in the host's logs after a deploy
+means `0016` has not been pasted on that project yet.
 
 ## Setting up prod on the host
 

@@ -499,7 +499,9 @@ describe("ActivationChecklist — a stale page refused by the server (T60)", () 
     fireEvent.click(screen.getByRole("button", { name: "Make it live" }));
 
     expect(await screen.findByTestId("deal-limit-notice")).toHaveAttribute("data-reason", "unknown");
-    expect(screen.getByRole("button", { name: "Make it live" })).not.toBeDisabled();
+    // The notice can render while the transition is still pending (label
+    // "Making it live…"), so wait for the button to settle back.
+    expect(await screen.findByRole("button", { name: "Make it live" })).not.toBeDisabled();
   });
 
   it("never offers an upgrade for the locked sample deal — a plain line, no CTA, no Signal", async () => {

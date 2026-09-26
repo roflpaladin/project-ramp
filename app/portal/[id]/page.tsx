@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { buildPortalHeaderTitle, getFaviconUrl } from "@/lib/branding";
 import { portalCookieName, verifyPortalSessionValue } from "@/lib/portal-session";
 import { loadBuyerPayload } from "@/lib/portal/load-buyer-payload";
+import { ACCESS_CODE_INPUT_PATTERN, ACCESS_CODE_LENGTH } from "@/lib/portal-access-code";
 import { BuyerWorkspaceView } from "@/components/buyer/buyer-workspace-view";
 import { requestAccess, verifyAccess } from "./gate-actions";
 
@@ -98,12 +99,25 @@ export default async function PortalPage({
     return (
       <main>
         <h1>Enter your code</h1>
-        <p>We sent a 4-digit code to {email}.</p>
+        <p>We sent a {ACCESS_CODE_LENGTH}-digit code to {email}.</p>
         <form action={verifyAccessForWorkspace}>
           <input type="hidden" name="email" value={email ?? ""} />
           <label>
             Code
-            <input type="text" name="token" inputMode="numeric" pattern="[0-9]{4}" maxLength={4} required />
+            {/* Length, copy and pattern all derive from ACCESS_CODE_LENGTH
+                (lib/portal-access-code.ts) — T62 moved the code from four
+                digits to six, and the number lives in exactly one place now.
+                autoComplete="one-time-code" lets iOS/Android offer the code
+                straight from the SMS/email notification. */}
+            <input
+              type="text"
+              name="token"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              pattern={ACCESS_CODE_INPUT_PATTERN}
+              maxLength={ACCESS_CODE_LENGTH}
+              required
+            />
           </label>
           <button type="submit">Verify</button>
         </form>

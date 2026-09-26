@@ -1,91 +1,42 @@
-import { isIP } from "node:net";
-import { lookup } from "node:dns/promises";
-
-// Server-side fetches of seller-pasted URLs (Sprint 2, Ticket 12) need an
-// SSRF guard: block private/loopback/link-local ranges and the cloud
-// metadata address, both by literal IP and by resolving the hostname
-// (defends against DNS rebinding -- a public-looking hostname that
-// resolves to a private address).
-
-function isPrivateIPv4(ip: string): boolean {
-  const parts = ip.split(".").map(Number);
-  if (parts.length !== 4 || parts.some((part) => Number.isNaN(part))) return true;
-  const [a, b] = parts;
-  if (a === 10) return true;
-  if (a === 172 && b >= 16 && b <= 31) return true;
-  if (a === 192 && b === 168) return true;
-  if (a === 127) return true;
-  if (a === 169 && b === 254) return true; // includes the 169.254.169.254 cloud metadata endpoint
-  if (a === 0) return true;
-  return false;
-}
-
-function isPrivateIPv6(ip: string): boolean {
-  const normalized = ip.toLowerCase();
-  if (normalized === "::1") return true;
-  if (normalized.startsWith("fe80:")) return true; // link-local
-  if (normalized.startsWith("fc") || normalized.startsWith("fd")) return true; // unique local, fc00::/7
-  if (normalized.startsWith("::ffff:")) {
-    const mapped = normalized.slice("::ffff:".length);
-    if (isIP(mapped) === 4) return isPrivateIPv4(mapped);
-  }
-  return false;
-}
-
-function isPrivateIp(ip: string): boolean {
-  const version = isIP(ip);
-  if (version === 4) return isPrivateIPv4(ip);
-  if (version === 6) return isPrivateIPv6(ip);
-  return true; // unrecognizable -- treat conservatively
-}
-
-// Throws if `value` isn't a fetchable public http(s) URL; otherwise returns
-// the parsed URL.
-export async function assertPublicHttpUrl(value: string): Promise<URL> {
-  let parsed: URL;
-  try {
-    parsed = new URL(value);
-  } catch {
-    throw new Error("Not a valid URL.");
-  }
-
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    throw new Error("URL scheme must be http or https.");
-  }
-
-  const hostname = parsed.hostname.toLowerCase();
-  if (hostname === "localhost" || hostname.endsWith(".localhost")) {
-    throw new Error("URL host is not allowed.");
-  }
-
-  if (isIP(hostname)) {
-    if (isPrivateIp(hostname)) {
-      throw new Error("URL host is not allowed.");
-    }
-    return parsed;
-  }
-
-  const { address } = await lookup(hostname);
-  if (isPrivateIp(address)) {
-    throw new Error("URL host is not allowed.");
-  }
-
-  return parsed;
-}
-
-// T32-1 (Sprint 6, Ticket 32; plans/sprint-6-7-replan.md §6). A thin,
-// additive wrapper -- NOT a replacement for assertPublicHttpUrl above, which
-// intentionally permits http: because /api/scrape-meta depends on that.
-// This one is for seller-controlled URLs that are stored and later rendered
-// as a raw, clickable href (workspaces.chat_url / internal_chat_url) rather
-// than fetched server-side, so there's no SSRF surface to guard here (no
-// hostname/DNS resolution needed): the risk is scheme-based, a stored
-// `javascript:`/`data:`/`vbscript:` URL executing in the buyer's browser.
-// https:-only rather than http+https, because unlike assertPublicHttpUrl
-// nothing here depends on http: working.
+// Scheme validation for seller-pasted URLs that are STORED and later
+// rendered as a clickable href — not fetched.
 //
-// Deliberately synchronous and pure (no I/O) so it stays a trivially
-// unit-testable throwing function for the T32-5 scheme-rejection tests.
+// Sprint 12, Ticket 62 emptied this file of everything else. It used to also
+// export `assertPublicHttpUrl`, the DNS-based SSRF check for the two
+// server-side fetchers (app/api/scrape-meta/route.ts and
+// lib/crm/brand-scrape.ts). That function is gone, not moved, because it was
+// unsound in a way a wrapper could not fix:
+//
+//   - it resolved the hostname with dns.lookup() (first address only, no
+//     `all: true`) and then RETURNED, leaving the caller's fetch() to
+//     resolve the name a second time — so its old comment claiming it
+//     "defends against DNS rebinding" was simply false; it checked one
+//     answer and connected on another. Only pinning the validated address to
+//     the socket defends against that, which is what
+//     lib/ssrf/pinned-request.ts now does.
+//   - both callers used `fetch(..., { redirect: "follow" })`, so a public
+//     page that answered `302 Location: http://169.254.169.254/...` was
+//     fetched with no re-validation at all.
+//   - its private-range table missed carrier NAT, the TEST-NETs, multicast,
+//     240/4, IPv6 "::", hex-form IPv4-mapped addresses, NAT64, 6to4 and most
+//     of fe80::/10 (see lib/ssrf/ip-ranges.ts for the full list).
+//
+// Fetching now lives in lib/ssrf/ (ip-ranges -> resolve -> pinned-request ->
+// fetch-public-html). Nothing http-fetch-related should be added back here.
+
+/**
+ * T32-1 (Sprint 6, Ticket 32; plans/sprint-6-7-replan.md §6). For
+ * seller-controlled URLs that are stored and later rendered as a raw,
+ * clickable href (workspaces.chat_url / internal_chat_url) rather than
+ * fetched server-side, so there is no SSRF surface to guard here (no
+ * hostname/DNS resolution needed): the risk is scheme-based, a stored
+ * `javascript:`/`data:`/`vbscript:` URL executing in the buyer's browser.
+ * https:-only because nothing on this path needs http: to work.
+ *
+ * Deliberately synchronous and pure (no I/O) so it stays a trivially
+ * unit-testable throwing function for the T32-5 scheme-rejection tests
+ * (tests/security/assert-https-url.spec.ts).
+ */
 export function assertHttpsUrl(value: string): URL {
   let parsed: URL;
   try {

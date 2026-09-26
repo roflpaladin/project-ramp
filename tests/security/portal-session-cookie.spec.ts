@@ -30,7 +30,15 @@
 // view gate's tenant check is proven against the REAL DEMO_TENANT_ID, so
 // neither mock quietly rigs the comparison it's supposed to be exercising.
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+// Sprint 12, Ticket 62 update: the portal gate now rate limits per caller IP
+// (so next/headers' headers() is mocked alongside cookies(), and the durable
+// limiter is stubbed to "allowed" — its own behaviour is
+// tests/portal/portal-gate.spec.ts's job), the emailed code is six digits,
+// and verification additionally reads the (workspace, email) attempt budget
+// (so the query builder below gained `gte`). APP_ENCRYPTION_KEY is stubbed
+// because hashToken() is now an HMAC keyed by it.
+
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DEMO_TENANT_ID } from "@/lib/demo";
 import { hashToken } from "@/lib/portal-access-token";
@@ -69,13 +77,24 @@ function makeQueryBuilder(result: TableResult): Record<string, unknown> {
     select: () => builder,
     eq: () => builder,
     is: () => builder,
+    gte: () => builder,
     order: () => builder,
     limit: () => builder,
     update: () => builder,
     insert: () => builder,
     maybeSingle: async () => result,
     single: async () => result,
-    then: (resolve: (value: TableResult) => void) => resolve(result),
+    // Awaiting the chain directly (no .single/.maybeSingle) is how the real
+    // client answers a multi-row read or a `.update().select()` — with an
+    // ARRAY. Sprint 12, Ticket 62 made the gate read its candidates as a list
+    // and consume via a returning update, so a configured single row is
+    // handed back as a one-row array on that path, as Supabase would.
+    then: (resolve: (value: TableResult) => void) =>
+      resolve(
+        result.data !== null && !Array.isArray(result.data) && typeof result.data === "object"
+          ? { ...result, data: [result.data] }
+          : result,
+      ),
   };
   return builder;
 }
@@ -86,6 +105,11 @@ vi.mock("next/headers", () => ({
       cookieSetCalls.push({ name, value, options });
     },
   })),
+  headers: vi.fn(async () => new Headers({ "x-forwarded-for": "203.0.113.7" })),
+}));
+
+vi.mock("@/lib/rate-limit-durable", () => ({
+  checkDurableRateLimit: vi.fn(async () => ({ allowed: true, retryAfterSeconds: 0 })),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -125,14 +149,19 @@ const PINNED_SECURITY_OPTIONS = {
 
 describe("portal session cookie — options pinning at all three minting sites (T39-3, extended T43)", () => {
   beforeEach(() => {
+    vi.stubEnv("APP_ENCRYPTION_KEY", "a".repeat(64));
     cookieSetCalls.length = 0;
     tableConfig.clear();
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   it("verifyAccess (/portal/[id]) sets the pinned httpOnly/secure/sameSite/path cookie options", async () => {
     const workspaceId = "7e570000-0000-4000-8000-0000000000c1";
     const email = "buyer@portal-pin-test.invalid";
-    const token = "4821";
+    const token = "482173";
 
     // Real hashToken() computes the stored hash — a faked-to-match hash would
     // let this test pass even if verifyAccess's own comparison were broken.
@@ -225,7 +254,7 @@ describe("portal session cookie — options pinning at all three minting sites (
   it("both gate call sites agree on identical security options — the pinning guarantee itself", async () => {
     const portalWorkspaceId = "7e570000-0000-4000-8000-0000000000c3";
     const portalEmail = "buyer@portal-pin-test-2.invalid";
-    const portalToken = "9137";
+    const portalToken = "913742";
     tableConfig.set("portal_access_tokens", {
       data: {
         id: "candidate-token-id-2",

@@ -9,7 +9,8 @@ import { createPortalSessionValue, portalCookieName } from "@/lib/portal-session
 // ⚠️ DEMO-ONLY hardening — NOT production auth.
 // To keep a live pitch frictionless (no SMTP round-trip, no domain-validation
 // stumble mid-demo), this gate accepts ANY well-formed "<x>@<y>" string. The
-// real buyer Security Gate (domain whitelist + 4-digit magic-link token) is
+// real buyer Security Gate (domain whitelist + six-digit emailed code, rate
+// limited per IP and per buyer since Sprint 12, Ticket 62) is
 // untouched at /portal/[id]. This permissive path is reachable ONLY for the
 // seeded demo tenant — enforced here and in page.tsx — so it can never be used
 // to walk into a real customer's deal room.

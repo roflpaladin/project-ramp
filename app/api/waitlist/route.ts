@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { checkRateLimit, WAITLIST_RATE_LIMIT } from "@/lib/rate-limit";
+import { clientIp } from "@/lib/client-ip";
+import { WAITLIST_RATE_LIMIT } from "@/lib/rate-limit";
+import { checkDurableRateLimit } from "@/lib/rate-limit-durable";
 
 // Sprint 9, Ticket 47 (phase 1) — public waitlist capture for the Brava
 // landing page (getbrava.tech). PUBLIC, unauthenticated, write — same threat
@@ -53,12 +55,6 @@ const INVALID_EMAIL_MESSAGE = "Enter a valid email address.";
 const MISSING_EMAIL_MESSAGE = "A valid email is required.";
 const COMPANY_NAME_TOO_LONG_MESSAGE = "Company name is too long.";
 const RATE_LIMITED_MESSAGE = "Too many requests. Try again in a few minutes.";
-
-function callerIp(request: Request): string {
-  const forwardedFor = request.headers.get("x-forwarded-for");
-  const firstEntry = forwardedFor?.split(",")[0]?.trim();
-  return firstEntry || "unknown";
-}
 
 /** Cheap pre-parse size gate -- see MAX_BODY_BYTES above for the
  * untrusted-header caveat. Missing or non-numeric Content-Length is treated
@@ -134,10 +130,9 @@ function validateBody(body: unknown): ValidationResult {
 }
 
 export async function POST(request: Request): Promise<Response> {
-  const { allowed, retryAfterSeconds } = checkRateLimit(
-    `waitlist:${callerIp(request)}`,
-    WAITLIST_RATE_LIMIT.limit,
-    WAITLIST_RATE_LIMIT.windowMs,
+  const { allowed, retryAfterSeconds } = await checkDurableRateLimit(
+    `waitlist:${clientIp(request.headers)}`,
+    WAITLIST_RATE_LIMIT,
   );
   if (!allowed) {
     return NextResponse.json(

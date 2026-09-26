@@ -1,22 +1,23 @@
 import { NextResponse } from "next/server";
 import { issueAccessToken } from "@/lib/portal-access-token";
-import { checkRateLimit, SEND_TOKEN_RATE_LIMIT } from "@/lib/rate-limit";
+import { clientIp } from "@/lib/client-ip";
+import { SEND_TOKEN_RATE_LIMIT } from "@/lib/rate-limit";
+import { checkDurableRateLimit } from "@/lib/rate-limit-durable";
 
 // Thin wrapper over the same issuance logic the portal gate form action
 // uses (app/portal/[id]/gate-actions.ts) -- see lib/portal-access-token.ts.
 // Kept as a documented REST contract per the Technical Source of Truth API
 // surface, without a second implementation of token issuance.
 //
-// Interim rate limit (Sprint 8, Ticket 39, pulled forward from R7): keyed by
-// caller IP, layered on top of issueAccessToken's own per-workspace resend
-// cooldown. Full R7 audit is Ticket 62.
+// Rate limit: keyed by caller IP (lib/client-ip.ts), layered on top of
+// issueAccessToken's own per-(workspace, email) resend cooldown. Interim and
+// in-memory from Sprint 8, Ticket 39; on the shared store since Sprint 12,
+// Ticket 62 (lib/rate-limit-durable.ts), so the budget holds across
+// serverless instances.
 export async function POST(request: Request) {
-  const callerIp =
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
-  const { allowed, retryAfterSeconds } = checkRateLimit(
-    `send-token:${callerIp}`,
-    SEND_TOKEN_RATE_LIMIT.limit,
-    SEND_TOKEN_RATE_LIMIT.windowMs,
+  const { allowed, retryAfterSeconds } = await checkDurableRateLimit(
+    `send-token:${clientIp(request.headers)}`,
+    SEND_TOKEN_RATE_LIMIT,
   );
   if (!allowed) {
     return NextResponse.json(

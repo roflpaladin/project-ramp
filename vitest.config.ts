@@ -14,6 +14,17 @@ if (existsSync(localEnvFile)) {
   process.loadEnvFile(localEnvFile);
 }
 
+// Sprint 12, Ticket 62. The shared-store rate limiter
+// (lib/rate-limit-durable.ts) keeps its counts in Postgres, where they would
+// outlive a test run: a spec that spends a 15-minute budget would fail its own
+// re-run, and CI shares that database with every local run. "memory" routes
+// the limiter to the in-memory implementation, which resetRateLimiterForTests()
+// can actually clear. Set here (not per spec) so the live Next.js server the
+// security suite spawns (tests/security/support/live-server.ts passes
+// process.env through) inherits it too. `??=` so one spec — the limiter's own
+// live spec — can still opt in to "database" against unique keys.
+process.env.RATE_LIMIT_STORE ??= "memory";
+
 // Shared by every project — "@/*" mirrors the tsconfig.json path mapping, and
 // server-only's empty.js keeps `import "server-only"`-gated modules importable
 // under test (see the security project's own note below).

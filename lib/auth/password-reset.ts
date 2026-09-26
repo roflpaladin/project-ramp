@@ -1,3 +1,4 @@
+import { reserveEmailSend } from "@/lib/email/send-guard";
 import { sendPasswordResetEmail } from "@/lib/email/send-password-reset";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isWithinRecoveryCooldown } from "./recovery-cooldown";
@@ -46,6 +47,15 @@ export async function requestPasswordReset({
   // Checked BEFORE generating: a second token would invalidate the link
   // already in the seller's inbox.
   if (await isWithinRecoveryCooldown(email)) {
+    return { sent: false };
+  }
+
+  // T62 email abuse guard. No tenant is known yet (the requester is
+  // anonymous until the link is used), so only the global budget applies.
+  // Checked BEFORE generating, like the cooldown: a refused send must not
+  // mint a token that silently invalidates the link already in the inbox.
+  const reservation = await reserveEmailSend({ tenantId: null });
+  if (!reservation.allowed) {
     return { sent: false };
   }
 
