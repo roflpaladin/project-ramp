@@ -4,6 +4,12 @@
 // This is the only unauthenticated POST in the app that can change what a
 // tenant is entitled to, so it is built to fail CLOSED at every step:
 //
+//   0. More than PADDLE_WEBHOOK_RATE_LIMIT requests from one caller IP
+//      (T62 follow-up, lib/client-ip.ts) within the window -> 429, before
+//      anything else runs. Sized generous on purpose (300/min): this
+//      route's real caller is Paddle itself retrying on its own schedule,
+//      and a 429 must never be the reason a legitimate retry is lost. It
+//      only ever catches a genuine flood.
 //   1. No PADDLE_WEBHOOK_SECRET configured  -> 401 (same answer as a bad
 //      signature — see below), nothing read, nothing written.
 //   2. Body larger than MAX_BODY_BYTES      -> 413, before any hashing.
@@ -46,6 +52,9 @@ import { getPaddleWebhookSecret } from "@/lib/billing/paddle-server-env";
 import { PADDLE_SIGNATURE_HEADER, verifyPaddleSignature } from "@/lib/billing/paddle-signature";
 import { processSubscriptionEvent } from "@/lib/billing/process-subscription-event";
 import { markEventOutcome, recordEvent } from "@/lib/billing/subscription-repository";
+import { clientIp } from "@/lib/client-ip";
+import { PADDLE_WEBHOOK_RATE_LIMIT } from "@/lib/rate-limit";
+import { checkDurableRateLimit } from "@/lib/rate-limit-durable";
 
 // node:crypto (signature verification) and the service-role client both
 // need the Node runtime, not Edge.
@@ -68,6 +77,7 @@ const INVALID_BODY_MESSAGE = "Invalid webhook payload.";
 const UNAUTHORIZED_MESSAGE = "Invalid signature.";
 const BODY_TOO_LARGE_MESSAGE = "Webhook payload is too large.";
 const PROCESSING_FAILED_MESSAGE = "Could not process this event.";
+const RATE_LIMITED_MESSAGE = "Too many requests.";
 
 function ok(): Response {
   return NextResponse.json(OK_RESPONSE);
@@ -75,6 +85,13 @@ function ok(): Response {
 
 function failure(status: number, error: string): Response {
   return NextResponse.json({ ok: false, error }, { status });
+}
+
+function rateLimited(retryAfterSeconds: number): Response {
+  return NextResponse.json(
+    { ok: false, error: RATE_LIMITED_MESSAGE },
+    { status: 429, headers: { "Retry-After": String(retryAfterSeconds) } },
+  );
 }
 
 function isDeclaredBodyTooLarge(request: Request): boolean {
@@ -217,6 +234,13 @@ async function readVerifiedBody(request: Request): Promise<VerifiedBody> {
 }
 
 export async function POST(request: Request): Promise<Response> {
+  // Step 0 — see the file header. Cheap on purpose: this runs before the
+  // body is even read, so a flood costs us a hashed IP lookup and nothing
+  // else. Signature verification below is completely unaffected either
+  // way — it still runs, unchanged, for every request that gets this far.
+  const rateLimit = await checkDurableRateLimit(`paddle-webhook:${clientIp(request.headers)}`, PADDLE_WEBHOOK_RATE_LIMIT);
+  if (!rateLimit.allowed) return rateLimited(rateLimit.retryAfterSeconds);
+
   const verified = await readVerifiedBody(request);
   if (!verified.ok) return verified.response;
 

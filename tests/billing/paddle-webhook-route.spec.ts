@@ -13,6 +13,7 @@
 import { createHmac } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { PADDLE_WEBHOOK_RATE_LIMIT, resetRateLimiterForTests } from "@/lib/rate-limit";
 import type { SubscriptionState } from "@/lib/billing/subscription-reducer";
 
 const {
@@ -22,6 +23,7 @@ const {
   mockRecordEvent,
   mockMarkEventOutcome,
   mockConsumeCheckoutRef,
+  mockRpc,
 } = vi.hoisted(() => ({
   mockFindByPaddleSubscriptionId: vi.fn(),
   mockFindByTenantId: vi.fn(),
@@ -29,6 +31,7 @@ const {
   mockRecordEvent: vi.fn(),
   mockMarkEventOutcome: vi.fn(),
   mockConsumeCheckoutRef: vi.fn(),
+  mockRpc: vi.fn(),
 }));
 
 vi.mock("@/lib/billing/subscription-repository", () => ({
@@ -38,6 +41,15 @@ vi.mock("@/lib/billing/subscription-repository", () => ({
   recordEvent: mockRecordEvent,
   markEventOutcome: mockMarkEventOutcome,
   consumeCheckoutRef: mockConsumeCheckoutRef,
+}));
+
+// Only lib/rate-limit-durable.ts's own askStore() calls this — every other
+// Supabase access in the request path goes through the fully-mocked
+// subscription-repository above. RATE_LIMIT_STORE stays "memory"
+// (vitest.config.ts's default) for every test except the fallback one
+// below, so this mock is inert everywhere else.
+vi.mock("@/lib/supabase/admin", () => ({
+  createAdminClient: () => ({ rpc: mockRpc }),
 }));
 
 const { POST } = await import("@/app/api/billing/paddle/webhook/route");
@@ -72,8 +84,15 @@ function signedHeaders(body: string, secret = SECRET): Record<string, string> {
   return { "content-type": "application/json", "Paddle-Signature": `ts=${ts};h1=${digest}` };
 }
 
-function post(body: string, headers: Record<string, string> = signedHeaders(body)): Promise<Response> {
-  return POST(new Request(ROUTE_URL, { method: "POST", headers, body }));
+function post(
+  body: string,
+  headers: Record<string, string> = signedHeaders(body),
+  ip?: string,
+): Promise<Response> {
+  // process.env.VERCEL is unset in this test run, so clientIp() (lib/client-ip.ts)
+  // reads the plain x-forwarded-for fallback, not the platform header.
+  const requestHeaders = ip ? { ...headers, "x-forwarded-for": ip } : headers;
+  return POST(new Request(ROUTE_URL, { method: "POST", headers: requestHeaders, body }));
 }
 
 const STORED_SUBSCRIPTION: SubscriptionState = {
@@ -92,6 +111,8 @@ const STORED_SUBSCRIPTION: SubscriptionState = {
 };
 
 beforeEach(() => {
+  resetRateLimiterForTests();
+  mockRpc.mockReset();
   vi.stubEnv("PADDLE_WEBHOOK_SECRET", SECRET);
   // The route resolves a tier from the price ID via the plans config, which
   // reads these env vars — set here so no assertion depends on the
@@ -202,6 +223,84 @@ describe("POST /api/billing/paddle/webhook — signature gate", () => {
     expect(mockRecordEvent).not.toHaveBeenCalled();
     expect(mockUpsertFromState).not.toHaveBeenCalled();
     expect(errorSpy.mock.calls.flat().map(String).join(" ")).toMatch(/PADDLE_WEBHOOK_SECRET/);
+  });
+});
+
+// T62 follow-up (R7 tail). This route had no rate limit at all. Keyed per
+// caller IP via lib/client-ip.ts, and deliberately generous
+// (PADDLE_WEBHOOK_RATE_LIMIT = 300/min): Paddle itself is the real caller,
+// retrying on its own schedule, and a 429 here must never be the reason a
+// legitimate retry is lost.
+describe("POST /api/billing/paddle/webhook — rate limiting", () => {
+  it("processes every request under budget exactly as before (signature verification unaffected)", async () => {
+    // Act — comfortably below the budget, using a fresh IP so this test
+    // cannot be affected by any other test's calls.
+    const response = await post(rawBody(), signedHeaders(rawBody()), "203.0.113.10");
+
+    // Assert
+    expect(response.status).toBe(200);
+    expect(mockUpsertFromState).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses a caller once its budget is spent, with a 429 and a Retry-After header, before verifying anything", async () => {
+    // Arrange
+    const ip = "203.0.113.20";
+    for (let call = 0; call < PADDLE_WEBHOOK_RATE_LIMIT.limit; call += 1) {
+      const body = rawBody({ event_id: `evt_budget_${call}` });
+      const response = await post(body, signedHeaders(body), ip);
+      expect(response.status).toBe(200);
+    }
+
+    // Act — an otherwise perfectly valid, genuinely signed request.
+    const overBudgetBody = rawBody({ event_id: "evt_over_budget" });
+    const overBudget = await post(overBudgetBody, signedHeaders(overBudgetBody), ip);
+
+    // Assert
+    expect(overBudget.status).toBe(429);
+    expect(overBudget.headers.get("Retry-After")).not.toBeNull();
+    const payload = await overBudget.json();
+    expect(payload.ok).toBe(false);
+    expect(mockRecordEvent).toHaveBeenCalledTimes(PADDLE_WEBHOOK_RATE_LIMIT.limit);
+  });
+
+  it("budgets are per caller IP: one IP at the cap does not throttle another", async () => {
+    // Arrange
+    const cappedIp = "203.0.113.30";
+    for (let call = 0; call < PADDLE_WEBHOOK_RATE_LIMIT.limit; call += 1) {
+      const body = rawBody({ event_id: `evt_cap_${call}` });
+      await post(body, signedHeaders(body), cappedIp);
+    }
+    const overBudgetBody = rawBody({ event_id: "evt_cap_over" });
+    const cappedOverBudget = await post(overBudgetBody, signedHeaders(overBudgetBody), cappedIp);
+    expect(cappedOverBudget.status).toBe(429);
+
+    // Act — a different IP, same instant.
+    const otherIp = "203.0.113.31";
+    const otherBody = rawBody({ event_id: "evt_other_ip" });
+    const otherResponse = await post(otherBody, signedHeaders(otherBody), otherIp);
+
+    // Assert
+    expect(otherResponse.status).toBe(200);
+  });
+
+  it("falls back to the in-memory limiter (and still processes the event) when the shared store is unreachable", async () => {
+    // Arrange — the store this test's OWN IP has never touched before, with
+    // RATE_LIMIT_STORE switched away from the test default so
+    // checkDurableRateLimit actually asks lib/supabase/admin, which this
+    // file mocks to reject exactly like a database outage would.
+    vi.stubEnv("RATE_LIMIT_STORE", "database");
+    mockRpc.mockRejectedValue(new Error("fetch failed"));
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    // Act — neither fails open (unlimited) nor closed (every webhook
+    // blocked by our own outage): a single request under the fallback's own
+    // budget must still be processed normally.
+    const response = await post(rawBody(), signedHeaders(rawBody()), "203.0.113.40");
+
+    // Assert
+    expect(response.status).toBe(200);
+    expect(mockUpsertFromState).toHaveBeenCalledTimes(1);
+    expect(errorSpy.mock.calls.flat().map(String).join(" ")).toMatch(/shared store unavailable/);
   });
 });
 
