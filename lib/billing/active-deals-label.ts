@@ -11,5 +11,6 @@
 
 /** `maxActiveDeals` — null means unlimited (lib/billing/plans.ts's TierCommon). */
 export function activeDealsAllowanceLabel(maxActiveDeals: number | null): string {
-  return maxActiveDeals === null ? "Unlimited active deals" : `Up to ${maxActiveDeals} active deals`;
+  if (maxActiveDeals === null) return "Unlimited active deals";
+  return `Up to ${maxActiveDeals} active ${maxActiveDeals === 1 ? "deal" : "deals"}`;
 }
