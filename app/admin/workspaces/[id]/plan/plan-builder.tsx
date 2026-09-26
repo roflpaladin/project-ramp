@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useOptimistic, useState, useTransition } from "react";
+import { useEffect, useOptimistic, useRef, useState, useTransition } from "react";
 import type { PlanStage, SuccessPlanRow } from "@/lib/plans/types";
 import { reorderStagesAction, reorderStepsAction } from "./plan-actions";
 import { describePlanError } from "./error-messages";
 import { findLiveStepId, mergeStageOrder, mergeStepOrder, moveIndex, type ReorderDirection } from "./plan-tree-utils";
 import { AddStageForm } from "./add-stage-form";
+import { CloseDealControls } from "./close-deal-controls";
 import { PlanDetailsForm } from "./plan-details-form";
 import { StageRow } from "./stage-row";
 
@@ -13,6 +14,18 @@ interface PlanBuilderProps {
   workspaceId: string;
   plan: SuccessPlanRow;
   initialStages: PlanStage[];
+  /**
+   * T60. A closed deal (won/lost) keeps its whole plan visible to the
+   * seller, with every write control withheld. ONE flag, threaded down from
+   * here, rather than each child re-deriving "is plan.status closed?" — a
+   * status check sprinkled through six components is a status check that
+   * eventually disagrees with itself.
+   *
+   * This is presentation, not protection: lib/plans/closed-plans.ts's
+   * ensurePlanIsOpen refuses these same writes server-side, because hidden
+   * buttons are not a boundary.
+   */
+  isReadOnly?: boolean;
 }
 
 // Orchestrates the plan tree's client-side state (Ticket 29, T29-5).
@@ -31,7 +44,14 @@ interface PlanBuilderProps {
 // and reverts to `stages` on its own once a transition settles without a
 // matching `setStages` call, which is exactly the "visibly revert on
 // reject" behaviour a failed reorder needs.
-export function PlanBuilder({ workspaceId, plan, initialStages }: PlanBuilderProps) {
+export function PlanBuilder({ workspaceId, plan, initialStages, isReadOnly = false }: PlanBuilderProps) {
+  // T60 HIGH fix. CloseDealControls's own confirm button unmounts once the
+  // plan's closed status round-trips back through this page (isReadOnly
+  // flips true and the whole "Add stage / Close deal" fragment below
+  // disappears) — dropping keyboard focus onto <body> otherwise. The plan
+  // title heading (PlanDetailsForm/PlanHeader) renders in BOTH modes, so
+  // it's the one stable target on this page a close can hand focus to.
+  const headingRef = useRef<HTMLHeadingElement>(null);
   const [stages, setStages] = useState<PlanStage[]>(initialStages);
   const [optimisticStages, setOptimisticStages] = useOptimistic<PlanStage[], PlanStage[]>(
     stages,
@@ -47,6 +67,7 @@ export function PlanBuilder({ workspaceId, plan, initialStages }: PlanBuilderPro
   const liveStepId = findLiveStepId(optimisticStages);
 
   function handleMoveStage(stageId: string, direction: ReorderDirection) {
+    if (isReadOnly) return;
     const index = optimisticStages.findIndex((stage) => stage.id === stageId);
     if (index === -1) return;
     const reordered = moveIndex(optimisticStages, index, direction);
@@ -68,6 +89,7 @@ export function PlanBuilder({ workspaceId, plan, initialStages }: PlanBuilderPro
   }
 
   function handleMoveStep(stageId: string, stepId: string, direction: ReorderDirection) {
+    if (isReadOnly) return;
     const stageIndex = optimisticStages.findIndex((stage) => stage.id === stageId);
     if (stageIndex === -1) return;
     const stage = optimisticStages[stageIndex];
@@ -96,7 +118,7 @@ export function PlanBuilder({ workspaceId, plan, initialStages }: PlanBuilderPro
 
   return (
     <div className="flex flex-col gap-6">
-      <PlanDetailsForm workspaceId={workspaceId} plan={plan} />
+      <PlanDetailsForm workspaceId={workspaceId} plan={plan} isReadOnly={isReadOnly} headingRef={headingRef} />
 
       {reorderError ? (
         <p className="plan-error" role="alert">
@@ -113,6 +135,7 @@ export function PlanBuilder({ workspaceId, plan, initialStages }: PlanBuilderPro
             isFirst={index === 0}
             isLast={index === optimisticStages.length - 1}
             isPending={isPending}
+            isReadOnly={isReadOnly}
             liveStepId={liveStepId}
             onMoveStageUp={() => handleMoveStage(stage.id, "up")}
             onMoveStageDown={() => handleMoveStage(stage.id, "down")}
@@ -121,7 +144,19 @@ export function PlanBuilder({ workspaceId, plan, initialStages }: PlanBuilderPro
         ))}
       </div>
 
-      <AddStageForm workspaceId={workspaceId} planId={plan.id} nextDisplayOrder={stages.length} />
+      {isReadOnly ? null : (
+        <>
+          <AddStageForm workspaceId={workspaceId} planId={plan.id} nextDisplayOrder={stages.length} />
+          {/* T60: last on the page on purpose — closing a deal is the thing
+              you do after you've finished with everything above it. */}
+          <CloseDealControls
+            workspaceId={workspaceId}
+            planId={plan.id}
+            planStatus={plan.status}
+            onClosed={() => headingRef.current?.focus()}
+          />
+        </>
+      )}
     </div>
   );
 }

@@ -7,6 +7,14 @@ import { describePlanError } from "./error-messages";
 interface CreatePlanFormProps {
   workspaceId: string;
   companyName: string;
+  /**
+   * T60. 1 (the default) when this form IS the page — a workspace with no
+   * plan at all. 2 when it sits underneath a closed deal's read-only plan,
+   * which already owns the page's h1. Same form, same copy, one heading
+   * level: a second h1 on the page would leave a screen-reader user with two
+   * competing answers to "what is this page?".
+   */
+  headingLevel?: 1 | 2;
 }
 
 interface FormState {
@@ -15,7 +23,8 @@ interface FormState {
 
 const INITIAL_STATE: FormState = { error: null };
 
-export function CreatePlanForm({ workspaceId, companyName }: CreatePlanFormProps) {
+export function CreatePlanForm({ workspaceId, companyName, headingLevel = 1 }: CreatePlanFormProps) {
+  const Heading = headingLevel === 1 ? "h1" : "h2";
   async function action(_previous: FormState, formData: FormData): Promise<FormState> {
     const result = await createPlanAction(workspaceId, formData);
     if (!result.ok) return { error: describePlanError(result.code) };
@@ -26,9 +35,9 @@ export function CreatePlanForm({ workspaceId, companyName }: CreatePlanFormProps
 
   return (
     <form action={formAction} className="plan-stage flex flex-col gap-3">
-      <h1 className="m-0 text-2xl font-semibold tracking-tight">Start a success plan</h1>
+      <Heading className="m-0 text-2xl font-semibold tracking-tight">Start a success plan</Heading>
       <p className="m-0 text-sm" style={{ color: "var(--slate)" }}>
-        {companyName} has no live plan yet. Give it a title to start building stages and steps.
+        {companyName} has no open plan right now. Give it a title to start building stages and steps.
       </p>
       <label className="plan-field">
         Plan title

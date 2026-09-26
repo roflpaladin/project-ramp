@@ -17,6 +17,18 @@ export interface InvitePanelProps {
    * rather than offering a button that can't do anything.
    */
   sellerEmail: string | null;
+  /**
+   * T60 CRITICAL fix. Whether the post-send "Open buyer view" flip button
+   * may carry this page's one Signal — resolved once by
+   * workspace-signal-budget.ts's resolveWorkspaceSignalOwners and threaded
+   * down from page.tsx, exactly like ActivationChecklist's and
+   * DealLimitNotice's own `canUseSignal` props. Defaults to false (plain):
+   * a caller that hasn't computed this must never risk a second Signal
+   * alongside the deal-limit wall or the stall alert. The "Send invite"
+   * button itself never carries Signal at all, in any state — see this
+   * file's own header comment.
+   */
+  canFlipUseSignal?: boolean;
 }
 
 type StatusTone = "done" | "wait" | "risk";
@@ -104,9 +116,16 @@ function InviteSubmitButton({ label, pendingLabel, isPending, isPrimary }: Invit
  * spinner treatment without a second `useActionState`, since
  * `flipToBuyerView` has nothing to return: it always redirects.
  */
-function FlipSubmitButton() {
+function FlipSubmitButton({ isPrimary }: { isPrimary: boolean }) {
   const { pending } = useFormStatus();
-  return <InviteSubmitButton label="Open buyer view" pendingLabel="Opening buyer view" isPending={pending} isPrimary />;
+  return (
+    <InviteSubmitButton
+      label="Open buyer view"
+      pendingLabel="Opening buyer view"
+      isPending={pending}
+      isPrimary={isPrimary}
+    />
+  );
 }
 
 /**
@@ -115,21 +134,23 @@ function FlipSubmitButton() {
  * to any inbox (including the seller's own, via the "Use my email"
  * affordance) and then flip in one click into the actual buyer portal.
  *
- * One Signal per decision scope (design system MUST): before an invite is
- * sent, "Send invite" is this card's sole primary/Signal element
- * (`data-signal="true"`). When a send to the seller's OWN inbox succeeds,
- * "Send invite" drops to secondary and "Open buyer view" becomes the card's
- * one Signal instead — never both at once. In every other state — the
- * recoverable "cooldown"/"error" states and a successful send to a real
- * buyer's address (own-inbox rule above: no flip renders there) — the send
- * button stays the only primary throughout.
+ * One Signal per decision scope (design system MUST). T60 CRITICAL fix: this
+ * page can also show the deal-limit wall's upgrade CTA and/or the stall
+ * alert's "Review plan" (workspace-signal-budget.ts), both of which render
+ * independently of anything in THIS card — so "Send invite" being Signal
+ * "before an invite is sent" (the old rule) could put a second Signal on
+ * screen from first paint. "Send invite" is therefore ALWAYS plain/secondary
+ * now, in every state. Only "Open buyer view" (the post-send flip, own-inbox
+ * only) can ever be Signal, and only when `canFlipUseSignal` says the page
+ * has handed it over — the resolver's lowest-priority claimant, since it can
+ * coexist with either of the other two.
  *
  * T58 addition: the section carries `id="invite-panel"` so
  * activation-checklist.tsx's "Invite your buyer" row can link straight to
  * this card with a plain same-page anchor (`#invite-panel`) rather than a
  * prop-drilled scroll callback.
  */
-export function InvitePanel({ workspaceId, sellerEmail }: InvitePanelProps) {
+export function InvitePanel({ workspaceId, sellerEmail, canFlipUseSignal = false }: InvitePanelProps) {
   const [state, formAction, isSending] = useActionState(
     sendBuyerInvite.bind(null, workspaceId),
     INITIAL_SEND_INVITE_STATE,
@@ -184,11 +205,12 @@ export function InvitePanel({ workspaceId, sellerEmail }: InvitePanelProps) {
               Use my email
             </button>
           ) : null}
+          {/* T60 CRITICAL fix: never Signal. See this file's header comment. */}
           <InviteSubmitButton
             label="Send invite"
             pendingLabel="Sending invite"
             isPending={isSending}
-            isPrimary={!hasFlip}
+            isPrimary={false}
           />
         </div>
 
@@ -208,7 +230,7 @@ export function InvitePanel({ workspaceId, sellerEmail }: InvitePanelProps) {
       {hasFlip ? (
         <form action={flipToBuyerView.bind(null, workspaceId)} className="ip-flip-form">
           <input type="hidden" name="email" value={state.email ?? ""} />
-          <FlipSubmitButton />
+          <FlipSubmitButton isPrimary={canFlipUseSignal} />
         </form>
       ) : null}
     </section>

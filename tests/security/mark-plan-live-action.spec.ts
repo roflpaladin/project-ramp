@@ -1,3 +1,12 @@
+// !! REQUIRES MIGRATIONS 0014 AND 0015 ON THE TARGET DATABASE !!
+// Sprint 12, Ticket 60 rebuilt markPlanLiveAction on top of 0015's
+// mark_plan_live() function and 0014's tenant_subscriptions table (the
+// active-deal limit). Until both are pasted into the SQL Editor for the
+// project .env.local points at, every case below fails on missing schema
+// rather than on behaviour. The DB-free half of the gate — caps, past-due,
+// invoice customers, verdict handling — lives in
+// tests/plans/mark-plan-live-gate.spec.ts and runs today.
+//
 // Sprint 11, Ticket 58 — "In-App Onboarding Checklist". Behavioural coverage
 // for app/admin/workspaces/[id]/plan/plan-actions.ts's markPlanLiveAction —
 // the minimal "flip status to active" wrapper the checklist's "make it live"
@@ -115,7 +124,12 @@ describe("markPlanLiveAction (T58)", () => {
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.data.status).toBe("active");
     expect(await statusOf(planId)).toBe("active");
-    expect(revalidatePathCalls).toEqual([`/admin/workspaces/${seeded.workspaceId}/plan`]);
+    // T60: going live also changes what the workspace page shows (activation
+    // checklist, deal-limit notice), so both paths are refreshed.
+    expect(revalidatePathCalls).toEqual([
+      `/admin/workspaces/${seeded.workspaceId}/plan`,
+      `/admin/workspaces/${seeded.workspaceId}`,
+    ]);
   });
 
   it("cross-tenant plan id: RLS makes it a no-op, returns NOT_FOUND", async () => {

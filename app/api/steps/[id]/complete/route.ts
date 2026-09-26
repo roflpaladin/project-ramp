@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
+import { isClosedPlanStatus } from "@/lib/plans/closed-plans";
 import { mapPostgrestError } from "@/lib/plans/errors";
 import { completeStepAsBuyer, isPostgrestErrorLike, resolveStepWorkspace } from "@/lib/plans/complete-step";
 import { toBuyerStep } from "@/lib/portal-payload";
@@ -114,6 +115,15 @@ export async function POST(
     // side effects on rejection: nothing has been written yet at this point.
     if (step.ownerSide !== "buyer") {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    // T60: the deal is closed (won/lost). Same 409 shape as the blocked-step
+    // branch below, and for the same reason — the STEP'S SERVER-SIDE STATE
+    // collides with the request, nothing about the request is malformed. The
+    // message names no status: a buyer is told the deal is closed, never
+    // which outcome the seller recorded.
+    if (isClosedPlanStatus(step.planStatus)) {
+      return NextResponse.json({ error: "Deal is closed" }, { status: 409 });
     }
 
     const outcome = await completeStepAsBuyer(stepId, session.email, admin);

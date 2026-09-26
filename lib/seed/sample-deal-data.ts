@@ -71,6 +71,15 @@ export interface SampleWorkspaceRow {
   target_domain: string;
   created_by: string;
   approved_emails: string[];
+  /**
+   * Sprint 12, Ticket 60 — `workspaces.is_sample` (migration 0015). The
+   * sample deal ships with an ACTIVE plan, and the Free tier allows exactly
+   * one active deal: without this marker the seeded demo would eat the
+   * seller's only slot and their first real deal could never go live. The
+   * limit (0015's mark_plan_live, lib/plans/active-deal-count.ts) skips
+   * every workspace carrying it.
+   */
+  is_sample: boolean;
 }
 
 export interface SamplePlanRow {
@@ -312,6 +321,7 @@ export function buildSampleDealData(input: BuildSampleDealDataInput): SampleDeal
     // The seller invites their own inbox in the onboarding flow (Ticket 43) —
     // no buyer email exists yet to pre-approve.
     approved_emails: [],
+    is_sample: true,
   };
 
   const plan: SamplePlanRow = {

@@ -29,6 +29,9 @@
   border: 1px solid var(--line);
   border-radius: 12px;
   background: var(--paper);
+  /* T60 MUST fix: the admin/plan surfaces never declared Geist — see
+     app/globals.css's system-ui body default. */
+  font-family: "Geist", "Inter", system-ui, -apple-system, sans-serif;
 }
 
 [data-surface="activation-checklist"] .ac-header {
@@ -146,6 +149,15 @@
   flex-direction: column;
   align-items: flex-end;
   gap: 4px;
+}
+/* T60: when the deal-limit notice has taken the button's place it needs the
+   row's full width for its explanation, not the button's right-aligned slot.
+   The row itself already wraps (see .ac-row's flex-wrap), so claiming the
+   whole line here costs no layout shift for the ordinary case. */
+[data-surface="activation-checklist"] .ac-live-cta[data-walled="true"] {
+  align-items: stretch;
+  flex: 1 1 100%;
+  gap: 8px;
 }
 
 [data-surface="activation-checklist"] .ac-btn {

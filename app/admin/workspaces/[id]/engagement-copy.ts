@@ -11,6 +11,7 @@
 // the page's one-Signal audit).
 
 import type { EngagementSignal } from "@/lib/plans/engagement";
+import { isQuietDeal } from "@/lib/plans/quiet-deal";
 
 function describeRecency(daysSinceLastActivity: number | null): string {
   if (daysSinceLastActivity === null) return "no recorded activity yet";
@@ -32,3 +33,25 @@ export function describeEngagementState(signal: EngagementSignal): string {
       return `Buyer's engaged — ${describeRecency(signal.daysSinceLastActivity)}.`;
   }
 }
+
+/**
+ * Sprint 12, Ticket 60 — the quiet-deal line, folded into the stall alert
+ * rather than given a banner of its own (orchestrator call, 2026-09-21): a
+ * second banner about the same silence would be the page shouting twice.
+ *
+ * Null whenever the deal isn't quiet, which is the common case — the caller
+ * renders nothing rather than a manufactured "all good" line.
+ *
+ * "Your buyer" is deliberate and load-bearing. lib/plans/engagement.ts
+ * measures BUYER activity only (workspace_analytics), so this sentence must
+ * never read as "nothing has happened on this deal" — plenty may have, just
+ * not in the buyer's room.
+ */
+export function describeQuietDeal(signal: EngagementSignal): string | null {
+  if (!isQuietDeal(signal)) return null;
+
+  return `Your buyer hasn't opened this in ${signal.daysSinceLastActivity} days. If the deal is finished, close it to free a slot.`;
+}
+
+/** The plain link beside the line above — the plan page is where Close deal lives. */
+export const QUIET_DEAL_LINK_LABEL = "Close this deal";

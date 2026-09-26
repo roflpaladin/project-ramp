@@ -16,6 +16,12 @@
   }
 }
 
+/* T60 MUST fix: the admin/plan surfaces never declared Geist — see
+   app/globals.css's system-ui body default. */
+[data-surface="workspace-links"] {
+  font-family: "Geist", "Inter", system-ui, -apple-system, sans-serif;
+}
+
 /* ---- link rows ----------------------------------------------------------- */
 
 [data-surface="workspace-links"] .wsl-link-list {
@@ -246,7 +252,50 @@
 /* ---- nav link to the plan builder ------------------------------------------ */
 
 [data-surface="workspace-links"] .wsl-plan-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
   margin: 4px 0 20px;
+}
+
+/* T60 MUST fix: plan/status-badge.tsx's StatusBadge is reused here (page.tsx)
+   so Won/Lost carry their real tone (done/risk) instead of a bespoke
+   always-Slate dot — but its own layout rules live in plan.css, which is
+   scoped to the plan-builder route only and never loads on this one.
+   Mirrored here, on the exact class names the shared component renders, so
+   it's actually styled wherever it's reused. Colour comes from the tone's
+   inline style (status-badge.tsx); this only supplies layout. */
+[data-surface="workspace-links"] .plan-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink);
+  white-space: nowrap;
+}
+[data-surface="workspace-links"] .plan-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+}
+
+/* T60: the closed-deal line's own emphasis — an outcome is not an alarm, so
+   the text itself stays Slate even though the dot now carries the real tone
+   colour. Meta scale (13/18/500): this line states which outcome, not
+   routine metadata, so the emphasis of 500 is kept alongside an explicit
+   line-height (design system SHOULD: pick a scale, set line-height
+   explicitly). */
+[data-surface="workspace-links"] .wsl-plan-status {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+  color: var(--slate);
 }
 
 @media (max-width: 480px) {

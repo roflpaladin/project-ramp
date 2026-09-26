@@ -1,11 +1,18 @@
 import type { EngagementSignal } from "@/lib/plans/engagement";
-import { describeEngagementState } from "./engagement-copy";
+import { describeEngagementState, describeQuietDeal, QUIET_DEAL_LINK_LABEL } from "./engagement-copy";
 import "./stall-alert.css";
 
 export interface StallAlertProps {
   signal: EngagementSignal;
   /** app/admin/workspaces/[id]/plan — the seller's one real destination for acting on a stalled plan. */
   planHref: string;
+  /**
+   * T60. True when the deal-limit wall above has taken this page's one
+   * Signal. The CTA still renders and still links to the same place — it
+   * just stops shouting. Defaults to false, so a page with no wall behaves
+   * exactly as it did before this ticket.
+   */
+  isSignalSuppressed?: boolean;
 }
 
 /**
@@ -42,15 +49,23 @@ export interface StallAlertProps {
  *     are scoped to different pages/routes (the plan builder and the buyer
  *     workspace, respectively) and are not in this page's decision scope.
  *   - activation-checklist.tsx (Sprint 11, Ticket 58) mounts on this same
- *     page too, above this component — it contributes ZERO Signal elements
- *     by design (every CTA there is plain/secondary), so it never competes
- *     with this file's `.wsa-cta` or invite-panel.tsx's own Signal pair.
+ *     page too, above this component — every CTA it owns directly is
+ *     plain/secondary. Sprint 12, Ticket 60 gave that card ONE conditional
+ *     Signal (the deal-limit wall's upgrade CTA), and the two can no longer
+ *     both shout: page.tsx resolves ownership once through
+ *     workspace-signal-budget.ts and sets `isSignalSuppressed` here when the
+ *     wall has taken it.
+ *
+ * T60 also folds the quiet-deal line into this same alert rather than adding
+ * a second banner about the same silence — see engagement-copy.ts. That line
+ * carries a PLAIN link, never a Signal.
  */
-export function StallAlert({ signal, planHref }: StallAlertProps) {
+export function StallAlert({ signal, planHref, isSignalSuppressed = false }: StallAlertProps) {
   if (signal.state === "active") return null;
 
   const isStalled = signal.state === "stalled";
   const label = describeEngagementState(signal);
+  const quietNote = describeQuietDeal(signal);
 
   return (
     <div className="wsa-alert" data-surface="stall-alert" data-tone={signal.state} data-testid="stall-alert">
@@ -59,9 +74,21 @@ export function StallAlert({ signal, planHref }: StallAlertProps) {
         <span className="wsa-label">{label}</span>
       </span>
       {isStalled ? (
-        <a href={planHref} className="wsa-cta" data-signal="true">
+        <a
+          href={planHref}
+          className={isSignalSuppressed ? "wsa-cta wsa-cta-plain" : "wsa-cta"}
+          data-signal={isSignalSuppressed ? undefined : "true"}
+        >
           Review plan
         </a>
+      ) : null}
+      {quietNote ? (
+        <p className="wsa-quiet" data-testid="quiet-deal-note">
+          {quietNote}{" "}
+          <a href={planHref} className="wsa-quiet-link">
+            {QUIET_DEAL_LINK_LABEL}
+          </a>
+        </p>
       ) : null}
     </div>
   );

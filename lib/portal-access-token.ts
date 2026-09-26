@@ -83,11 +83,22 @@ async function issueAccessTokenCore(
   const supabase = createAdminClient();
   const { data: workspace } = await supabase
     .from("workspaces")
-    .select("target_domain, approved_emails, tenant_id")
+    .select("target_domain, approved_emails, tenant_id, is_sample")
     .eq("id", workspaceId)
     .single();
 
-  if (!workspace || !isEmailApproved(email, workspace.approved_emails ?? [], workspace.target_domain)) {
+  // T60: on the SAMPLE workspace the whitelist is the only way in — see
+  // ApprovalOptions.allowDomainMatch in lib/portal-access.ts. This is the
+  // anonymous-buyer side of the gate, so there is no seller identity here to
+  // compare against; the invite action is what guarantees the whitelist on a
+  // sample contains the seller's own address and nothing else.
+  const isApproved =
+    !!workspace &&
+    isEmailApproved(email, workspace.approved_emails ?? [], workspace.target_domain, {
+      allowDomainMatch: !workspace.is_sample,
+    });
+
+  if (!isApproved) {
     return { status: "not-approved" };
   }
 

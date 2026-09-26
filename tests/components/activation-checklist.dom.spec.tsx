@@ -16,12 +16,24 @@
 // enabled only when a plan exists and is still 'draft', and disappears
 // entirely once live; a static grep proves the stylesheet carries no
 // hardcoded hex colour; and the component never renders a Signal element.
+//
+// Sprint 12, Ticket 60 extends this file with the upgrade wall: when the
+// tenant is at their active-deal cap (or past due), the "Make it live"
+// button is REPLACED by deal-limit-notice.tsx and nothing else in the card
+// is touched. Two rules are load-bearing and asserted below — an
+// infrastructure failure never renders as the wall (the button stays
+// enabled), and the wall's CTA drops to a plain link when the page's one
+// Signal is already spoken for. Error-message expectations changed in the
+// same ticket: the card's local describeChecklistError was replaced by the
+// shared describePlanError (plan/error-messages.ts), so codes now read in
+// the plan builder's wording rather than this card's own.
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath, URL as NodeURL } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ActivationState } from "@/lib/plans/activation";
+import type { DealLimitState } from "@/app/admin/workspaces/[id]/deal-limit-state";
 
 const { mockDismissActivationChecklist, mockMarkPlanLiveAction } = vi.hoisted(() => ({
   mockDismissActivationChecklist: vi.fn(),
@@ -56,13 +68,54 @@ function makeActivation(overrides: Partial<ActivationState["steps"]>): Activatio
   return { steps, isComplete: steps.populated && steps.invited && steps.live };
 }
 
+/** A tenant with room to spare — the default for every pre-T60 case below. */
+const WITHIN_LIMIT: DealLimitState = Object.freeze({
+  activeCount: 0,
+  maxActiveDeals: 3,
+  isAtLimit: false,
+  isBlockedFromNewDeals: false,
+  isUnknown: false,
+});
+
+const AT_LIMIT: DealLimitState = Object.freeze({
+  activeCount: 3,
+  maxActiveDeals: 3,
+  isAtLimit: true,
+  isBlockedFromNewDeals: false,
+  isUnknown: false,
+});
+
+const PAST_DUE: DealLimitState = Object.freeze({
+  activeCount: 1,
+  maxActiveDeals: 3,
+  isAtLimit: false,
+  isBlockedFromNewDeals: true,
+  isUnknown: false,
+});
+
+const UNKNOWN: DealLimitState = Object.freeze({
+  activeCount: null,
+  maxActiveDeals: null,
+  isAtLimit: false,
+  isBlockedFromNewDeals: false,
+  isUnknown: true,
+});
+
 interface RenderOptions {
   readonly plan?: ActivationChecklistPlanSummary | null;
   readonly activation: ActivationState;
   readonly isDismissed?: boolean;
+  readonly dealLimit?: DealLimitState;
+  readonly canUseSignal?: boolean;
 }
 
-function renderChecklist({ plan = null, activation, isDismissed = false }: RenderOptions) {
+function renderChecklist({
+  plan = null,
+  activation,
+  isDismissed = false,
+  dealLimit = WITHIN_LIMIT,
+  canUseSignal = true,
+}: RenderOptions) {
   return render(
     <ActivationChecklist
       workspaceId={WORKSPACE_ID}
@@ -70,9 +123,13 @@ function renderChecklist({ plan = null, activation, isDismissed = false }: Rende
       activation={activation}
       isDismissed={isDismissed}
       planHref={PLAN_HREF}
+      dealLimit={dealLimit}
+      canUseSignal={canUseSignal}
     />,
   );
 }
+
+const DRAFT_PLAN: ActivationChecklistPlanSummary = { id: "plan-1", status: "draft" };
 
 describe("module boundary — single entry point", () => {
   it("exports exactly one runtime value: ActivationChecklist", () => {
@@ -162,7 +219,7 @@ describe("ActivationChecklist — dismiss", () => {
     fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
 
     const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent("Couldn't find this workspace or plan — try refreshing the page.");
+    expect(alert).toHaveTextContent("That item is no longer here. Refresh the page to see the current plan.");
     expect(screen.getByTestId("activation-checklist")).toBeInTheDocument();
   });
 
@@ -183,7 +240,7 @@ describe("ActivationChecklist — dismiss", () => {
     fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
 
     const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent("You need to be signed in to do that — try refreshing the page.");
+    expect(alert).toHaveTextContent("Your session has expired. Sign in again to keep editing this plan.");
   });
 });
 
@@ -201,9 +258,19 @@ describe("ActivationChecklist — make it live", () => {
     expect(screen.getByRole("button", { name: "Make it live" })).toBeDisabled();
   });
 
-  it("disables the button when the plan exists but isn't in draft (e.g. 'won')", () => {
-    renderChecklist({ plan: { id: "plan-1", status: "won" }, activation: makeActivation({}) });
+  it("disables the button when the plan exists but isn't in draft and isn't closed (e.g. 'active')", () => {
+    renderChecklist({ plan: { id: "plan-1", status: "active" }, activation: makeActivation({}) });
     expect(screen.getByRole("button", { name: "Make it live" })).toBeDisabled();
+  });
+
+  it("hides the whole card once the plan is closed (won) — there is nothing left to activate (T60 HIGH fix)", () => {
+    renderChecklist({ plan: { id: "plan-1", status: "won" }, activation: makeActivation({}) });
+    expect(screen.queryByTestId("activation-checklist")).not.toBeInTheDocument();
+  });
+
+  it("hides the whole card once the plan is closed (lost) too", () => {
+    renderChecklist({ plan: { id: "plan-1", status: "lost" }, activation: makeActivation({}) });
+    expect(screen.queryByTestId("activation-checklist")).not.toBeInTheDocument();
   });
 
   it("enables the button when a plan exists and is still draft, and calls the action with workspace+plan id", async () => {
@@ -227,7 +294,7 @@ describe("ActivationChecklist — make it live", () => {
     fireEvent.click(screen.getByRole("button", { name: "Make it live" }));
 
     const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent("Something went wrong. Please try again.");
+    expect(alert).toHaveTextContent("This workspace already has a live plan. Archive it before starting a new one.");
   });
 
   it("shows a generic inline error rather than throwing when the action call itself rejects", async () => {
@@ -238,6 +305,60 @@ describe("ActivationChecklist — make it live", () => {
 
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("Something went wrong. Please try again.");
+  });
+});
+
+describe("ActivationChecklist — focus hand-off after going live (T60 HIGH fix)", () => {
+  // The "Make it live" button doesn't unmount synchronously with the click's
+  // own promise resolving — it unmounts later, when the PARENT re-renders
+  // this card with the new `activation` prop (steps.live: true) once the
+  // page revalidates. That later prop flip is simulated here via `rerender`;
+  // an effect watching that same transition redirects focus onto the card's
+  // own heading before the button's removal can drop it to <body>.
+  it("moves focus onto the card's heading once activation.steps.live flips true", async () => {
+    mockMarkPlanLiveAction.mockResolvedValueOnce({
+      ok: true,
+      data: {
+        id: "plan-1",
+        workspace_id: WORKSPACE_ID,
+        title: "Plan",
+        start_date: null,
+        target_date: null,
+        status: "active",
+        created_at: "2026-01-01T00:00:00+00:00",
+      },
+    });
+    const activationBeforeLive = makeActivation({ populated: true, invited: false, live: false });
+    const { rerender } = renderChecklist({ plan: DRAFT_PLAN, activation: activationBeforeLive });
+
+    fireEvent.click(screen.getByRole("button", { name: "Make it live" }));
+    await waitFor(() => expect(mockMarkPlanLiveAction).toHaveBeenCalled());
+
+    // Simulate the page's later re-render with the server's new activation
+    // state — the card stays visible (isComplete is still false: invited
+    // hasn't happened) so its heading remains a valid focus target.
+    const activationAfterLive = makeActivation({ populated: true, invited: false, live: true });
+    rerender(
+      <ActivationChecklist
+        workspaceId={WORKSPACE_ID}
+        plan={{ id: "plan-1", status: "active" }}
+        activation={activationAfterLive}
+        isDismissed={false}
+        planHref={PLAN_HREF}
+        dealLimit={WITHIN_LIMIT}
+        canUseSignal
+      />,
+    );
+
+    const heading = screen.getByRole("heading", { name: "Get this deal room moving" });
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+  });
+
+  it("never steals focus on first paint", () => {
+    renderChecklist({ plan: DRAFT_PLAN, activation: makeActivation({}) });
+
+    const heading = screen.getByRole("heading", { name: "Get this deal room moving" });
+    expect(document.activeElement).not.toBe(heading);
   });
 });
 
@@ -267,6 +388,146 @@ describe("ActivationChecklist — zero Signal elements (design system MUST)", ()
       activation: makeActivation({ populated: true, invited: true, live: false }),
     });
     expect(liveContainer.querySelectorAll('[data-signal="true"]')).toHaveLength(0);
+  });
+});
+
+describe("ActivationChecklist — the upgrade wall replaces the go-live button (T60)", () => {
+  it("replaces 'Make it live' with the at-your-limit notice when the tenant is at their cap", () => {
+    // Arrange / Act
+    renderChecklist({ plan: DRAFT_PLAN, activation: makeActivation({}), dealLimit: AT_LIMIT });
+
+    // Assert
+    expect(screen.queryByRole("button", { name: "Make it live" })).not.toBeInTheDocument();
+    expect(screen.getByTestId("deal-limit-notice")).toHaveAttribute("data-reason", "limit");
+    expect(screen.getByRole("link", { name: "See plans" })).toHaveAttribute("href", "/pricing");
+  });
+
+  it("shows the payment-failed notice, with a billing destination, for a past-due tenant", () => {
+    renderChecklist({ plan: DRAFT_PLAN, activation: makeActivation({}), dealLimit: PAST_DUE });
+
+    expect(screen.queryByRole("button", { name: "Make it live" })).not.toBeInTheDocument();
+    expect(screen.getByTestId("deal-limit-notice")).toHaveAttribute("data-reason", "past-due");
+    expect(screen.getByRole("link", { name: "Update payment details" })).toHaveAttribute("href", "/settings/billing");
+  });
+
+  it("locks NOTHING else in the card — the nav links and dismiss stay exactly as they were", () => {
+    renderChecklist({ plan: DRAFT_PLAN, activation: makeActivation({}), dealLimit: AT_LIMIT });
+
+    expect(screen.getByRole("button", { name: "Dismiss" })).not.toBeDisabled();
+    expect(screen.getByRole("link", { name: "Open plan builder" })).toHaveAttribute("href", PLAN_HREF);
+    expect(screen.getByRole("link", { name: "Open invite panel" })).toHaveAttribute("href", "#invite-panel");
+  });
+
+  it("keeps the button ENABLED and offers no CTA when the billing check itself failed", () => {
+    // Fails honest, not closed: the server is the authority and will answer
+    // properly when the seller presses it.
+    const { container } = renderChecklist({ plan: DRAFT_PLAN, activation: makeActivation({}), dealLimit: UNKNOWN });
+
+    expect(screen.getByRole("button", { name: "Make it live" })).not.toBeDisabled();
+    expect(screen.getByTestId("deal-limit-notice")).toHaveAttribute("data-reason", "unknown");
+    expect(container.querySelectorAll('[data-signal="true"]')).toHaveLength(0);
+  });
+
+  it("shows no notice at all for a tenant with room to spare", () => {
+    renderChecklist({ plan: DRAFT_PLAN, activation: makeActivation({}), dealLimit: WITHIN_LIMIT });
+
+    expect(screen.queryByTestId("deal-limit-notice")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Make it live" })).not.toBeDisabled();
+  });
+
+  it("shows no notice once the plan is already live — there is no button to wall off", () => {
+    renderChecklist({
+      plan: { id: "plan-1", status: "active" },
+      activation: makeActivation({ populated: true, live: true }),
+      dealLimit: AT_LIMIT,
+    });
+
+    expect(screen.queryByTestId("deal-limit-notice")).not.toBeInTheDocument();
+  });
+
+  it("renders the wall's CTA as a plain link when the page's one Signal is already spoken for", () => {
+    const { container } = renderChecklist({
+      plan: DRAFT_PLAN,
+      activation: makeActivation({}),
+      dealLimit: AT_LIMIT,
+      canUseSignal: false,
+    });
+
+    expect(screen.getByRole("link", { name: "See plans" })).not.toHaveAttribute("data-signal");
+    expect(container.querySelectorAll('[data-signal="true"]')).toHaveLength(0);
+  });
+
+  it("renders exactly one Signal, and only one, when the wall owns it", () => {
+    const { container } = renderChecklist({
+      plan: DRAFT_PLAN,
+      activation: makeActivation({}),
+      dealLimit: AT_LIMIT,
+      canUseSignal: true,
+    });
+
+    expect(container.querySelectorAll('[data-signal="true"]')).toHaveLength(1);
+  });
+});
+
+describe("ActivationChecklist — a stale page refused by the server (T60)", () => {
+  it("surfaces the same wall inline when the action comes back DEAL_LIMIT_REACHED", async () => {
+    mockMarkPlanLiveAction.mockResolvedValueOnce({ ok: false, code: "DEAL_LIMIT_REACHED" });
+    renderChecklist({ plan: DRAFT_PLAN, activation: makeActivation({}), dealLimit: WITHIN_LIMIT });
+
+    fireEvent.click(screen.getByRole("button", { name: "Make it live" }));
+
+    const notice = await screen.findByTestId("deal-limit-notice");
+    expect(notice).toHaveAttribute("data-reason", "limit");
+    expect(screen.queryByRole("button", { name: "Make it live" })).not.toBeInTheDocument();
+    // The wall carries the message — no duplicate raw error line beside it.
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("surfaces the payment-failed wall when the action comes back BILLING_PAST_DUE", async () => {
+    mockMarkPlanLiveAction.mockResolvedValueOnce({ ok: false, code: "BILLING_PAST_DUE" });
+    renderChecklist({ plan: DRAFT_PLAN, activation: makeActivation({}), dealLimit: WITHIN_LIMIT });
+
+    fireEvent.click(screen.getByRole("button", { name: "Make it live" }));
+
+    expect(await screen.findByTestId("deal-limit-notice")).toHaveAttribute("data-reason", "past-due");
+  });
+
+  it("keeps the button available when the action comes back BILLING_CHECK_FAILED", async () => {
+    mockMarkPlanLiveAction.mockResolvedValueOnce({ ok: false, code: "BILLING_CHECK_FAILED" });
+    renderChecklist({ plan: DRAFT_PLAN, activation: makeActivation({}), dealLimit: WITHIN_LIMIT });
+
+    fireEvent.click(screen.getByRole("button", { name: "Make it live" }));
+
+    expect(await screen.findByTestId("deal-limit-notice")).toHaveAttribute("data-reason", "unknown");
+    expect(screen.getByRole("button", { name: "Make it live" })).not.toBeDisabled();
+  });
+
+  it("never offers an upgrade for the locked sample deal — a plain line, no CTA, no Signal", async () => {
+    // Upgrading changes nothing about the sample deal, so treating this as a
+    // paywall would be selling a fix that does not exist.
+    mockMarkPlanLiveAction.mockResolvedValueOnce({ ok: false, code: "SAMPLE_DEAL_LOCKED" });
+    const { container } = renderChecklist({ plan: DRAFT_PLAN, activation: makeActivation({}), dealLimit: WITHIN_LIMIT });
+
+    fireEvent.click(screen.getByRole("button", { name: "Make it live" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(
+      "The sample deal is for practice, so it can't go live. Create a real deal when you're ready to go live with a buyer.",
+    );
+    expect(screen.queryByTestId("deal-limit-notice")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "See plans" })).not.toBeInTheDocument();
+    expect(container.querySelectorAll('[data-signal="true"]')).toHaveLength(0);
+  });
+
+  it("still uses the ordinary inline error for a code that is not about billing", async () => {
+    mockMarkPlanLiveAction.mockResolvedValueOnce({ ok: false, code: "NOT_FOUND" });
+    renderChecklist({ plan: DRAFT_PLAN, activation: makeActivation({}), dealLimit: WITHIN_LIMIT });
+
+    fireEvent.click(screen.getByRole("button", { name: "Make it live" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("That item is no longer here. Refresh the page to see the current plan.");
+    expect(screen.queryByTestId("deal-limit-notice")).not.toBeInTheDocument();
   });
 });
 

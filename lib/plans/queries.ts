@@ -17,6 +17,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient as createSellerClient } from "@/lib/supabase/server";
+import { CLOSED_PLAN_STATUSES } from "./closed-plans";
 import type { PlanStage, PlanStageRow, PlanStepRow, PlanTree, SuccessPlanRow } from "./types";
 
 /**
@@ -123,6 +124,77 @@ export async function getPlanForSeller(
   client?: PlanReadClient,
 ): Promise<PlanTree | null> {
   return fetchPlanTree(client ?? (await createSellerClient()), workspaceId);
+}
+
+/**
+ * Seller read path for a CLOSED deal (Sprint 12, Ticket 60).
+ *
+ * Founder ruling (2026-09-21): closing a deal deletes nothing — the seller
+ * keeps seeing the plan, read-only, with its Won/Lost status. getPlanForSeller
+ * above cannot serve that: it matches draft+active only, which is what makes
+ * its .maybeSingle() safe.
+ *
+ * This read therefore CANNOT use .maybeSingle(). Nothing stops a workspace
+ * accumulating several closed plans — 0005's unique index covers draft+active
+ * only, precisely so a new plan can start after a close — so the widened
+ * filter can legitimately match many rows, and one of them has to be chosen
+ * explicitly: newest first, ties broken on id so two plans created in the same
+ * transaction don't render in a different order on consecutive loads.
+ *
+ * Intended use is the fallback, not a second query on every load: call it only
+ * when getPlanForSeller returned null. The returned tree's own `status` is how
+ * a caller knows to render read-only.
+ *
+ * getPlanForBuyer and the buyer portal path are deliberately untouched by T60.
+ */
+export async function getClosedPlanForSeller(
+  workspaceId: string,
+  client?: PlanReadClient,
+): Promise<PlanTree | null> {
+  const supabase = client ?? (await createSellerClient());
+  const { data, error } = await supabase
+    .from("success_plans")
+    .select(PLAN_TREE_SELECT)
+    .eq("workspace_id", workspaceId)
+    .in("status", CLOSED_PLAN_STATUSES)
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(1);
+
+  if (error) {
+    throw new Error(`Failed to load closed plan for workspace ${workspaceId}: ${error.message}`);
+  }
+
+  const [row] = (data ?? []) as unknown as RawPlanRow[];
+  if (!row) return null;
+
+  return assemblePlanTree(row);
+}
+
+/**
+ * One plan row, no tree (Sprint 12, Ticket 60).
+ *
+ * The go-live path writes through 0015's mark_plan_live() on the service-role
+ * client, which returns a verdict rather than the row — so the action reads
+ * the row back through the SELLER's own client to answer with. That read-back
+ * is not just plumbing: it re-proves under RLS that the plan it just made live
+ * really is in the caller's tenant.
+ *
+ * null covers both "no such plan" and "not this caller's tenant", the same
+ * conflation lib/plans/write.ts documents.
+ */
+export async function getPlanRowForSeller(
+  planId: string,
+  client?: PlanReadClient,
+): Promise<SuccessPlanRow | null> {
+  const supabase = client ?? (await createSellerClient());
+  const { data, error } = await supabase.from("success_plans").select("*").eq("id", planId).maybeSingle();
+
+  if (error) {
+    throw new Error(`Failed to load plan ${planId}: ${error.message}`);
+  }
+
+  return (data as SuccessPlanRow | null) ?? null;
 }
 
 /**

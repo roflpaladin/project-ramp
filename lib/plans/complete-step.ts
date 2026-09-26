@@ -13,7 +13,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { PostgrestErrorLike } from "./errors";
-import type { OwnerSide, PlanStepRow, StepStatus } from "./types";
+import type { OwnerSide, PlanStatus, PlanStepRow, StepStatus } from "./types";
 
 export type CompleteStepClient = SupabaseClient;
 
@@ -22,6 +22,14 @@ export interface StepForCompletion {
   readonly ownerSide: OwnerSide;
   readonly status: StepStatus;
   readonly workspaceId: string;
+  /**
+   * Sprint 12, Ticket 60. A closed deal (won/lost) is read-only for the
+   * seller, so it has to be read-only for the buyer too — otherwise the
+   * portal could still tick steps on a deal marked Won last week. Carried on
+   * the SAME select that already resolved the workspace, so the guard costs
+   * no extra round trip.
+   */
+  readonly planStatus: PlanStatus;
 }
 
 /** PostgREST's embed shape for the child -> parent -> parent chain below. */
@@ -29,10 +37,10 @@ interface RawStepWithWorkspace {
   id: string;
   owner_side: OwnerSide;
   status: StepStatus;
-  plan_stages: { success_plans: { workspace_id: string } | null } | null;
+  plan_stages: { success_plans: { workspace_id: string; status: PlanStatus } | null } | null;
 }
 
-const STEP_WORKSPACE_SELECT = "id, owner_side, status, plan_stages ( success_plans ( workspace_id ) )";
+const STEP_WORKSPACE_SELECT = "id, owner_side, status, plan_stages ( success_plans ( workspace_id, status ) )";
 
 /**
  * T35-2. Resolves a step's workspace by walking step -> stage -> plan ->
@@ -63,14 +71,21 @@ export async function resolveStepWorkspace(
   if (!data) return null;
 
   const row = data as unknown as RawStepWithWorkspace;
-  const workspaceId = row.plan_stages?.success_plans?.workspace_id;
+  const plan = row.plan_stages?.success_plans;
+  const workspaceId = plan?.workspace_id;
   // Not reachable given 0005's NOT NULL FKs (stage_id, plan_id are both NOT
   // NULL) -- defensive only. Treated the same as "step not found" rather
   // than thrown: a step this endpoint cannot resolve a workspace for is not
   // completable, for the caller's purposes that's identical to absent.
   if (!workspaceId) return null;
 
-  return { id: row.id, ownerSide: row.owner_side, status: row.status, workspaceId };
+  return {
+    id: row.id,
+    ownerSide: row.owner_side,
+    status: row.status,
+    workspaceId,
+    planStatus: plan.status,
+  };
 }
 
 export type CompleteStepOutcome =
