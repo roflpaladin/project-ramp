@@ -22,7 +22,8 @@
 import { hasLiveSubscription } from "@/lib/billing/entitlement";
 import { createCheckoutRef, findByTenantId } from "@/lib/billing/subscription-repository";
 import { requireSeller } from "@/lib/plans/require-seller";
-import { CHECKOUT_REF_RATE_LIMIT, checkRateLimit } from "@/lib/rate-limit";
+import { CHECKOUT_REF_RATE_LIMIT } from "@/lib/rate-limit";
+import { checkDurableRateLimit } from "@/lib/rate-limit-durable";
 
 export type IssueCheckoutRefResult =
   | { readonly ok: true; readonly checkoutRef: string }
@@ -41,12 +42,9 @@ export async function issueCheckoutRefAction(): Promise<IssueCheckoutRefResult> 
 
   // Keyed per seller, not per IP: this writes a row per call, and the caller
   // is always authenticated by the time we get here. Same reasoning as
-  // ONBOARDING_RATE_LIMIT's per-seller key.
-  const { allowed } = checkRateLimit(
-    `checkout-ref:${seller.userId}`,
-    CHECKOUT_REF_RATE_LIMIT.limit,
-    CHECKOUT_REF_RATE_LIMIT.windowMs,
-  );
+  // ONBOARDING_RATE_LIMIT's per-seller key. On the shared-store limiter so the
+  // budget holds across serverless instances.
+  const { allowed } = await checkDurableRateLimit(`checkout-ref:${seller.userId}`, CHECKOUT_REF_RATE_LIMIT);
   if (!allowed) return { ok: false, error: RATE_LIMITED_MESSAGE };
 
   try {

@@ -33,7 +33,8 @@ import { createBillingPortalSession, PaddlePortalError } from "@/lib/billing/pad
 import { getPaddleApiBaseUrl, getPaddleApiKey } from "@/lib/billing/paddle-server-env";
 import { findByTenantId } from "@/lib/billing/subscription-repository";
 import { requireSeller } from "@/lib/plans/require-seller";
-import { BILLING_PORTAL_RATE_LIMIT, checkRateLimit } from "@/lib/rate-limit";
+import { BILLING_PORTAL_RATE_LIMIT } from "@/lib/rate-limit";
+import { checkDurableRateLimit } from "@/lib/rate-limit-durable";
 import type { BillingErrorCode } from "./billing-errors";
 
 const BILLING_PAGE_PATH = "/settings/billing";
@@ -88,11 +89,9 @@ export async function openBillingPortalAction(): Promise<void> {
   if (!seller) redirectWithError("signed_out");
   if (!seller.tenantId) redirectWithError("no_account");
 
-  const { allowed } = checkRateLimit(
-    `billing-portal:${seller.userId}`,
-    BILLING_PORTAL_RATE_LIMIT.limit,
-    BILLING_PORTAL_RATE_LIMIT.windowMs,
-  );
+  // Keyed per seller, same as issueCheckoutRefAction (now on the shared-store
+  // limiter so the budget holds across serverless instances).
+  const { allowed } = await checkDurableRateLimit(`billing-portal:${seller.userId}`, BILLING_PORTAL_RATE_LIMIT);
   if (!allowed) redirectWithError("rate_limited");
 
   const { customerId, subscriptionId } = await resolveBillableSubscription(seller.tenantId);
