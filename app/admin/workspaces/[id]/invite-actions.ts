@@ -41,6 +41,13 @@ const SAMPLE_OWN_EMAIL_ONLY_MESSAGE =
   "Create a real deal to invite your buyer.";
 const SEND_FAILED_MESSAGE = "Couldn't send the invite email. Try again in a moment.";
 const RATE_LIMITED_MESSAGE = "This workspace reached its invite limit for now. Try again in an hour.";
+// T63: the email budgets in lib/rate-limit.ts refused the send. Safe to name
+// here: the seller is authenticated, and the limit is their own account's
+// (or the product's), not a fact about the buyer's address.
+const EMAIL_LIMIT_MESSAGES = {
+  hour: "Hourly email limit reached. Try again in an hour.",
+  day: "Daily email limit reached. Try again tomorrow.",
+} as const;
 
 function normalizeEmail(raw: FormDataEntryValue | null): string {
   return String(raw ?? "").trim().toLowerCase();
@@ -178,6 +185,8 @@ export async function sendBuyerInvite(
     }
     case "rate-limited":
       return { status: "error", email, message: RATE_LIMITED_MESSAGE };
+    case "email-limit":
+      return { status: "error", email, message: EMAIL_LIMIT_MESSAGES[outcome.window] };
     // "not-approved" should be unreachable here — the whitelist write above
     // just made this email approved (or it already was) — but a concurrent
     // edit racing this request could still produce it. Treated the same as

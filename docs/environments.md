@@ -259,6 +259,7 @@ data), which defeats the whole split.
 | `SALESFORCE_LOGIN_BASE_URL` | unset (defaults to login.salesforce.com) | unset, unless dev points at a sandbox |
 | `RESEND_API_KEY` | prod Resend API key | dev/test Resend API key (or unset) |
 | `RESEND_FROM` | prod verified sender | dev/test verified sender (or unset) |
+| `EMAIL_DAILY_LIMIT` | unset (defaults to 90, under Resend's free plan); set to the new plan's daily quota minus headroom after upgrading | unset |
 | ~~`SMTP_*`~~ | retired (T57) — no longer read | retired (T57) — no longer read |
 
 The Preview/Development values are exactly what's in your local `.env.local`. To
