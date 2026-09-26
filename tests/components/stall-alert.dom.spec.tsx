@@ -8,6 +8,12 @@
 // + text, no Signal), "stalled" (Slate dot + text, PLUS exactly one
 // Signal-classed call-to-action), and a static grep of this component's own
 // CSS file for hardcoded hex colours (design system MUST: tokens only).
+//
+// Sprint 12, Ticket 60 adds two things to this same alert rather than a
+// second banner: the quiet-deal line (a buyer who hasn't opened the room in
+// QUIET_DEAL_DAYS, plus a plain link to where "Close deal" lives), and
+// `isSignalSuppressed` — the prop the workspace page sets when the
+// deal-limit wall above has taken the page's one Signal.
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath, URL as NodeURL } from "node:url";
@@ -111,6 +117,99 @@ describe("StallAlert — stalled state", () => {
 
     const dot = container.querySelector("[data-status-dot]");
     expect(dot).not.toHaveAttribute("data-signal");
+  });
+});
+
+describe("StallAlert — handing the Signal to the deal-limit wall (T60)", () => {
+  it("renders 'Review plan' as a plain link, still linked, when the Signal is suppressed", () => {
+    // Arrange / Act
+    const { container } = render(
+      <StallAlert
+        signal={makeSignal({ state: "stalled", openBuyerStepCount: 1 })}
+        planHref={PLAN_HREF}
+        isSignalSuppressed
+      />,
+    );
+
+    // Assert
+    const cta = screen.getByRole("link", { name: "Review plan" });
+    expect(cta).toHaveAttribute("href", PLAN_HREF);
+    expect(cta).not.toHaveAttribute("data-signal");
+    expect(signalMarkedElements(container)).toHaveLength(0);
+  });
+
+  it("keeps its Signal by default, so nothing changes for a page with no wall", () => {
+    const { container } = render(
+      <StallAlert signal={makeSignal({ state: "stalled", openBuyerStepCount: 1 })} planHref={PLAN_HREF} />,
+    );
+
+    expect(signalMarkedElements(container)).toHaveLength(1);
+  });
+});
+
+describe("StallAlert — the quiet-deal line (T60)", () => {
+  it("adds a plain line naming the buyer's silence in days, with a link to where the deal is closed", () => {
+    render(
+      <StallAlert
+        signal={makeSignal({ state: "stalled", openBuyerStepCount: 1, daysSinceLastActivity: 21 })}
+        planHref={PLAN_HREF}
+      />,
+    );
+
+    const note = screen.getByTestId("quiet-deal-note");
+    expect(note).toHaveTextContent(
+      "Your buyer hasn't opened this in 21 days. If the deal is finished, close it to free a slot.",
+    );
+
+    const link = screen.getByRole("link", { name: "Close this deal" });
+    expect(link).toHaveAttribute("href", PLAN_HREF);
+    expect(link).not.toHaveAttribute("data-signal");
+  });
+
+  it("adds the same line in the waiting state — it is buyer silence, not open buyer steps, that triggers it", () => {
+    render(
+      <StallAlert
+        signal={makeSignal({ state: "waiting", daysSinceLastActivity: 30 })}
+        planHref={PLAN_HREF}
+      />,
+    );
+
+    expect(screen.getByTestId("quiet-deal-note")).toHaveTextContent("hasn't opened this in 30 days");
+  });
+
+  it("stays silent below the threshold", () => {
+    render(
+      <StallAlert
+        signal={makeSignal({ state: "stalled", openBuyerStepCount: 1, daysSinceLastActivity: 13 })}
+        planHref={PLAN_HREF}
+      />,
+    );
+
+    expect(screen.queryByTestId("quiet-deal-note")).not.toBeInTheDocument();
+  });
+
+  it("stays silent for a buyer who has never opened the room — there is no 'in N days' to state", () => {
+    render(
+      <StallAlert
+        signal={makeSignal({ state: "stalled", openBuyerStepCount: 2, daysSinceLastActivity: null })}
+        planHref={PLAN_HREF}
+      />,
+    );
+
+    expect(screen.queryByTestId("quiet-deal-note")).not.toBeInTheDocument();
+    // The ordinary stall copy still carries the state.
+    expect(screen.getByText(/Buyer's gone quiet — 2 open buyer steps waiting on them\./)).toBeInTheDocument();
+  });
+
+  it("never adds a second Signal alongside 'Review plan'", () => {
+    const { container } = render(
+      <StallAlert
+        signal={makeSignal({ state: "stalled", openBuyerStepCount: 1, daysSinceLastActivity: 40 })}
+        planHref={PLAN_HREF}
+      />,
+    );
+
+    expect(signalMarkedElements(container)).toHaveLength(1);
   });
 });
 

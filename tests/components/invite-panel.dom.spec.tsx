@@ -94,15 +94,18 @@ describe("module boundary — single entry point", () => {
 });
 
 describe("InvitePanel — idle", () => {
-  it("renders a labelled email input and exactly one primary Send-invite button, no flip, no status", () => {
+  it("renders a labelled email input and a PLAIN Send-invite button, no flip, no status (T60 CRITICAL fix)", () => {
+    // Signal on this page belongs to the deal-limit wall or the stall
+    // alert's CTA (workspace-signal-budget.ts) — Send invite must never
+    // carry it, in any state, including first paint.
     const { container } = render(<InvitePanel workspaceId={WORKSPACE_ID} sellerEmail="ae@getbrava.tech" />);
 
     expect(screen.getByRole("heading", { name: "Invite your buyer" })).toBeInTheDocument();
     expect(screen.getByLabelText("Email")).toBeInTheDocument();
 
     const sendButton = screen.getByRole("button", { name: "Send invite" });
-    expect(sendButton).toHaveAttribute("data-signal", "true");
-    expect(container.querySelectorAll('[data-signal="true"]')).toHaveLength(1);
+    expect(sendButton).not.toHaveAttribute("data-signal");
+    expect(container.querySelectorAll('[data-signal="true"]')).toHaveLength(0);
 
     expect(screen.queryByRole("button", { name: "Open buyer view" })).not.toBeInTheDocument();
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
@@ -177,9 +180,11 @@ describe("InvitePanel — sent to the seller's own inbox", () => {
   const SELLER_EMAIL = "AE@getbrava.tech";
   const SELLER_EMAIL_NORMALIZED = "ae@getbrava.tech";
 
-  it("names the invited address, gives the flip button the card's one Signal, and drops Send invite to secondary", async () => {
+  it("names the invited address and gives the flip button the card's one Signal when the page grants it", async () => {
     mockSendBuyerInvite.mockResolvedValueOnce(sentState(SELLER_EMAIL_NORMALIZED));
-    const { container } = render(<InvitePanel workspaceId={WORKSPACE_ID} sellerEmail={SELLER_EMAIL} />);
+    const { container } = render(
+      <InvitePanel workspaceId={WORKSPACE_ID} sellerEmail={SELLER_EMAIL} canFlipUseSignal />,
+    );
 
     await submitInvite(SELLER_EMAIL_NORMALIZED);
 
@@ -194,8 +199,22 @@ describe("InvitePanel — sent to the seller's own inbox", () => {
     const sendButton = screen.getByRole("button", { name: "Send invite" });
     expect(sendButton).not.toHaveAttribute("data-signal");
 
-    // Exactly one Signal element in the card, ever — it just changed hands.
+    // Exactly one Signal element in the card, ever.
     expect(container.querySelectorAll('[data-signal="true"]')).toHaveLength(1);
+  });
+
+  it("renders the flip button PLAIN when the page has NOT granted it the Signal (default, T60 CRITICAL fix)", async () => {
+    // Safe-by-default: a caller that doesn't compute canFlipUseSignal (e.g.
+    // an older render, or a page state where the wall/stall alert already
+    // hold the one Signal) must never risk a second one appearing here.
+    mockSendBuyerInvite.mockResolvedValueOnce(sentState(SELLER_EMAIL_NORMALIZED));
+    const { container } = render(<InvitePanel workspaceId={WORKSPACE_ID} sellerEmail={SELLER_EMAIL} />);
+
+    await submitInvite(SELLER_EMAIL_NORMALIZED);
+
+    const flipButton = await screen.findByRole("button", { name: "Open buyer view" });
+    expect(flipButton).not.toHaveAttribute("data-signal");
+    expect(container.querySelectorAll('[data-signal="true"]')).toHaveLength(0);
   });
 
   it("carries the invited email on the flip form as a hidden field", async () => {
@@ -211,7 +230,7 @@ describe("InvitePanel — sent to the seller's own inbox", () => {
 });
 
 describe("InvitePanel — sent to a real buyer's address (own-inbox rule)", () => {
-  it("confirms the send but renders NO flip button, and Send invite keeps the card's one Signal", async () => {
+  it("confirms the send but renders NO flip button, and Send invite stays plain", async () => {
     // A3 ownership regression (T43 follow-up): a buyer-bound invite must
     // never offer a button that would enter the portal as the buyer — the
     // server refuses it, so the UI must not render it. The send confirmation
@@ -227,13 +246,13 @@ describe("InvitePanel — sent to a real buyer's address (own-inbox rule)", () =
 
     expect(screen.queryByRole("button", { name: "Open buyer view" })).not.toBeInTheDocument();
     const sendButton = screen.getByRole("button", { name: "Send invite" });
-    expect(sendButton).toHaveAttribute("data-signal", "true");
-    expect(container.querySelectorAll('[data-signal="true"]')).toHaveLength(1);
+    expect(sendButton).not.toHaveAttribute("data-signal");
+    expect(container.querySelectorAll('[data-signal="true"]')).toHaveLength(0);
   });
 });
 
 describe("InvitePanel — cooldown (recoverable)", () => {
-  it("renders a dot+text status with the server's own message, no flip, Send invite stays the one primary", async () => {
+  it("renders a dot+text status with the server's own message, no flip, Send invite stays plain", async () => {
     mockSendBuyerInvite.mockResolvedValueOnce(cooldownState("buyer@acme.example", 42));
     const { container } = render(<InvitePanel workspaceId={WORKSPACE_ID} sellerEmail={null} />);
 
@@ -248,8 +267,8 @@ describe("InvitePanel — cooldown (recoverable)", () => {
     expect(screen.getByLabelText("Email")).not.toBeDisabled();
 
     const sendButton = screen.getByRole("button", { name: "Send invite" });
-    expect(sendButton).toHaveAttribute("data-signal", "true");
-    expect(container.querySelectorAll('[data-signal="true"]')).toHaveLength(1);
+    expect(sendButton).not.toHaveAttribute("data-signal");
+    expect(container.querySelectorAll('[data-signal="true"]')).toHaveLength(0);
   });
 });
 

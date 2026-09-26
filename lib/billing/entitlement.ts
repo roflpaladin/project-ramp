@@ -39,6 +39,15 @@ export interface Entitlement {
   readonly isInGrace: boolean;
   /** ISO instant the 7-day grace ends, when one is running. */
   readonly graceEndsAt: string | null;
+  /**
+   * T60 (additive). Past-due-beyond-grace: every NEW deal is refused while
+   * this is true, whatever the count. It was already computed here before
+   * T60 but never exposed, so the go-live gate had no way to fail closed on
+   * it without re-deriving the grace window for itself. Distinct from
+   * `canStartNewDeal(n) === false`, which usually just means "at the cap" —
+   * the two produce different copy and a different next step.
+   */
+  readonly isBlockedFromNewDeals: boolean;
   canStartNewDeal(activeCount: number): boolean;
 }
 
@@ -61,6 +70,7 @@ function buildEntitlement(input: EntitlementInput): Entitlement {
     source: input.source,
     isInGrace: input.isInGrace ?? false,
     graceEndsAt: input.graceEndsAt ?? null,
+    isBlockedFromNewDeals,
     canStartNewDeal(activeCount: number): boolean {
       if (isBlockedFromNewDeals) return false;
       if (maxActiveDeals === null) return true;

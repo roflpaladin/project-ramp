@@ -12,7 +12,7 @@
 // customer and absent for free/manual, exactly one Signal per state, and
 // the manual/invoiced card's own distinct copy.
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import type { SubscriptionState } from "@/lib/billing/subscription-reducer";
 
@@ -21,6 +21,11 @@ vi.mock("@/lib/plans/require-seller", () => ({ requireSeller: mockRequireSeller 
 
 const { mockFindByTenantId } = vi.hoisted(() => ({ mockFindByTenantId: vi.fn() }));
 vi.mock("@/lib/billing/subscription-repository", () => ({ findByTenantId: mockFindByTenantId }));
+
+// T60: the "N of M active deals" line. Mocked here rather than left to the
+// real module, which would reach for a service-role Supabase client.
+const { mockCountActiveDealsForTenant } = vi.hoisted(() => ({ mockCountActiveDealsForTenant: vi.fn() }));
+vi.mock("@/lib/plans/active-deal-count", () => ({ countActiveDealsForTenant: mockCountActiveDealsForTenant }));
 
 const { mockRedirect } = vi.hoisted(() => ({
   mockRedirect: vi.fn(() => {
@@ -59,10 +64,15 @@ function renderPage(searchParams: { error?: string | string[] } = {}) {
   return BillingSettingsPage({ searchParams: Promise.resolve(searchParams) });
 }
 
+beforeEach(() => {
+  mockCountActiveDealsForTenant.mockResolvedValue(0);
+});
+
 afterEach(() => {
   cleanup();
   mockRequireSeller.mockReset();
   mockFindByTenantId.mockReset();
+  mockCountActiveDealsForTenant.mockReset();
   mockRedirect.mockClear();
 });
 
@@ -270,5 +280,75 @@ describe("BillingSettingsPage — tenant-less account (provisioning never comple
 
     expect(mockFindByTenantId).not.toHaveBeenCalled();
     expect(screen.getAllByText("Free")).toHaveLength(2); // plan name + status label
+  });
+
+  it("shows no usage line at all when there is no tenant to count against", async () => {
+    mockRequireSeller.mockResolvedValue(signedInSeller({ tenantId: null }));
+
+    render(await renderPage());
+
+    expect(mockCountActiveDealsForTenant).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("billing-deals-used")).not.toBeInTheDocument();
+  });
+});
+
+describe("BillingSettingsPage — how many active deals are in use (T60)", () => {
+  it("says 'N of M active deals' for a capped plan", async () => {
+    // Arrange
+    mockRequireSeller.mockResolvedValue(signedInSeller());
+    mockFindByTenantId.mockResolvedValue(subscription({ tierId: "starter", status: "active" }));
+    mockCountActiveDealsForTenant.mockResolvedValue(2);
+
+    // Act
+    render(await renderPage());
+
+    // Assert
+    expect(screen.getByTestId("billing-deals-used")).toHaveTextContent("2 of 3 active deals");
+  });
+
+  it("singularises the noun when the cap is one", async () => {
+    mockRequireSeller.mockResolvedValue(signedInSeller());
+    mockFindByTenantId.mockResolvedValue(null);
+    mockCountActiveDealsForTenant.mockResolvedValue(1);
+
+    render(await renderPage());
+
+    expect(screen.getByTestId("billing-deals-used")).toHaveTextContent("1 of 1 active deal");
+  });
+
+  it("says 'unlimited' rather than inventing a cap for an uncapped plan", async () => {
+    mockRequireSeller.mockResolvedValue(signedInSeller());
+    mockFindByTenantId.mockResolvedValue(subscription({ tierId: "advanced", status: "active" }));
+    mockCountActiveDealsForTenant.mockResolvedValue(12);
+
+    render(await renderPage());
+
+    expect(screen.getByTestId("billing-deals-used")).toHaveTextContent("12 active deals — unlimited");
+  });
+
+  it("renders the numbers in Geist Mono, like every other figure on this page", async () => {
+    mockRequireSeller.mockResolvedValue(signedInSeller());
+    mockFindByTenantId.mockResolvedValue(null);
+    mockCountActiveDealsForTenant.mockResolvedValue(0);
+
+    render(await renderPage());
+
+    expect(screen.getByTestId("billing-deals-used")).toHaveClass("bl-mono");
+  });
+
+  it("omits the line, rather than breaking the page, when the count cannot be read", async () => {
+    mockRequireSeller.mockResolvedValue(signedInSeller());
+    mockFindByTenantId.mockResolvedValue(subscription({ status: "active" }));
+    mockCountActiveDealsForTenant.mockRejectedValue(new Error("supabase down"));
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    render(await renderPage());
+
+    expect(screen.queryByTestId("billing-deals-used")).not.toBeInTheDocument();
+    // The rest of the card is untouched…
+    expect(screen.getByRole("button", { name: /manage billing/i })).toBeInTheDocument();
+    // …and the failure is logged, never swallowed.
+    expect(errorLog).toHaveBeenCalled();
+    errorLog.mockRestore();
   });
 });

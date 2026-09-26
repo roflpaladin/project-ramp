@@ -98,6 +98,14 @@
   color: var(--slate);
 }
 
+/* T60: what is actually in use, directly under what the plan includes. Same
+   Slate weight — this is data, not a state to react to. */
+[data-surface="settings-billing"] .bl-deals-used {
+  margin: 0;
+  font-size: 14px;
+  color: var(--slate);
+}
+
 [data-surface="settings-billing"] .bl-invoiced {
   margin: 0;
   font-size: 14px;

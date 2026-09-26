@@ -58,3 +58,18 @@ export const PLAN_STEPS_COMPLETION_COHERENT_CHECK = "plan_steps_completion_coher
  * and lines 126, 142, 156 (reorder_plan_steps).
  */
 export const REORDER_SET_MISMATCH_MESSAGE = "REORDER_SET_MISMATCH";
+
+/**
+ * Sprint 12, Ticket 60. Also not a constraint: the fixed exception message
+ * 0015's `trg_success_plans_go_live_guard` raises (via `raise exception
+ * 'GO_LIVE_NOT_PERMITTED' using errcode = 'P0001'`) when any role other than
+ * service_role / postgres / supabase_admin tries to move a success_plans row
+ * INTO status 'active'. It is the database half of the active-deal limit:
+ * 0005's "AE manages own tenant plans" policy is `for all`, so a seller
+ * holding the public anon key could otherwise PATCH straight past the
+ * paywall. No app code path should ever provoke it — go-live goes through
+ * 0015's mark_plan_live() on the service-role client — so reaching this
+ * mapping means someone talked to PostgREST directly.
+ * Source: 0015_deal_limits.sql, `enforce_plan_go_live()`.
+ */
+export const GO_LIVE_NOT_PERMITTED_MESSAGE = "GO_LIVE_NOT_PERMITTED";

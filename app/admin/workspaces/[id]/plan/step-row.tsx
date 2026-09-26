@@ -19,12 +19,24 @@ interface StepRowProps {
   isFirst: boolean;
   isLast: boolean;
   isPending: boolean;
+  /** T60: a closed deal's plan — every write control here is withheld. */
+  isReadOnly?: boolean;
   isLive: boolean;
   onMoveUp: () => void;
   onMoveDown: () => void;
 }
 
-export function StepRow({ workspaceId, step, isFirst, isLast, isPending, isLive, onMoveUp, onMoveDown }: StepRowProps) {
+export function StepRow({
+  workspaceId,
+  step,
+  isFirst,
+  isLast,
+  isPending,
+  isReadOnly = false,
+  isLive,
+  onMoveUp,
+  onMoveDown,
+}: StepRowProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const meta = stepStatusMeta(step.status);
@@ -78,27 +90,29 @@ export function StepRow({ workspaceId, step, isFirst, isLast, isPending, isLive,
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <MoveButtons
-            itemLabel={step.label}
-            isFirst={isFirst}
-            isLast={isLast}
-            isPending={isPending}
-            onMoveUp={onMoveUp}
-            onMoveDown={onMoveDown}
-          />
-          <button type="button" className="plan-btn" onClick={() => setIsEditing((current) => !current)}>
-            {isEditing ? "Cancel" : "Edit"}
-          </button>
-          <form action={handleDelete}>
-            <button type="submit" className="plan-btn">
-              Delete
+        {isReadOnly ? null : (
+          <div className="flex items-center gap-2">
+            <MoveButtons
+              itemLabel={step.label}
+              isFirst={isFirst}
+              isLast={isLast}
+              isPending={isPending}
+              onMoveUp={onMoveUp}
+              onMoveDown={onMoveDown}
+            />
+            <button type="button" className="plan-btn" onClick={() => setIsEditing((current) => !current)}>
+              {isEditing ? "Cancel" : "Edit"}
             </button>
-          </form>
-        </div>
+            <form action={handleDelete}>
+              <button type="submit" className="plan-btn">
+                Delete
+              </button>
+            </form>
+          </div>
+        )}
       </div>
 
-      {isEditing ? (
+      {isEditing && !isReadOnly ? (
         <form action={handleUpdate} className="flex flex-col gap-3">
           <label className="plan-field">
             Step

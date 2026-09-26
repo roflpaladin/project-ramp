@@ -12,6 +12,9 @@
   min-height: 100dvh;
   background: var(--paper);
   color: var(--ink);
+  /* T60 MUST fix: the admin/plan surfaces never declared Geist — see
+     app/globals.css's system-ui body default. */
+  font-family: "Geist", "Inter", system-ui, -apple-system, sans-serif;
 }
 
 /* Quality floor: prefers-reduced-motion respected. Nothing on this surface
@@ -229,6 +232,20 @@
 [data-surface="plan-builder"] .plan-textarea:focus-visible {
   outline: 2px solid var(--signal);
   outline-offset: 2px;
+}
+
+/* T60: the closed-deal note. Bad news stated plainly, in Slate — closing a
+   deal is an outcome, not an error, so it never takes --state-risk. */
+[data-surface="plan-builder"] .plan-closed-note {
+  margin: 0;
+  /* T60 spacing-scale fix: 10px/14px were off-scale; 12/16 both are. */
+  padding: 12px 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--mist);
+  color: var(--slate);
+  font-size: 13px;
+  font-weight: 500;
 }
 
 [data-surface="plan-builder"] .plan-error {

@@ -1,0 +1,138 @@
+/* Scoped styles for the deal-limit notice — the upgrade wall (Sprint 12,
+   Ticket 60). Same layering choice as every sibling surface on this page
+   (activation-checklist.css, stall-alert.css, invite-panel.css): theme
+   layered, utilities unlayered. Brand colour comes entirely from the Ramp
+   tokens in app/globals.css — nothing here hardcodes a hex, so both themes
+   ship from the same rules. Scoped to [data-surface="deal-limit-notice"] so
+   nothing else on /admin is affected.
+
+   This file DOES carry Signal, unlike activation-checklist.css which hosts
+   it: .dln-cta-signal is applied only when the page has handed this notice
+   the Signal (workspace-signal-budget.ts). Without that class the identical
+   link renders as an ordinary secondary action. */
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css";
+
+@media (prefers-reduced-motion: reduce) {
+  [data-surface="deal-limit-notice"] * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+/* The container stays neutral for every reason — the state is carried by the
+   dot + its text label, never by a coloured panel. */
+[data-surface="deal-limit-notice"] {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  padding: 12px 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--paper);
+  /* T60 MUST fix: the admin/plan surfaces never declared Geist — see
+     app/globals.css's system-ui body default. */
+  font-family: "Geist", "Inter", system-ui, -apple-system, sans-serif;
+}
+
+[data-surface="deal-limit-notice"] .dln-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Status is never colour-only: dot + text, always. "wait" is Slate because
+   being at a cap is a state, not a failure; only a genuinely failed payment
+   is allowed to speak in --state-risk. */
+[data-surface="deal-limit-notice"] .dln-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+  background: var(--state-wait);
+}
+[data-surface="deal-limit-notice"][data-tone="risk"] .dln-dot {
+  background: var(--state-risk);
+}
+
+[data-surface="deal-limit-notice"] .dln-label {
+  font-size: 14px;
+  font-weight: 600;
+  /* T60 type-scale fix: body scale (14/21) at 600 weight, matching this
+     page's other dot+label pairs (stall-alert.css's .wsa-label,
+     activation-checklist.css's .ac-row-text). */
+  line-height: 21px;
+  color: var(--ink);
+}
+
+[data-surface="deal-limit-notice"] .dln-body {
+  margin: 0;
+  max-width: 60ch;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 18px;
+  color: var(--slate);
+}
+
+/* Data and numbers in Geist Mono (design system MUST). */
+[data-surface="deal-limit-notice"] .dln-count {
+  margin: 0;
+  font-family: "Geist Mono", "SFMono-Regular", ui-monospace, monospace;
+  font-size: 12px;
+  font-weight: 500;
+  /* T60 type-scale fix: micro scale (12/16), explicit line-height. */
+  line-height: 16px;
+  color: var(--slate);
+}
+
+/* ---- the CTA: Signal only when the page grants it ----------------------- */
+
+[data-surface="deal-limit-notice"] .dln-cta {
+  display: inline-flex;
+  align-items: center;
+  /* T60 button-scale fix: 36px height / 16px horizontal padding, per the
+     design system's button spec. */
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background-color 0.12s cubic-bezier(0.2, 0, 0, 1);
+}
+[data-surface="deal-limit-notice"] .dln-cta:hover {
+  background: var(--mist);
+}
+
+[data-surface="deal-limit-notice"] .dln-cta-signal {
+  border-color: transparent;
+  background: var(--signal);
+  color: var(--signal-fg);
+}
+[data-surface="deal-limit-notice"] .dln-cta-signal:hover {
+  background: var(--signal-hover);
+}
+[data-surface="deal-limit-notice"] .dln-cta-signal:active {
+  background: var(--signal-press);
+}
+
+/* Focus ring is the one MUST-level exception to "one Signal element" — a
+   transient keyboard affordance, not a static page element (see
+   stall-alert.css and plan.css for the established precedent). */
+[data-surface="deal-limit-notice"] .dln-cta:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+
+@media (max-width: 480px) {
+  [data-surface="deal-limit-notice"] {
+    /* T60 spacing-scale fix: 10px was off-scale; 8/12 both are. */
+    padding: 8px 12px;
+  }
+}
