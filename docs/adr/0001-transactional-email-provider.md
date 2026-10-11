@@ -123,3 +123,12 @@ sending is broken in production, the immediate mitigation is `{ ok: false }`
 already fails soft everywhere it's called (token creation still succeeds;
 the caller surfaces a "resend" affordance) — there is no send path this
 ticket makes a hard dependency for any user-facing flow to complete.
+
+## Status 2026-10-11
+
+Resend is live for transactional email: the sending domain is verified and
+production sends through Resend. The global daily cap (`EMAIL_DAILY_LIMIT`,
+`lib/rate-limit.ts`) defaults to 90, sized under Resend's free plan (100/day).
+The plan is to upgrade to Resend Pro before Nov 1 and then raise
+`EMAIL_DAILY_LIMIT` (see `docs/launch-checklist.md`, section 4a); the upgrade
+has not been done as of this note.

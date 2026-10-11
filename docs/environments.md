@@ -23,6 +23,65 @@ project the tests read _and write_.** Keep `.env.local` on **dev** so a test run
 can never touch prod. No source file hardcodes a Supabase URL — everything flows
 through env, so repointing `.env.local` is the entire switch.
 
+## Canonical host (www vs bare domain)
+
+The bare domain `https://getbrava.tech` 308-redirects to
+`https://www.getbrava.tech`. Two values are deliberately different:
+
+- `NEXT_PUBLIC_APP_URL` is the **bare** domain, `https://getbrava.tech`
+  (Vercel Production value confirmed by the founder 2026-10-11): the
+  CRM OAuth callbacks (HubSpot, Salesforce) are registered against it, and they
+  must match byte for byte.
+- Everything public uses **`https://www.getbrava.tech`**: links we share, the
+  health check, the Paddle webhook destination and the launch-checklist URLs.
+
+Do not "fix" one to match the other without re-registering the OAuth callbacks.
+
+## Shared dev DB and CI
+
+CI's `Tests` job, your local runs and the other Claude session all use the
+**same single dev Supabase project**. Since PR #73 (merged 2026-10-11) every
+fixture id and email carries a per-run token (`tests/fixtures/run-id.ts`), and
+the one DDL step (the security tests add a column, never drop it) is
+idempotent, so overlapping runs no longer touch each other's rows (see
+"Running tests while another run is going" below).
+
+- **CI concurrency.** Since PR #74 (merged 2026-10-11) there is no repo-wide
+  Tests queue: Tests jobs on different branches run side by side, so several
+  PRs can be opened or pushed at once. The workflow-level group
+  `ci-${{ github.ref }}` still cancels a superseded run of the **same** branch.
+  Before #74 the `security-suite` group kept only one pending job, and every
+  extra push silently cancelled another branch's queued run.
+- **Interrupted runs.** A run killed mid-way leaves fixture rows behind; the
+  next run's stale-fixture sweep (`tests/fixtures/global-setup.ts`) clears them.
+- **The dev-DB slot.** Before #73 a session asked the other one ("slot?"), waited
+  for "free" and said "slot released" when done. Overlap is now safe, so the
+  slot is only a courtesy for full-suite runs (for example T64's automated pass).
+  It is a human convention; nothing enforces it.
+
+## Running tests
+
+`npm test` runs the whole vitest suite, including live specs that read and
+write the **shared dev DB** (see above). `.env.local` must point at **DEV**, never prod.
+
+- **Locally, prefer spec files by path:** `npx vitest run tests/billing/paddle-signature.spec.ts`
+  (or a folder). Overlapping runs are safe, but say "slot?" before a full-suite run as a courtesy.
+- **Where specs live:**
+  - `tests/components` (DOM specs, `*.dom.spec.tsx`, happy-dom)
+  - `tests/security` (buyer boundary, RLS; live DB and a real server)
+  - `tests/plans` (a mix of pure and live-DB specs)
+  - `tests/billing` (Paddle events, signature, entitlement, webhook route)
+  - `tests/design` (contrast, fonts)
+  - other folders under `tests/` cover api, auth, backup, crm-import, email,
+    hubspot, import, portal, salesforce and ssrf
+  - `e2e/` is Playwright: `npx playwright test`. It is **not** run in CI.
+- **Live-server gotcha.** `tests/security/support/live-server.ts` starts
+  `next start` and only builds when no `.next/BUILD_ID` exists, so it **reuses
+  an existing build**. After changing code, run `npm run build` first or the
+  security specs test stale output.
+- `npm run test:security` runs just `tests/security`; `npm run typecheck` and
+  `npm run lint` are separate.
+
 ## Running tests while another run is going
 
 Every test run mints one `TEST_RUN_ID` (in `vitest.config.ts` /
@@ -135,36 +194,18 @@ hand in the Supabase **SQL Editor**:
 
 Always dev first. New files (`0008+`) get applied to both, dev leading.
 
-### Pending: `0015_deal_limits.sql` (Sprint 12, Ticket 60)
+### Applied: `0015_deal_limits.sql` and `0016_rate_limit_windows.sql`
 
-Not yet applied anywhere. It must be pasted on **dev first, then prod** — the
-app will not work without it: `workspaces.is_sample` is written by the
-sample-deal seed (so onboarding fails without the column), and going live
-calls the `mark_plan_live()` function this file creates.
+Dev and prod both have migrations `0001`–`0016` applied. `0015` (Sprint 12,
+Ticket 60: `workspaces.is_sample`, the `mark_plan_live()` function and its
+trigger) and `0016` (Ticket 62: the shared-store rate limiter) went onto prod
+on 2026-09-22/23, before PRs #62 and #61 merged. The two files are independent
+of each other. Their **VERIFY FIRST** blocks and the checks under "Verifying a
+project has the full schema" below still work for any future fresh project.
 
-**Rollout order matters — this file is not backwards compatible with pre-T60
-code.** Once pasted, the old go-live button (which flips the status through
-the seller's own client) is refused by the new trigger. On prod, paste it
-**immediately before** merging the T60 PR: in those few minutes only "Make it
-live" fails. The other order is worse (new code without the file breaks
-go-live *and* the onboarding sample deal). On dev, any other branch's CI fails
-`tests/security/mark-plan-live-action.spec.ts` until that branch merges main
-with T60 in it.
-
-`0015` and `0016_rate_limit_windows.sql` (Ticket 62) are independent of each
-other — either can be pasted first.
-
-Read the **VERIFY FIRST** block at the top of that file before pasting. It
-holds two read-only queries to run on dev first — each with one expected
-answer — and two after-the-paste proofs you run the same way (a seller must
-be refused with `GO_LIVE_NOT_PERMITTED` when making a plan live, and with
-`SAMPLE_FLAG_NOT_PERMITTED` when marking a workspace as the sample).
-
-Query 2 in that block is the one to actually look at before pasting: it lists
-any tenant that already has **more than one** sample workspace (the old seed
-could create several). Rows there are not a blocker — the migration flags only
-the oldest one per tenant, and the extras just start counting as ordinary
-deals — but it is worth knowing before rather than after.
+Lesson kept: for a **non-backwards-compatible** migration (one the old code
+cannot live with, like `0015`'s trigger refusing the old go-live button), paste
+it on prod **immediately before** merging the PR that needs it.
 
 ## Granting a manual entitlement by hand (invoice customers)
 
@@ -279,7 +320,8 @@ data), which defeats the whole split.
 | `RESEND_API_KEY` | prod Resend API key | dev/test Resend API key (or unset) |
 | `RESEND_FROM` | prod verified sender | dev/test verified sender (or unset) |
 | `EMAIL_DAILY_LIMIT` | unset (defaults to 90, under Resend's free plan); set to the new plan's daily quota minus headroom after upgrading | unset |
-| `NEXT_PUBLIC_APP_URL` | `https://www.getbrava.tech` (invite links, OAuth callbacks) | unset, or the preview origin |
+| `NEXT_PUBLIC_APP_URL` | `https://getbrava.tech` (bare domain; invite links, OAuth callbacks; see "Canonical host") | unset, or the preview origin |
+| `NEXT_PUBLIC_LANDING_MODE` | `waitlist` now; flip to `signup` and **redeploy** on Nov 1 | `waitlist` (or `signup` to rehearse) |
 | `NEXT_PUBLIC_PADDLE_ENV` | `production` | `sandbox` |
 | `NEXT_PUBLIC_PADDLE_CLIENT_TOKEN` | live client token (`live_…`) | sandbox client token (`test_…`) |
 | `PADDLE_API_KEY` | live API key | sandbox API key |
@@ -288,10 +330,13 @@ data), which defeats the whole split.
 | ~~`SMTP_*`~~ | retired (T57) — no longer read | retired (T57) — no longer read |
 
 **Health check (T63).** `GET https://www.getbrava.tech/api/health` answers
-`{"ok":true}` (200) or `{"ok":false}` (503), nothing more. It fails when any var
+`{"ok":true}` (200), `{"ok":false}` (503), or `{"ok":false}` with **429** and a
+`Retry-After` header when one IP exceeds 20 requests per 5 minutes
+(`HEALTH_RATE_LIMIT` in `lib/health.ts`), nothing more. A monitor polling every
+5 minutes (UptimeRobot, live since 2026-10-11) uses 1 of the 20. It fails when any var
 in `REQUIRED_PROD_ENV` (lib/health.ts) is empty or the database can't be read,
 and the server log (Vercel → Logs, search `[health]`) names the reason. The
-CRM integration vars are deliberately not required. Rate limited per IP.
+CRM integration vars are deliberately not required.
 
 The Preview/Development values are exactly what's in your local `.env.local`. To
 split an existing "All Environments" entry: edit it down to **Production** only,
@@ -303,6 +348,41 @@ bundle, so a scope change only takes effect on the next build — redeploy prod
 (the blue "Redeploy" prompt after saving is safe: it rebuilds the current `main`
 with unchanged prod values, build-first-then-swap, no downtime) and confirm a
 fresh **preview** now reads from the dev project.
+
+## Paddle webhook setup
+
+Route: `app/api/billing/paddle/webhook/route.ts`. Create one **notification
+destination** per environment in the Paddle dashboard (Developer tools →
+Notifications):
+
+| Environment | Destination URL |
+| --- | --- |
+| Prod (live Paddle) | `https://www.getbrava.tech/api/billing/paddle/webhook` |
+| Preview (sandbox Paddle) | the branch alias URL + `/api/billing/paddle/webhook?x-vercel-protection-bypass=<secret>` (the secret is the Vercel deployment-protection bypass secret; without it Vercel's login wall answers instead of the route) |
+
+**Events** (`lib/billing/paddle-event.ts`):
+
+- Applied to `tenant_subscriptions`: `subscription.created`, `.updated`,
+  `.activated`, `.trialing`, `.past_due`, `.paused`, `.resumed`, `.canceled`.
+- Recorded only (stored for support, never change entitlement, never cause a
+  500): `transaction.completed`, `customer.created`, `customer.updated`.
+- Any other subscribed event type is acknowledged with 200 and ignored.
+
+**Secret.** Each destination has its own secret key (`pdl_ntfset_…`). Put it in
+`PADDLE_WEBHOOK_SECRET`: Production scope gets the live destination's key,
+Preview + Development the sandbox destination's. If it is unset the route
+answers **401** (same as a bad signature) and only the server log says why.
+
+**Testing.** Paddle's simulator only works if the destination's usage type is
+**"platform + simulation"**. Send a simulated event and expect **200 `{"ok":true}`**.
+A 401 means a wrong or missing secret (check the log for `[paddle-webhook]`).
+A 429 (with `Retry-After`) means more than 300 requests per minute from one IP
+(`PADDLE_WEBHOOK_RATE_LIMIT`, checked before anything else); it only catches a
+flood, never Paddle's normal retries.
+
+**Never delete Paddle entities** (destinations, products, prices, customers,
+subscriptions). Refund and cancel only; deactivating is the most you do to a
+destination.
 
 ## Deploying to prod
 
@@ -321,8 +401,9 @@ integration (no `vercel.json`; config lives in the Vercel dashboard).
 DB. New migrations are still pasted by hand. Ordering is what bites: a deployed
 app that queries a column/function not yet in prod errors for real users.
 
-For **additive** migrations (all of `0001`–`0007` — `if not exists` /
-`create or replace`), **migrate prod _before_ merging the code**:
+For **additive** migrations (ones old code ignores, e.g. `if not exists` /
+`create or replace`, like `0001`–`0007`), **migrate prod _before_ merging the
+code**:
 
 1. Apply `NNNN_*.sql` in **dev** SQL Editor → verify → test locally.
 2. Apply the same file in **prod** SQL Editor.
@@ -360,16 +441,42 @@ takes one **every Sunday at 02:17 UTC** (and on demand: GitHub → Actions →
   GitHub runners have no IPv6 for the direct one) and `BACKUP_PASSPHRASE`.
   Rotating the prod database password means updating `PROD_DB_URL` too.
 
-**Real restore (disaster only; get a second pair of eyes first):**
+**Running it.** The schedule runs on `main`; the manual "Run workflow" button
+works **only on `main`** (the backup job is gated on `refs/heads/main`). The
+artifact is named `prod-backup-<YYYY-MM-DD>-run<run id>`. The passphrase
+(`BACKUP_PASSPHRASE`) is also kept in the founder's password manager; check you
+can open that entry before you ever need it.
+
+**What the archive holds:** `prod.dump` (pg_dump custom format, `public` +
+`auth`), `prod-counts.tsv`, `taken-at.txt`, `pg-dump-version.txt`.
+
+**Tested restore (what CI does every run, `scripts/backup/restore-verify.sh`).**
+Into an empty throwaway Postgres of the same major version:
+1. Decrypt with gpg and untar.
+2. Create the Supabase roles (`anon`, `authenticated`, `service_role`,
+   `supabase_auth_admin`, `supabase_admin`) and the `extensions` schema with
+   `pgcrypto` and `uuid-ossp`, because the dump refers to them.
+3. `pg_restore --no-owner --no-privileges` of the whole `prod.dump` (both
+   schemas). Errors are counted, not fatal; **row counts decide**.
+4. Run `scripts/backup/counts.sql` on the result and compare with
+   `prod-counts.tsv` (`scripts/backup/compare-counts.mjs`).
+
+**Real restore (disaster only; get a second pair of eyes first).** Same
+decrypt step and the same count comparison as the tested path; the one
+difference is that a new Supabase project already owns its `auth` schema, roles
+and extensions, so step 2 is skipped and `auth` is restored as data only.
+This variant (auth users into a fresh Supabase project) is **not** exercised by
+CI; the throwaway-container restore above is the tested one.
 1. Create a NEW Supabase project; never restore over a live one.
 2. Download the newest `prod-backup-…` artifact from the latest green run.
-3. On a machine with gpg and a matching `pg_restore`:
-   `gpg --decrypt backup.tar.gpg | tar -xf -` (asks for the passphrase). A
-   new Supabase project already has its own `auth` tables, so restore the
-   seller accounts as data only, then the app schema:
+3. On a machine with gpg and a `pg_restore` matching the dump's major version
+   (`pg-dump-version.txt`): `gpg --decrypt backup.tar.gpg | tar -xf -` (asks
+   for the passphrase), then restore the seller accounts as data only, then the
+   app schema:
    `pg_restore --no-owner --no-privileges --data-only --schema=auth --table=users --dbname="$NEW" prod.dump`
    `pg_restore --no-owner --no-privileges --schema=public --dbname="$NEW" prod.dump`
-   (`$NEW` = the new project's session pooler connection string).
-4. Compare `prod-counts.tsv` (from the archive) against
+   (`$NEW` = the new project's session pooler connection string). As in the
+   tested path, a few `pg_restore` errors can be noise: judge by row counts.
+4. Compare `prod-counts.tsv` against
    `psql … -At -f scripts/backup/counts.sql`, then point Vercel's env vars at
    the new project and redeploy.
