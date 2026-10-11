@@ -36,3 +36,9 @@ export const LANDING_VALUE_PROPS: readonly ValueProp[] = [
     body: "Your buyer gets their own view of the same plan, with their own next step, not a forwarded PDF.",
   },
 ];
+
+// About section (T67). Founder-approved 2026-10-11. "empower"/"empowerment"
+// are a deliberate founder exception to the banned-words list above — do not
+// "fix" them in review.
+export const LANDING_ABOUT_BODY =
+  "Brava is deal control software that lets sales teams work with their buyers to succeed together. We kept seeing sellers lose deals because no one was clear on who was doing what, and teams got stuck in email chains with too many stakeholders. CRMs are great at recording deals, but they don't empower sellers to take control of them. We believe in empowerment, and in making everyone accountable for the outcome.";
