@@ -27,22 +27,26 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { DEMO_TENANT_ID, DEMO_TENANT_LABEL } from "@/lib/demo";
 import { requireTestEnv } from "./env";
+import { runScopedEmail, runScopedId } from "./run-id";
 
 export const LEAK_TOKEN = "PULSELEAKCANARY";
 
-// "7e57" test namespace (mirrors seed-leaky-workspace.ts's convention),
-// under a distinct "d"-prefixed id block so it can never collide with that
+// "7e57" test namespace (mirrors seed-leaky-workspace.ts's convention, and its
+// run-scoped ids — see run-id.ts), under a distinct "d"-prefixed id block so it can never collide with that
 // fixture's own "0"..."f1"/"a" ids.
-export const PULSE_TEST_WORKSPACE_ID = "7e570000-0000-4000-8000-0000000000d1";
-export const PULSE_TEST_PLAN_ID = "7e570000-0000-4000-8000-0000000000d2";
-export const PULSE_TEST_STAGE_ID = "7e570000-0000-4000-8000-0000000000d3";
-export const PULSE_TEST_STEP_ID = "7e570000-0000-4000-8000-0000000000d4";
-export const PULSE_TEST_LINK_ID = "7e570000-0000-4000-8000-0000000000d5";
-const ANALYTICS_PORTAL_VIEW_ID = "7e570000-0000-4000-8000-0000000000d6";
-const ANALYTICS_LINK_CLICK_ID = "7e570000-0000-4000-8000-0000000000d7";
-const ANALYTICS_STEP_COMPLETE_ID = "7e570000-0000-4000-8000-0000000000d8";
+export const PULSE_TEST_WORKSPACE_ID = runScopedId("7e57", "0000000000d1");
+export const PULSE_TEST_PLAN_ID = runScopedId("7e57", "0000000000d2");
+export const PULSE_TEST_STAGE_ID = runScopedId("7e57", "0000000000d3");
+export const PULSE_TEST_STEP_ID = runScopedId("7e57", "0000000000d4");
+export const PULSE_TEST_LINK_ID = runScopedId("7e57", "0000000000d5");
+const ANALYTICS_PORTAL_VIEW_ID = runScopedId("7e57", "0000000000d6");
+const ANALYTICS_LINK_CLICK_ID = runScopedId("7e57", "0000000000d7");
+const ANALYTICS_STEP_COMPLETE_ID = runScopedId("7e57", "0000000000d8");
 
-const PULSE_TEST_OWNER_EMAIL = "t36-pulse-harness@projectramp.invalid";
+// Run-scoped so a concurrent run's teardown cannot delete this run's owner (the
+// workspace ids above are run-scoped for the same reason). The buyer/step-owner
+// emails below are only data in rows, not auth users, so they stay fixed.
+const PULSE_TEST_OWNER_EMAIL = runScopedEmail("t36-pulse-harness", "projectramp.invalid");
 
 export const RAW_BUYER_EMAIL = `pulse.buyer.${LEAK_TOKEN}@acme-pulse-test.invalid`;
 

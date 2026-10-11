@@ -30,6 +30,7 @@ import {
   teardownLeakyWorkspace,
   type LeakyWorkspace,
 } from "../fixtures/seed-leaky-workspace";
+import { runScopedId } from "../fixtures/run-id";
 import { startLiveServer, type LiveServer } from "./support/live-server";
 
 // T35-6/T35-7 (Sprint 7, Ticket 35; plans/sprint-6-7-replan.md §7 — QA).
@@ -42,9 +43,9 @@ import { startLiveServer, type LiveServer } from "./support/live-server";
 // dedicated-row idiom. No separate teardown is needed: these live under
 // TEST_STAGE_TWO_ID, which cascades away with the rest of the workspace in
 // teardownLeakyWorkspace() (success_plans -> plan_stages -> plan_steps).
-const FRESH_STEP_EMPTY_BODY_ID = "7e570000-0000-4000-8000-00000000000b";
-const FRESH_STEP_SPOOFED_BODY_ID = "7e570000-0000-4000-8000-00000000000c";
-const FRESH_STEP_REPLAY_ID = "7e570000-0000-4000-8000-00000000000d";
+const FRESH_STEP_EMPTY_BODY_ID = runScopedId("7e57", "00000000000b");
+const FRESH_STEP_SPOOFED_BODY_ID = runScopedId("7e57", "00000000000c");
+const FRESH_STEP_REPLAY_ID = runScopedId("7e57", "00000000000d");
 
 let seeded: LeakyWorkspace;
 let server: LiveServer;

@@ -19,7 +19,7 @@
 // live server this spec drives reads, so both sides derive the same key; a
 // mismatch would show up as the seeded code simply not verifying.
 //
-// Own dedicated "7e59…" sentinel prefix — distinct from seed-leaky-
+// Own dedicated "7e59…" sentinel prefix (run-scoped, see run-id.ts) — distinct from seed-leaky-
 // workspace.ts's "7e57…", seed-plan-builder-workspace.ts's "7e58…" and
 // lib/demo.ts's "de30…" — so this fixture can never collide with, or be
 // torn down by, any other suite's cleanup.
@@ -37,12 +37,16 @@
 
 import { createHmac, hkdfSync } from "node:crypto";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
+import { runScopedEmail, runScopedId } from "../../tests/fixtures/run-id";
 
-export const TENANT_ID = "7e590000-0000-4000-8000-000000000001";
-export const WORKSPACE_ID = "7e590000-0000-4000-8000-000000000002";
+export const TENANT_ID = runScopedId("7e59", "000000000001");
+export const WORKSPACE_ID = runScopedId("7e59", "000000000002");
 
-export const OWNER_EMAIL = "t34-9-portal-view-e2e@projectramp.invalid";
-export const BUYER_EMAIL = "buyer.t34-9-portal-view-e2e@portal-view-check.invalid";
+// Ids and emails are run-scoped (tests/fixtures/run-id.ts) so a concurrent run on
+// the shared dev database never reaches this run's rows. KNOWN_CODE can stay
+// fixed: the token row is keyed by (workspace, email), both run-scoped.
+export const OWNER_EMAIL = runScopedEmail("t34-9-portal-view-e2e", "projectramp.invalid");
+export const BUYER_EMAIL = runScopedEmail("buyer.t34-9-portal-view-e2e", "portal-view-check.invalid");
 export const KNOWN_CODE = "426913";
 
 export interface SeededPortalViewWorkspace {

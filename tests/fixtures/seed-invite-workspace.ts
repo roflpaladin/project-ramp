@@ -2,15 +2,15 @@
 //
 // A SEPARATE, dedicated fixture from tests/fixtures/seed-leaky-workspace.ts,
 // not a reuse of it. That fixture's seed/teardown pair truncates and
-// re-provisions rows scoped to a fixed sentinel tenant on every beforeAll —
-// safe when it owns the only writer, but this ticket's brief is explicit
-// that another session may be running the same shared "security" project
-// (real dev Supabase, tests/**/*.spec.ts) concurrently. Calling
-// teardownLeakyWorkspace()/seedLeakyWorkspace() here would race that
-// session's in-flight assertions against this file's teardown. So: distinct
-// sentinel IDs (the "7e57...4301+" range — grepped clear of every id already
-// in seed-leaky-workspace.ts before being chosen), and teardown here only
-// ever deletes rows scoped to THESE ids/tenants, never the shared ones.
+// re-provisions its own tenant's rows on every beforeAll, and within a single
+// run both fixtures are live in the same database. Calling
+// teardownLeakyWorkspace()/seedLeakyWorkspace() here would race the other
+// file's in-flight assertions against this file's teardown. So: distinct
+// sentinel IDs (the "7e57...4301+" suffix range — grepped clear of every id
+// already in seed-leaky-workspace.ts before being chosen), and teardown here
+// only ever deletes rows scoped to THESE ids/tenants. Like every fixture, the
+// ids and owner email are also run-scoped (run-id.ts), so a concurrent run on
+// the shared dev database has its own copy of all of them.
 //
 // Mirrors seed-leaky-workspace.ts's shape (ensureTestUser's
 // app_metadata.tenant_id claim, the same admin-client upsert idiom, a
@@ -20,13 +20,14 @@
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireTestEnv } from "./env";
+import { runScopedEmail, runScopedId } from "./run-id";
 
-export const INVITE_TENANT_ID = "7e570000-0000-4000-8000-000000004301";
-export const INVITE_WORKSPACE_ID = "7e570000-0000-4000-8000-000000004302";
-export const INVITE_FOREIGN_TENANT_ID = "7e570000-0000-4000-8000-000000004303";
-export const INVITE_FOREIGN_WORKSPACE_ID = "7e570000-0000-4000-8000-000000004304";
+export const INVITE_TENANT_ID = runScopedId("7e57", "000000004301");
+export const INVITE_WORKSPACE_ID = runScopedId("7e57", "000000004302");
+export const INVITE_FOREIGN_TENANT_ID = runScopedId("7e57", "000000004303");
+export const INVITE_FOREIGN_WORKSPACE_ID = runScopedId("7e57", "000000004304");
 
-export const INVITE_OWNER_EMAIL = "t43-invite-harness@projectramp.invalid";
+export const INVITE_OWNER_EMAIL = runScopedEmail("t43-invite-harness", "projectramp.invalid");
 export const INVITE_TARGET_DOMAIN = "invite-test.invalid";
 
 export interface InviteWorkspace {

@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import react from "@vitejs/plugin-react";
@@ -13,6 +14,14 @@ const localEnvFile = `${repoRoot}.env.local`;
 if (existsSync(localEnvFile)) {
   process.loadEnvFile(localEnvFile);
 }
+
+// Sprint 12, B6. One token per test run, minted here in the main vitest
+// process; workers inherit process.env, so every module sees the same value
+// (tests/fixtures/run-id.ts reads it and uses it in every fixture id and
+// email). That is what keeps a CI run and two local runs, all sharing one dev
+// database, from touching each other's rows. `??=` lets a human pin a value to
+// clean up a crashed run.
+process.env.TEST_RUN_ID ??= randomBytes(6).toString("hex").slice(0, 11);
 
 // Sprint 12, Ticket 62. The shared-store rate limiter
 // (lib/rate-limit-durable.ts) keeps its counts in Postgres, where they would
@@ -59,14 +68,21 @@ export default defineConfig({
           environment: "node",
           include: ["tests/**/*.spec.ts"],
 
+          // Once per run: sweep fixture rows crashed runs left in the shared
+          // dev database. Skips itself (with one line) when Supabase
+          // credentials are absent.
+          globalSetup: ["./tests/fixtures/global-setup.ts"],
+
           // Every test here talks to a real Supabase project — a mock cannot
           // prove an RLS bypass, which is the entire point of the buyer-
           // boundary suite. The security tests additionally run DDL (adding
-          // and dropping a column) against that shared database, so running
-          // files in parallel would race them against each other. Serial is
-          // not a performance oversight; it is the correctness requirement.
-          // CI enforces the same thing at the job level via
-          // `concurrency: security-suite`.
+          // a column) against that shared database, and several files share
+          // one run-scoped fixture workspace, so running files in parallel
+          // would race them against each other. Serial is not a performance
+          // oversight; it is the correctness requirement. CI enforces the
+          // same thing at the job level via `concurrency: security-suite`.
+          // (Separate RUNS no longer collide: every fixture id is run-scoped,
+          // see TEST_RUN_ID above.)
           fileParallelism: false,
 
           // Network round trips to Supabase, not local computation.

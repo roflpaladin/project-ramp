@@ -220,19 +220,14 @@ describe("Tier 1 — must be green to close Sprint 5", () => {
       if (lastError) throw new Error(`seeding crm_arr failed after retrying for 15s: ${lastError}`);
     }, 25_000);
 
-    afterAll(async () => {
-      // Runs even if the assertion below failed (vitest calls afterAll
-      // regardless of test outcome within the suite). Swallow rather than
-      // throw: a cleanup failure here must never mask what the test itself
-      // reported.
-      const db = createAdminClient();
-      try {
-        await db.rpc("test_drop_crm_arr");
-      } catch {
-        // Swallowed deliberately: a cleanup failure here must never mask
-        // whatever the test itself reported.
-      }
-    });
+    // Deliberately NO afterAll that drops the column (test_drop_crm_arr stays in
+    // the database, unused here). The dev Supabase is shared by CI and both
+    // local sessions, and a concurrent run's drop would remove crm_arr in the
+    // middle of this run's read-back. test_add_crm_arr is add-if-not-exists, so
+    // overlapping runs all see the column, and each only writes crm_arr onto its
+    // own run-scoped workspace (seeded.workspaceId). The column is an inert
+    // nullable numeric that the allowlist proof below is meant to keep out of
+    // every buyer payload anyway.
 
     it("keeps crm_arr and its value out of the payload — with ZERO edits to the FORBIDDEN patterns above", async () => {
       // Guard against a vacuous pass: on a multi-replica PostgREST setup, the

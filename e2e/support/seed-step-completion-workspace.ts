@@ -15,7 +15,7 @@
 // of APP_ENCRYPTION_KEY, and codes are six digits — same change, same
 // reasoning, as seed-portal-view-workspace.ts's own header note.
 //
-// Own dedicated "7e5a…" sentinel prefix — distinct from seed-leaky-
+// Own dedicated "7e5a…" sentinel prefix (run-scoped, see run-id.ts) — distinct from seed-leaky-
 // workspace.ts's "7e57…", seed-plan-builder-workspace.ts's "7e58…" and
 // seed-portal-view-workspace.ts's "7e59…" — so this fixture can never
 // collide with, or be torn down by, any other suite's cleanup.
@@ -28,15 +28,18 @@
 
 import { createHmac, hkdfSync } from "node:crypto";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
+import { runScopedEmail, runScopedId } from "../../tests/fixtures/run-id";
 
-export const TENANT_ID = "7e5a0000-0000-4000-8000-000000000001";
-export const WORKSPACE_ID = "7e5a0000-0000-4000-8000-000000000002";
-export const PLAN_ID = "7e5a0000-0000-4000-8000-000000000003";
-export const STAGE_ID = "7e5a0000-0000-4000-8000-000000000004";
-export const BUYER_STEP_ID = "7e5a0000-0000-4000-8000-000000000005";
+export const TENANT_ID = runScopedId("7e5a", "000000000001");
+export const WORKSPACE_ID = runScopedId("7e5a", "000000000002");
+export const PLAN_ID = runScopedId("7e5a", "000000000003");
+export const STAGE_ID = runScopedId("7e5a", "000000000004");
+export const BUYER_STEP_ID = runScopedId("7e5a", "000000000005");
 
-export const OWNER_EMAIL = "t35-9-step-completion-e2e@projectramp.invalid";
-export const BUYER_EMAIL = "buyer.t35-9-step-completion-e2e@step-completion-check.invalid";
+// Run-scoped ids and emails (tests/fixtures/run-id.ts); KNOWN_CODE stays fixed
+// because its token row is keyed by the run-scoped (workspace, email) pair.
+export const OWNER_EMAIL = runScopedEmail("t35-9-step-completion-e2e", "projectramp.invalid");
+export const BUYER_EMAIL = runScopedEmail("buyer.t35-9-step-completion-e2e", "step-completion-check.invalid");
 export const KNOWN_CODE = "814027";
 export const BUYER_STEP_LABEL = "Confirm rollout readiness (E2E)";
 
