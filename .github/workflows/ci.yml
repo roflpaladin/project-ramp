@@ -53,12 +53,10 @@ jobs:
     # carries a per-run token (tests/fixtures/run-id.ts), so overlapping runs —
     # CI or a local session — do not touch each other's rows, and the one DDL
     # step (the security tests add a column, never drop it) is idempotent.
-    # Kept serialized repo-wide anyway as cheap insurance for CI against CI, and
-    # NOT cancelled in progress — a run killed mid-way leaves fixture rows that
+    # So Tests jobs on different branches run side by side, with no repo-wide
+    # queue: a shared group keeps only ONE pending job, and every extra push
+    # cancelled someone else's. A run killed mid-way leaves fixture rows that
     # the next run's stale-fixture sweep (tests/fixtures/global-setup.ts) clears.
-    concurrency:
-      group: security-suite
-      cancel-in-progress: false
 
     steps:
       - name: Checkout
