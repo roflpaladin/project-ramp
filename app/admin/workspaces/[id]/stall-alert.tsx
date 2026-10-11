@@ -6,6 +6,10 @@ export interface StallAlertProps {
   signal: EngagementSignal;
   /** app/admin/workspaces/[id]/plan — the seller's one real destination for acting on a stalled plan. */
   planHref: string;
+  /** Where the quiet-deal "Close this deal" pointer goes. Defaults to planHref; the workspace page passes its own on-page anchor. */
+  closeDealHref?: string;
+  /** False when there is no plan to close or it is already closed: the quiet-deal pointer would lead nowhere, so it is hidden. Defaults to true. */
+  isCloseDealAvailable?: boolean;
   /**
    * T60. True when the deal-limit wall above has taken this page's one
    * Signal. The CTA still renders and still links to the same place — it
@@ -60,12 +64,12 @@ export interface StallAlertProps {
  * a second banner about the same silence — see engagement-copy.ts. That line
  * carries a PLAIN link, never a Signal.
  */
-export function StallAlert({ signal, planHref, isSignalSuppressed = false }: StallAlertProps) {
+export function StallAlert({ signal, planHref, closeDealHref, isCloseDealAvailable = true, isSignalSuppressed = false }: StallAlertProps) {
   if (signal.state === "active") return null;
 
   const isStalled = signal.state === "stalled";
   const label = describeEngagementState(signal);
-  const quietNote = describeQuietDeal(signal);
+  const quietNote = isCloseDealAvailable ? describeQuietDeal(signal) : null;
 
   return (
     <div className="wsa-alert" data-surface="stall-alert" data-tone={signal.state} data-testid="stall-alert">
@@ -85,7 +89,7 @@ export function StallAlert({ signal, planHref, isSignalSuppressed = false }: Sta
       {quietNote ? (
         <p className="wsa-quiet" data-testid="quiet-deal-note">
           {quietNote}{" "}
-          <a href={planHref} className="wsa-quiet-link">
+          <a href={closeDealHref ?? planHref} className="wsa-quiet-link">
             {QUIET_DEAL_LINK_LABEL}
           </a>
         </p>
