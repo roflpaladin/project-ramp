@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # The restore test: decrypts a backup made by backup.sh, restores it into a
 # throwaway database, and compares row counts with the ones taken at backup
-# time (compare-counts.mjs). pg_restore's stderr can quote row data, so only
-# its error COUNT is printed.
+# time (compare-counts.mjs). pg_restore's stderr can quote row data, so its
+# error lines go through redact-restore-errors.mjs before reaching the log.
 # Usage: BACKUP_PASSPHRASE=… restore-verify.sh <backup.tar.gpg> <scratch-db-url> <pg-bin-dir>
 set -euo pipefail
 backup="$1"; scratch_url="$2"; pg_bin="$3"
@@ -32,6 +32,7 @@ set +e
 "$pg_bin/pg_restore" --dbname="$scratch_url" --no-owner --no-privileges "$work/prod.dump" 2> "$work/errors.log"
 set -e
 echo "pg_restore reported $(grep -c 'error:' "$work/errors.log" || true) error line(s); row counts decide."
+node "$here/redact-restore-errors.mjs" "$work/errors.log"
 
 "$pg_bin/psql" "$scratch_url" -At -v ON_ERROR_STOP=1 -f "$here/counts.sql" > "$work/restored-counts.tsv"
 node "$here/compare-counts.mjs" "$work/prod-counts.tsv" "$work/restored-counts.tsv"
