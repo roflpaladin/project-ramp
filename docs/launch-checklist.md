@@ -23,7 +23,7 @@ manual plan override).
 - [x] **Footer links + About + /security PR merged** (`sprint-12-ticket-67-public-site`, PR #69, merged Oct 11). WHO: Session A builds, Founder approves the words and merges. WHEN: Oct 16. VERIFY: open https://www.getbrava.tech/security and the footer links on the home page; /security claims nothing untrue (no SSO, SLA or SOC 2).
 - [x] **"Close deal" at the top of the deal page** (`sprint-12-close-deal-top`, PR #70, merged Oct 11). WHO: Session A, Founder merges. WHEN: Oct 17. VERIFY: open any deal at /admin/workspaces/<id>, the button is at the top, looks right in light and dark.
 - [x] **Geist font** (`sprint-12-geist-font`, PR #71, merged Oct 11, with Brava page titles). WHO: Session A, Founder merges. WHEN: Oct 17. VERIFY: the home page text looks like Geist in both themes; numbers use the mono look.
-- [ ] **CI fixture ids** (`sprint-12-ci-fixture-ids`, PR #73, in review, **pending**). WHO: Session B, Founder merges. WHEN: Oct 16, before Oct 19. VERIFY: GitHub, CI tab, the check passes while the other session also pushes.
+- [x] **CI fixture ids** (`sprint-12-ci-fixture-ids`, PR #73, merged 2026-10-11). WHO: Session B, Founder merges. WHEN: Oct 16, before Oct 19. VERIFY: GitHub, CI tab, the check passes while the other session also pushes.
 - [x] **Backup PR merged** (T63, PR #67, merged Oct 11; first run green). WHO: Founder merges. WHEN: Oct 16. VERIFY: GitHub, Actions, "Prod backup" has a green run (see section 4c).
 - [x] **T66 Google/Microsoft sign-in: CUT by founder 2026-10-11, moved to the first post-launch sprint.** Nothing else waits on T66.
 - [ ] **Feature freeze confirmed.** WHO: Session A + Session B. WHEN: Sun Oct 18. VERIFY: both sessions say "freeze" in the hand-off; no open feature branches.

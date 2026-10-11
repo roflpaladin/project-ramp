@@ -13,9 +13,11 @@
 // Playwright's Node process) — same reasoning as the other e2e seed helpers.
 
 import { createClient as createServiceClient } from "@supabase/supabase-js";
+import { runScopedEmail } from "../../tests/fixtures/run-id";
 
 const COMPANY_NAME = "T65 password reset E2E";
-export const SELLER_EMAIL = "t65-password-reset-e2e@projectramp.invalid";
+// Run-scoped so a concurrent run on the shared dev database has its own seller.
+export const SELLER_EMAIL = runScopedEmail("t65-password-reset-e2e", "projectramp.invalid");
 export const OLD_PASSWORD = "e2e-old-correct-horse-9";
 export const NEW_PASSWORD = "e2e-new-battery-staple-7";
 
@@ -40,9 +42,14 @@ export async function teardownPasswordResetSeller(): Promise<void> {
   const { data, error } = await admin.auth.admin.listUsers({ perPage: USER_PAGE_SIZE });
   if (error) throw new Error(`teardownPasswordResetSeller: listing users failed: ${error.message}`);
 
+  // Delete the tenant by the id this run inserted (carried in the seller's
+  // app_metadata), never by company_name: the name is shared by every run, so a
+  // name match would delete a concurrent run's tenant.
   const seller = data.users.find((user) => user.email === SELLER_EMAIL);
-  if (seller) await admin.auth.admin.deleteUser(seller.id);
-  await admin.from("tenants").delete().eq("company_name", COMPANY_NAME);
+  if (!seller) return;
+  const tenantId = seller.app_metadata?.tenant_id;
+  await admin.auth.admin.deleteUser(seller.id);
+  if (typeof tenantId === "string") await admin.from("tenants").delete().eq("id", tenantId);
 }
 
 export async function seedPasswordResetSeller(): Promise<void> {

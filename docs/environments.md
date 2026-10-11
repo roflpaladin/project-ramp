@@ -54,9 +54,10 @@ runs break each other mid-assertion.
   the other one ("slot?") and waits for "free"; when finished it says "slot
   released". Only one session holds the slot at a time. This is a human
   convention, nothing enforces it.
-- **Planned fix.** Run-scoped fixture ids (PR #73, in review) give each run its
-  own rows so runs stop colliding. After it merges, the concurrency group will
-  be removed and the slot handoff should no longer be needed for CI.
+- **Fix landed.** Run-scoped fixture ids (PR #73, merged 2026-10-11) give each
+  run its own rows so runs stop colliding (see "Running tests while another run
+  is going" below). The concurrency group is being removed in a follow-up PR;
+  until that merges, keep opening PRs one at a time.
 
 ## Running tests
 
@@ -80,6 +81,25 @@ write the **shared dev DB** (see above). `.env.local` must point at **DEV**, nev
   security specs test stale output.
 - `npm run test:security` runs just `tests/security`; `npm run typecheck` and
   `npm run lint` are separate.
+
+## Running tests while another run is going
+
+Every test run mints one `TEST_RUN_ID` (in `vitest.config.ts` /
+`playwright.config.ts`) and every fixture id and email carries it
+(`tests/fixtures/run-id.ts`). CI, session A and session B can therefore run
+against the shared dev project at the same time without touching each other's
+rows. Two things to know:
+
+- Two local runs on one machine both want port 4173 for the live server. Give
+  the second one its own: `LIVE_SERVER_PORT=4174 npm run test` (Playwright reads
+  the same variable). It must be a whole number from 1024 to 65535.
+- A crashed run can leave rows behind. Each run starts by sweeping fixture rows
+  older than six hours (`tests/fixtures/sweep-stale-fixtures.ts`). To clean one
+  up sooner, re-run with the same id: `TEST_RUN_ID=<11 hex chars> npm run test`.
+
+The `crm_arr` column that `buyer-boundary.spec.ts` adds is no longer dropped
+after the run (a concurrent run's drop would break the other run mid-test).
+It stays on dev as an unused nullable column.
 
 ## Secrets: one value per environment
 
