@@ -46,6 +46,7 @@ vi.mock("@/app/admin/workspaces/[id]/invite-actions", () => ({
 const { ActivationChecklist } = await import("@/app/admin/workspaces/[id]/activation-checklist");
 const { StallAlert } = await import("@/app/admin/workspaces/[id]/stall-alert");
 const { InvitePanel } = await import("@/app/admin/workspaces/[id]/invite-panel");
+const { WorkspaceCloseDeal } = await import("@/app/admin/workspaces/[id]/workspace-close-deal");
 const { resolveWorkspaceSignalOwners } = await import("@/app/admin/workspaces/[id]/workspace-signal-budget");
 
 afterEach(() => {
@@ -107,6 +108,7 @@ function WorkspaceSignalHarness({
 
   return (
     <>
+      <WorkspaceCloseDeal workspaceId={WORKSPACE_ID} plan={{ id: "plan-1", status: "active" }} />
       <ActivationChecklist
         workspaceId={WORKSPACE_ID}
         plan={{ id: "plan-1", status: "draft" }}
@@ -148,6 +150,17 @@ describe("Workspace dashboard — never two Signals at once", () => {
       }
     }
   }
+});
+
+describe("Workspace dashboard — Close deal at the top (founder ruling 2026-10-11)", () => {
+  it("is present in the harness and never carries Signal", () => {
+    const { container } = render(<WorkspaceSignalHarness dealLimit={DEAL_LIMITS.ok} engagementState="stalled" />);
+
+    const closeDeal = container.querySelector('[data-surface="close-deal"]');
+    expect(closeDeal).not.toBeNull();
+    expect(closeDeal?.querySelector("[data-signal]")).toBeNull();
+    expect(closeDeal?.closest("[data-signal]")).toBeNull();
+  });
 });
 
 describe("Workspace dashboard — the hand-off itself", () => {

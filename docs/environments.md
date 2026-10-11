@@ -333,3 +333,43 @@ code that stops using the object first, then drop it.
 
 > Source-of-truth note: this runbook is operational/local. Product, schema, and
 > RLS truth still live in Notion ("Technical Source of Truth") per CLAUDE.md.
+
+## Backups (prod)
+
+**Decision (2026-09-26, Ticket 63):** prod stays on Supabase **Free**, which has
+no restorable platform backups. Instead, `.github/workflows/prod-backup.yml`
+takes one **every Sunday at 02:17 UTC** (and on demand: GitHub → Actions →
+"Prod backup" → Run workflow).
+
+- **Recovery point: up to 7 days.** Anything written since the last Sunday
+  backup is lost in a disaster. **Revisit Supabase Pro (daily backups) at the
+  first paying customers.**
+- **What's in it:** the `public` and `auth` schemas (all app data plus seller
+  logins). `rate_limit_windows` data is left out on purpose (scratch state).
+  The app stores no files in Supabase Storage.
+- **Where:** each run's workflow artifact, `prod-backup-<date>-run<id>`, kept
+  **90 days**. It is one gpg-encrypted file (AES256). The passphrase lives only
+  in the `BACKUP_PASSPHRASE` repo secret and the founder's password manager;
+  **without it no backup can be opened.**
+- **Tested every time:** the same run restores the backup into a throwaway
+  Postgres and fails unless every table's row count matches prod's (small
+  drift allowed for writes during the dump). A failed run emails the repo
+  owner. `.github/workflows/backup-selftest.yml` proves the mechanics on
+  fake data whenever the backup scripts change.
+- **Secrets:** `PROD_DB_URL` (prod **session pooler** connection string, since
+  GitHub runners have no IPv6 for the direct one) and `BACKUP_PASSPHRASE`.
+  Rotating the prod database password means updating `PROD_DB_URL` too.
+
+**Real restore (disaster only; get a second pair of eyes first):**
+1. Create a NEW Supabase project; never restore over a live one.
+2. Download the newest `prod-backup-…` artifact from the latest green run.
+3. On a machine with gpg and a matching `pg_restore`:
+   `gpg --decrypt backup.tar.gpg | tar -xf -` (asks for the passphrase). A
+   new Supabase project already has its own `auth` tables, so restore the
+   seller accounts as data only, then the app schema:
+   `pg_restore --no-owner --no-privileges --data-only --schema=auth --table=users --dbname="$NEW" prod.dump`
+   `pg_restore --no-owner --no-privileges --schema=public --dbname="$NEW" prod.dump`
+   (`$NEW` = the new project's session pooler connection string).
+4. Compare `prod-counts.tsv` (from the archive) against
+   `psql … -At -f scripts/backup/counts.sql`, then point Vercel's env vars at
+   the new project and redeploy.

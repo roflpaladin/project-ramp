@@ -9,7 +9,7 @@
   min-height: 100dvh;
   background: var(--paper);
   color: var(--ink);
-  font-family: "Geist", "Inter", system-ui, -apple-system, sans-serif;
+  font-family: var(--font-sans);
   display: flex;
   align-items: center;
   justify-content: center;

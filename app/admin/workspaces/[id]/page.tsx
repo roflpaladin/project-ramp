@@ -25,6 +25,8 @@ import { ChatUrlForm } from "./chat-url-form";
 import { StallAlert } from "./stall-alert";
 import { InvitePanel } from "./invite-panel";
 import { ActivationChecklist } from "./activation-checklist";
+import { WorkspaceCloseDeal } from "./workspace-close-deal";
+import { CLOSE_DEAL_ANCHOR_ID, WORKSPACE_TITLE_ID } from "./workspace-close-deal-ids";
 import "./workspace-links.css";
 
 /** Flattens the plan tree's stages into a single ordered step list — the
@@ -201,7 +203,9 @@ export default async function WorkspaceDetailPage({
           way to set them the first time. */}
       <div className="wsl-page-header">
         <div>
-          <h1>{workspace.target_company_name}</h1>
+          <h1 id={WORKSPACE_TITLE_ID} tabIndex={-1}>
+            {workspace.target_company_name}
+          </h1>
           <p>Domain: {workspace.target_domain}</p>
         </div>
         <div className="wsl-chat-chrome">
@@ -220,6 +224,11 @@ export default async function WorkspaceDetailPage({
           </details>
         </div>
       </div>
+
+      {/* Founder ruling 2026-10-11: Close deal also sits at the top of the
+          deal's page (it still lives at the foot of the plan builder too).
+          Quiet disclosure, zero Signal — see workspace-close-deal.tsx. */}
+      <WorkspaceCloseDeal workspaceId={id} plan={plan ? { id: plan.id, status: plan.status } : null} />
 
       {/* T58: the onboarding activation checklist — owns its own auto-hide
           rule (dismissed OR complete), so it's always mounted here rather
@@ -243,6 +252,8 @@ export default async function WorkspaceDetailPage({
       <StallAlert
         signal={engagementSignal}
         planHref={`/admin/workspaces/${id}/plan`}
+        closeDealHref={`#${CLOSE_DEAL_ANCHOR_ID}`}
+        isCloseDealAvailable={plan !== null && closedPlanStatus === null}
         isSignalSuppressed={signalOwners.isStallSignalSuppressed}
       />
 

@@ -24,9 +24,10 @@
 // exists in either mode.
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import { HEADLINE_VARIANT_COOKIE_NAME } from "@/lib/landing/headline-variant";
 import { HEADLINE_VARIANTS } from "@/app/landing-variants";
+import { LANDING_ABOUT_BODY } from "@/app/landing-copy";
 
 let mockHeadlineCookieValue: string | undefined;
 
@@ -149,6 +150,29 @@ describe("Home — footer legal links", () => {
     expect(screen.getByRole("link", { name: /terms/i })).toHaveAttribute("href", "/terms");
     expect(screen.getByRole("link", { name: /privacy/i })).toHaveAttribute("href", "/privacy");
     expect(screen.getByRole("link", { name: /refunds/i })).toHaveAttribute("href", "/refunds");
+  });
+});
+
+describe("Home — footer product links and About section (T67)", () => {
+  it("links to /pricing and /security in a Product nav, legal links in a Legal nav", async () => {
+    vi.stubGlobal("fetch", mockFetch.mockResolvedValue(new Response(null, { status: 200 })));
+    setLandingModeEnv(undefined);
+    await renderHome();
+
+    const product = screen.getByRole("navigation", { name: "Product" });
+    expect(within(product).getByRole("link", { name: "Pricing" })).toHaveAttribute("href", "/pricing");
+    expect(within(product).getByRole("link", { name: "Security" })).toHaveAttribute("href", "/security");
+    const legal = screen.getByRole("navigation", { name: "Legal" });
+    expect(within(legal).getAllByRole("link")).toHaveLength(3);
+  });
+
+  it("renders the About Brava section with the copy constant", async () => {
+    vi.stubGlobal("fetch", mockFetch.mockResolvedValue(new Response(null, { status: 200 })));
+    setLandingModeEnv(undefined);
+    await renderHome();
+
+    expect(screen.getByRole("heading", { level: 2, name: "About Brava" })).toBeInTheDocument();
+    expect(screen.getByText(LANDING_ABOUT_BODY)).toBeInTheDocument();
   });
 });
 

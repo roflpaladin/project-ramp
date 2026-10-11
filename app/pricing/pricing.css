@@ -18,12 +18,12 @@
   min-height: 100dvh;
   background: var(--paper);
   color: var(--ink);
-  font-family: "Geist", "Inter", system-ui, -apple-system, sans-serif;
+  font-family: var(--font-sans);
   font-weight: 400;
 }
 
 [data-surface="pricing"] .pr-mono {
-  font-family: "Geist Mono", "SFMono-Regular", ui-monospace, monospace;
+  font-family: var(--font-mono);
 }
 
 @media (prefers-reduced-motion: reduce) {

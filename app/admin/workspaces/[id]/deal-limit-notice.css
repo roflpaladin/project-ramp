@@ -34,7 +34,7 @@
   background: var(--paper);
   /* T60 MUST fix: the admin/plan surfaces never declared Geist — see
      app/globals.css's system-ui body default. */
-  font-family: "Geist", "Inter", system-ui, -apple-system, sans-serif;
+  font-family: var(--font-sans);
 }
 
 [data-surface="deal-limit-notice"] .dln-status {
@@ -79,7 +79,7 @@
 /* Data and numbers in Geist Mono (design system MUST). */
 [data-surface="deal-limit-notice"] .dln-count {
   margin: 0;
-  font-family: "Geist Mono", "SFMono-Regular", ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 500;
   /* T60 type-scale fix: micro scale (12/16), explicit line-height. */

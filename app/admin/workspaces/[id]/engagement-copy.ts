@@ -53,5 +53,5 @@ export function describeQuietDeal(signal: EngagementSignal): string | null {
   return `Your buyer hasn't opened this in ${signal.daysSinceLastActivity} days. If the deal is finished, close it to free a slot.`;
 }
 
-/** The plain link beside the line above — the plan page is where Close deal lives. */
+/** The plain link beside the line above — jumps to Close deal at the top of this same page. */
 export const QUIET_DEAL_LINK_LABEL = "Close this deal";

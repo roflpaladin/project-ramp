@@ -19,7 +19,7 @@
 /* T60 MUST fix: the admin/plan surfaces never declared Geist — see
    app/globals.css's system-ui body default. */
 [data-surface="workspace-links"] {
-  font-family: "Geist", "Inter", system-ui, -apple-system, sans-serif;
+  font-family: var(--font-sans);
 }
 
 /* ---- link rows ----------------------------------------------------------- */
@@ -174,7 +174,7 @@
 
 [data-surface="workspace-links"] .wsl-type-heading {
   margin: 0;
-  font-family: "Geist Mono", "SFMono-Regular", ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 500;
   color: var(--slate);
@@ -247,6 +247,13 @@
   border-radius: 10px;
   background: var(--paper);
   min-width: 260px;
+}
+
+/* Founder ruling 2026-10-11: Close deal at the top of the page. The card's own
+   border/padding come from close-deal-controls.css; this only spaces it. */
+[data-surface="workspace-links"] .wsl-close-deal {
+  margin: 12px 0 16px;
+  max-width: 100%;
 }
 
 /* ---- nav link to the plan builder ------------------------------------------ */
