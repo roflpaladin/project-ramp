@@ -1,0 +1,127 @@
+name: Prod backup
+
+# Sprint 12, Ticket 63 — founder ruling (Sep 26): prod stays on Supabase Free,
+# which has no restorable platform backups. This workflow is the backup:
+#
+#   1. backup: pg_dump prod (public + auth schemas) with a client matching
+#      prod's Postgres major, record per-table row counts, encrypt both with
+#      gpg (AES256, passphrase from a secret), keep the result as an artifact
+#      for 90 days. The dump holds customer personal data: nothing unencrypted
+#      leaves the runner, and no row data is ever printed to the log.
+#   2. verify: every backup is also a restore test. A throwaway Postgres of
+#      the same major (a service container, gone when the job ends) gets the
+#      decrypted dump, and its row counts must match prod's
+#      (scripts/backup/compare-counts.mjs). Real data never touches the dev
+#      project.
+#
+# Recovery point: up to 7 days. Revisit Supabase Pro at the first paying
+# customers. Runbook: docs/environments.md, "Backups (prod)".
+#
+# Secrets (repository → Settings → Secrets and variables → Actions):
+#   PROD_DB_URL        Supabase prod SESSION POOLER connection string (IPv4;
+#                      the direct connection is IPv6-only on Free, and
+#                      GitHub runners have no IPv6).
+#   BACKUP_PASSPHRASE  Encryption passphrase. Kept by the founder in a
+#                      password manager: without it no backup can be opened.
+#
+# A failed scheduled run emails the repository owner (GitHub's default).
+
+on:
+  schedule:
+    # Sundays 02:17 UTC: quiet hours, and off the top of the hour when
+    # GitHub's scheduler is busiest.
+    - cron: "17 2 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: prod-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    name: Dump and encrypt prod
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    outputs:
+      pg_major: ${{ steps.version.outputs.pg_major }}
+      artifact: ${{ steps.backup.outputs.artifact }}
+    env:
+      PROD_DB_URL: ${{ secrets.PROD_DB_URL }}
+      BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check secrets are present
+        run: |
+          missing=""
+          [ -n "$PROD_DB_URL" ] || missing="$missing PROD_DB_URL"
+          [ -n "$BACKUP_PASSPHRASE" ] || missing="$missing BACKUP_PASSPHRASE"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secret(s):$missing. No backup was taken."
+            exit 1
+          fi
+
+      - name: Read prod's Postgres major version
+        id: version
+        run: |
+          num=$(psql "$PROD_DB_URL" -Atc "show server_version_num")
+          if ! [[ "$num" =~ ^[0-9]+$ ]] || [ "$((num / 10000))" -lt 14 ]; then
+            echo "::error::Unexpected server version reply."
+            exit 1
+          fi
+          echo "pg_major=$((num / 10000))" >> "$GITHUB_OUTPUT"
+          echo "Prod runs Postgres $((num / 10000))."
+
+      - name: Dump, count and encrypt
+        id: backup
+        run: |
+          pg_bin=$(scripts/backup/install-pg-client.sh "${{ steps.version.outputs.pg_major }}")
+          scripts/backup/backup.sh "$PROD_DB_URL" "$pg_bin" backup.tar.gpg
+          echo "artifact=prod-backup-$(date -u +%Y-%m-%d)-run${{ github.run_id }}" >> "$GITHUB_OUTPUT"
+
+      - name: Keep for 90 days
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ steps.backup.outputs.artifact }}
+          path: backup.tar.gpg
+          retention-days: 90
+          compression-level: 0
+          if-no-files-found: error
+
+  verify:
+    name: Restore test
+    needs: backup
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      scratch:
+        image: postgres:${{ needs.backup.outputs.pg_major }}
+        env:
+          POSTGRES_PASSWORD: scratch
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download this run's backup
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ needs.backup.outputs.artifact }}
+
+      - name: Restore into a throwaway database and compare row counts
+        run: |
+          pg_bin=$(scripts/backup/install-pg-client.sh "${{ needs.backup.outputs.pg_major }}")
+          scripts/backup/restore-verify.sh backup.tar.gpg postgresql://postgres:scratch@localhost:5432/postgres "$pg_bin"
+
+      - name: Remove the downloaded backup
+        if: always()
+        run: rm -f backup.tar.gpg

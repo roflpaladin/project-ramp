@@ -1,0 +1,102 @@
+name: Backup self-test
+
+# Sprint 12, Ticket 63. Proves the prod backup mechanics
+# (.github/workflows/prod-backup.yml, scripts/backup/) on every change to
+# them, with NO real data and NO secrets: a source Postgres gets a small fake
+# public + auth schema, then the same backup.sh → restore-verify.sh the prod
+# workflow runs must round-trip it through gpg into a second, empty Postgres
+# with matching row counts. A deliberately broken restore must fail.
+
+on:
+  pull_request:
+    paths:
+      - "scripts/backup/**"
+      - ".github/workflows/prod-backup.yml"
+      - ".github/workflows/backup-selftest.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PG_MAJOR: "17"
+  SOURCE_URL: postgresql://postgres:source@localhost:5433/postgres
+  SCRATCH_URL: postgresql://postgres:scratch@localhost:5432/postgres
+  # Not a secret: this run only ever holds fake rows.
+  BACKUP_PASSPHRASE: self-test-only-passphrase
+
+jobs:
+  roundtrip:
+    name: Backup round-trip
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      source:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: source
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 20
+      scratch:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: scratch
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install client tools
+        run: echo "PG_BIN=$(scripts/backup/install-pg-client.sh "$PG_MAJOR")" >> "$GITHUB_ENV"
+
+      - name: Seed fake Supabase-shaped data
+        run: |
+          "$PG_BIN/psql" "$SOURCE_URL" -v ON_ERROR_STOP=1 -q -c "
+            create role authenticated nologin;
+            create schema auth;
+            create table auth.users (id uuid primary key default gen_random_uuid(), email text);
+            create table auth.sessions (id uuid primary key default gen_random_uuid());
+            create table public.tenants (id uuid primary key default gen_random_uuid(), company_name text);
+            create table public.workspaces (id uuid primary key default gen_random_uuid(),
+              tenant_id uuid not null references public.tenants(id), owner uuid references auth.users(id));
+            alter table public.workspaces enable row level security;
+            create policy tenant_read on public.workspaces for select to authenticated using (true);
+            create table public.billing_checkout_refs (id int primary key);
+            create unlogged table public.rate_limit_windows (key_hash text primary key, request_count int);
+            insert into auth.users (email) select 'seller' || g || '@example.invalid' from generate_series(1, 7) g;
+            insert into public.tenants (company_name) select 'Fake Co ' || g from generate_series(1, 5) g;
+            insert into public.workspaces (tenant_id) select id from public.tenants cross join generate_series(1, 3);
+            insert into public.rate_limit_windows values ('k', 1);"
+
+      - name: Backup (same script as prod)
+        run: scripts/backup/backup.sh "$SOURCE_URL" "$PG_BIN" backup.tar.gpg
+
+      - name: The backup is encrypted
+        run: |
+          if file backup.tar.gpg | grep -qi "tar archive"; then echo "::error::Backup is not encrypted."; exit 1; fi
+          if grep -a -q "example.invalid" backup.tar.gpg; then echo "::error::Plaintext row data found in the backup."; exit 1; fi
+          echo "Encrypted: $(file -b backup.tar.gpg)"
+
+      - name: Restore test (same script as prod) must pass
+        run: scripts/backup/restore-verify.sh backup.tar.gpg "$SCRATCH_URL" "$PG_BIN"
+
+      - name: A restore that lost rows must fail
+        run: |
+          gpg --batch --pinentry-mode loopback --passphrase "$BACKUP_PASSPHRASE" --decrypt backup.tar.gpg \
+            | tar -xOf - prod-counts.tsv > prod.tsv
+          "$PG_BIN/psql" "$SCRATCH_URL" -q -c "truncate public.workspaces;"
+          "$PG_BIN/psql" "$SCRATCH_URL" -At -f scripts/backup/counts.sql > restored.tsv
+          if node scripts/backup/compare-counts.mjs prod.tsv restored.tsv; then
+            echo "::error::A restore with an emptied table passed the comparison."; exit 1
+          fi
+          echo "Lost rows are caught, as they should be."
+
+      - name: A wrong passphrase must fail
+        run: |
+          if BACKUP_PASSPHRASE=wrong scripts/backup/restore-verify.sh backup.tar.gpg "$SCRATCH_URL" "$PG_BIN"; then
+            echo "::error::Restore with the wrong passphrase did not fail."; exit 1
+          fi
+          echo "Wrong passphrase rejected, as it should be."
