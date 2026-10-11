@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { getLandingMode } from "@/lib/landing/mode";
 import { HEADLINE_VARIANT_COOKIE_NAME, resolveHeadlineVariant } from "@/lib/landing/headline-variant";
 import {
+  LANDING_ABOUT_BODY,
   LANDING_HERO_NOTE,
   LANDING_KICKER,
   LANDING_SUBLINE,
@@ -116,16 +117,30 @@ export default async function Home() {
         </ul>
       </section>
 
+      <section aria-labelledby="lp-about-heading">
+        <h2 id="lp-about-heading" className="lp-section-title">
+          <span className="lp-gesture" aria-hidden="true" />
+          About Brava
+        </h2>
+        <p className="lp-about-body">{LANDING_ABOUT_BODY}</p>
+      </section>
+
       <footer className="lp-footer">
         <div className="lp-footer-brand">
           <span className="lp-mark lp-mark--footer">brava</span>
           <p className="lp-footer-tagline">One plan. One next move.</p>
         </div>
-        <nav className="lp-footer-nav" aria-label="Legal">
-          <Link href="/terms">Terms</Link>
-          <Link href="/privacy">Privacy</Link>
-          <Link href="/refunds">Refunds</Link>
-        </nav>
+        <div className="lp-footer-navs">
+          <nav className="lp-footer-nav" aria-label="Product">
+            <Link href="/pricing">Pricing</Link>
+            <Link href="/security">Security</Link>
+          </nav>
+          <nav className="lp-footer-nav" aria-label="Legal">
+            <Link href="/terms">Terms</Link>
+            <Link href="/privacy">Privacy</Link>
+            <Link href="/refunds">Refunds</Link>
+          </nav>
+        </div>
       </footer>
     </main>
   );

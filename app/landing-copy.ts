@@ -36,3 +36,8 @@ export const LANDING_VALUE_PROPS: readonly ValueProp[] = [
     body: "Your buyer gets their own view of the same plan, with their own next step, not a forwarded PDF.",
   },
 ];
+
+// About section (T67). Founder approval of the exact words is pending, so the
+// whole paragraph lives in this one constant: a one-line change.
+export const LANDING_ABOUT_BODY =
+  "Brava is deal control software that lets sales teams work with their buyers to succeed together. We kept seeing sellers lose deals because no one was clear on who was doing what, and teams got stuck in email chains with too many stakeholders. CRMs are great at recording deals, but they don't empower sellers to take control of them. We believe in empowerment, and in making everyone accountable for the outcome.";
