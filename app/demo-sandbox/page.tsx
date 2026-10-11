@@ -5,7 +5,7 @@ import { ResetSandbox } from "./reset-sandbox";
 
 // Pitch tool — keep it out of search indexes.
 export const metadata: Metadata = {
-  title: "Live Demo Engine — Project Ramp",
+  title: "Live demo — Brava",
   robots: { index: false, follow: false },
 };
 
