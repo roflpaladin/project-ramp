@@ -376,6 +376,9 @@ answers **401** (same as a bad signature) and only the server log says why.
 **Testing.** Paddle's simulator only works if the destination's usage type is
 **"platform + simulation"**. Send a simulated event and expect **200 `{"ok":true}`**.
 A 401 means a wrong or missing secret (check the log for `[paddle-webhook]`).
+A 429 (with `Retry-After`) means more than 300 requests per minute from one IP
+(`PADDLE_WEBHOOK_RATE_LIMIT`, checked before anything else); it only catches a
+flood, never Paddle's normal retries.
 
 **Never delete Paddle entities** (destinations, products, prices, customers,
 subscriptions). Refund and cancel only; deactivating is the most you do to a
