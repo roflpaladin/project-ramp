@@ -22,13 +22,21 @@ export const SAFE_NEXT_PATH_PREFIXES: readonly string[] = [
   "/admin",
 ];
 
-const SAFE_NEXT_PATTERN = /^\/(?!\/)[A-Za-z0-9\-._~/?=&+,@!$'()*;]*$/;
+// Allowed by prefix above but never a valid return target: /admin/login
+// renders its raw `error` query param, so a `next` pointing at it would let a
+// crafted link inject content into the login page.
+export const DENIED_NEXT_PATHS: readonly string[] = ["/admin/login"];
+
+function matchesPath(pathname: string, base: string): boolean {
+  return pathname === base || pathname.startsWith(`${base}/`);
+}
+
+const SAFE_NEXT_PATTERN = /^\/(?!\/)[A-Za-z0-9\-._~/?=&+,@!$'()*]*$/;
 
 function isAllowedPath(pathname: string): boolean {
   if (pathname.split("/").includes("..")) return false;
-  return SAFE_NEXT_PATH_PREFIXES.some(
-    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
-  );
+  if (DENIED_NEXT_PATHS.some((denied) => matchesPath(pathname, denied))) return false;
+  return SAFE_NEXT_PATH_PREFIXES.some((prefix) => matchesPath(pathname, prefix));
 }
 
 export function parseSafeNext(raw: unknown): string | null {

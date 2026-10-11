@@ -62,10 +62,10 @@ export async function registerSeller(formData: FormData): Promise<void> {
   const { error } = await supabase.auth.signInWithPassword({ email, password });
 
   if (error) {
-    // (`next` is not carried: /admin/login has no `next` support yet.)
     // The account exists (provisionSeller already succeeded) but the
     // immediate sign-in failed — send them to the normal login form rather
     // than stranding them on a broken redirect loop back to /register.
+    // `next` is not carried: /admin/login has no `next` support yet.
     redirect(
       `/admin/login?error=${encodeURIComponent("Your account was created — sign in to continue.")}`,
     );

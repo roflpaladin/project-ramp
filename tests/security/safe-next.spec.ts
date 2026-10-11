@@ -14,8 +14,26 @@ describe("parseSafeNext — accepted", () => {
     "/admin",
     "/admin/onboarding",
     "/admin/workspaces/new",
+    "/admin/@evil.com",
+    "/admin?//evil.com",
+    "/admin//evil.com",
+    "/admin/.",
+    "/pricing/./",
   ])("keeps %s", (value) => {
     expect(parseSafeNext(value)).toBe(value);
+  });
+});
+
+describe("parseSafeNext — length boundary", () => {
+  const prefix = "/pricing?x=";
+  it("accepts exactly MAX_NEXT_LENGTH", () => {
+    const value = prefix + "a".repeat(MAX_NEXT_LENGTH - prefix.length);
+    expect(value).toHaveLength(MAX_NEXT_LENGTH);
+    expect(parseSafeNext(value)).toBe(value);
+  });
+
+  it("rejects MAX_NEXT_LENGTH + 1", () => {
+    expect(parseSafeNext(prefix + "a".repeat(MAX_NEXT_LENGTH - prefix.length + 1))).toBeNull();
   });
 });
 
@@ -48,6 +66,18 @@ describe("parseSafeNext — rejected", () => {
     ["prefix lookalike", "/pricingevil"],
     ["admin lookalike", "/administrator"],
     ["root", "/"],
+    ["userinfo-style host", "/admin@evil.com"],
+    ["semicolon", "/admin;x"],
+    ["leading dot segment", "/./pricing"],
+    ["trailing dot-dot", "/pricing/.."],
+    ["dot-dot with semicolon", "/admin/..;/x"],
+    ["slash backslash slash", "/\\/pricing"],
+    ["cyrillic a lookalike", "/\u0430dmin"],
+    ["fullwidth slash", "/pricing\uff0fx"],
+    ["denied login", "/admin/login"],
+    ["denied login with query", "/admin/login?error=x"],
+    ["denied login subpath", "/admin/login/x"],
+    ["login deny is by segment", "/admin/login/"],
     ["too long", `/pricing?x=${"a".repeat(MAX_NEXT_LENGTH)}`],
   ])("drops %s", (_label, value) => {
     expect(parseSafeNext(value)).toBeNull();

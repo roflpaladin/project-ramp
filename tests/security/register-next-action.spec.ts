@@ -64,7 +64,7 @@ describe("registerSeller — next", () => {
   });
 
   it.each(["//evil.com", "https://evil.com", "/\\evil.com", "%2F%2Fevil.com", "/evil"])(
-    "drops malicious next %s on success",
+    "drops unsafe next %s on success",
     async (next) => {
       expect(await submit({ next })).toBe("/admin/onboarding");
     },
@@ -100,6 +100,6 @@ describe("registerSeller — next", () => {
     signInWithPassword.mockResolvedValue({ error: { message: "x" } });
     const location = await submit({ next: "/pricing" });
     expect(location.startsWith("/admin/login?error=")).toBe(true);
-    expect(location).not.toContain("next");
+    expect(new URL(location, "http://x").searchParams.has("next")).toBe(false);
   });
 });
