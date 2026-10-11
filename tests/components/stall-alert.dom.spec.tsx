@@ -166,6 +166,29 @@ describe("StallAlert — the quiet-deal line (T60)", () => {
     expect(link).not.toHaveAttribute("data-signal");
   });
 
+  it("points the Close this deal link at the on-page anchor when one is given", () => {
+    render(
+      <StallAlert
+        signal={makeSignal({ state: "stalled", openBuyerStepCount: 1, daysSinceLastActivity: 21 })}
+        planHref={PLAN_HREF}
+        closeDealHref="#close-deal"
+      />,
+    );
+    expect(screen.getByRole("link", { name: "Close this deal" })).toHaveAttribute("href", "#close-deal");
+  });
+
+  it("hides the quiet-deal pointer when there is no open plan to close", () => {
+    render(
+      <StallAlert
+        signal={makeSignal({ state: "stalled", openBuyerStepCount: 1, daysSinceLastActivity: 21 })}
+        planHref={PLAN_HREF}
+        isCloseDealAvailable={false}
+      />,
+    );
+    expect(screen.queryByTestId("quiet-deal-note")).toBeNull();
+    expect(screen.queryByRole("link", { name: "Close this deal" })).toBeNull();
+  });
+
   it("adds the same line in the waiting state — it is buyer silence, not open buyer steps, that triggers it", () => {
     render(
       <StallAlert

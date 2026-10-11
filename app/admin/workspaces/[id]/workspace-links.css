@@ -249,6 +249,13 @@
   min-width: 260px;
 }
 
+/* Founder ruling 2026-10-11: Close deal at the top of the page. The card's own
+   border/padding come from close-deal-controls.css; this only spaces it. */
+[data-surface="workspace-links"] .wsl-close-deal {
+  margin: 12px 0 16px;
+  max-width: 100%;
+}
+
 /* ---- nav link to the plan builder ------------------------------------------ */
 
 [data-surface="workspace-links"] .wsl-plan-nav {
