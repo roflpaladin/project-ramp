@@ -28,7 +28,8 @@ through env, so repointing `.env.local` is the entire switch.
 The bare domain `https://getbrava.tech` 308-redirects to
 `https://www.getbrava.tech`. Two values are deliberately different:
 
-- `NEXT_PUBLIC_APP_URL` is the **bare** domain, `https://getbrava.tech`: the
+- `NEXT_PUBLIC_APP_URL` is the **bare** domain, `https://getbrava.tech`
+  (Vercel Production value confirmed by the founder 2026-10-11): the
   CRM OAuth callbacks (HubSpot, Salesforce) are registered against it, and they
   must match byte for byte.
 - Everything public uses **`https://www.getbrava.tech`**: links we share, the
