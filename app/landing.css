@@ -250,6 +250,20 @@
   color: var(--slate);
 }
 
+[data-surface="landing"] .lp-about-body {
+  margin: 0;
+  max-width: 68ch;
+  font-size: 16px;
+  line-height: 24px;
+  color: var(--ink);
+}
+
+[data-surface="landing"] .lp-footer-navs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px 32px;
+}
+
 [data-surface="landing"] .lp-footer-nav {
   display: flex;
   flex-wrap: wrap;
