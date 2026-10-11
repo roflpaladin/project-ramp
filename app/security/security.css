@@ -1,0 +1,22 @@
+/* /security page (T67). Shares the legal shell (app/legal/legal.css); this
+   file only adds the back link. Tokens only — no raw colour values. Signal is
+   reserved for the focus ring, matching the legal pages. */
+
+[data-surface="legal"] .sec-back {
+  margin: 24px 0 0;
+  font-size: 13px;
+  line-height: 18px;
+}
+
+[data-surface="legal"] .sec-back a {
+  color: var(--slate);
+  text-decoration: none;
+}
+[data-surface="legal"] .sec-back a:hover {
+  color: var(--ink);
+  text-decoration: underline;
+}
+[data-surface="legal"] .sec-back a:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
