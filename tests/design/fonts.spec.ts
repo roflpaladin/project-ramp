@@ -30,6 +30,8 @@ describe("root layout", () => {
     expect(layout.match(/weight: \["400", "500", "600"\]/g)).toHaveLength(2);
     expect(layout).toContain('--font-geist-sans');
     expect(layout).toContain('--font-geist-mono');
+    // The variables only resolve if both classes land on <html>.
+    expect(layout).toContain("className={`${geistSans.variable} ${geistMono.variable}`}");
   });
 
   it("uses Brava as the default tab title and never the codename", () => {
