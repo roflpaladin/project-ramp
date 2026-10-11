@@ -54,7 +54,6 @@ export default function SecurityPage() {
       <p className="lg-body">Transactional email, such as access codes and password resets, is sent through Resend.</p>
 
       <h2 className="lg-section-title">Backups</h2>
-      {/* VERIFY-BEFORE-MERGE: backups go live with PR #67 */}
       <p className="lg-body">Weekly encrypted backups of production data, with an automatic restore test.</p>
 
       <h2 className="lg-section-title">What we don&apos;t offer yet</h2>
