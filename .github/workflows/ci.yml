@@ -84,7 +84,7 @@ jobs:
           APP_ENCRYPTION_KEY: ${{ secrets.APP_ENCRYPTION_KEY }}
         run: |
           missing=""
-          for name in NEXT_PUBLIC_SUPABASE_URL NEXT_PUBLIC_SUPABASE_ANON_KEY SUPABASE_SERVICE_ROLE_KEY PORTAL_SESSION_SECRET; do
+          for name in NEXT_PUBLIC_SUPABASE_URL NEXT_PUBLIC_SUPABASE_ANON_KEY SUPABASE_SERVICE_ROLE_KEY PORTAL_SESSION_SECRET APP_ENCRYPTION_KEY; do
             if [ -z "${!name}" ]; then
               missing="$missing $name"
             fi
@@ -93,7 +93,7 @@ jobs:
             echo "::error::Missing repository secret(s):$missing — add them under Settings > Secrets and variables > Actions. Failing rather than skipping: a security suite that does not run must not report success."
             exit 1
           fi
-          echo "All three test credentials are present."
+          echo "All five test credentials are present."
 
       - name: Run tests
         env:
