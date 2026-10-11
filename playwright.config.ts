@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { defineConfig } from "@playwright/test";
@@ -20,6 +21,14 @@ if (existsSync(localEnvFile)) {
   process.loadEnvFile(localEnvFile);
 }
 
+// Sprint 12, B6. One run token for the whole Playwright run (workers and the
+// globalSetup child inherit process.env) — see tests/fixtures/run-id.ts and the
+// matching line in vitest.config.ts. `??=` lets a human pin a value.
+process.env.TEST_RUN_ID ??= randomBytes(6).toString("hex").slice(0, 11);
+
+// Same override the live server honours (tests/security/support/live-server.ts).
+const LIVE_SERVER_PORT = process.env.LIVE_SERVER_PORT ?? "4173";
+
 export default defineConfig({
   testDir: "./e2e",
   // Boots the real live server exactly once for the whole run, via a
@@ -37,7 +46,7 @@ export default defineConfig({
   timeout: 10 * 60 * 1000,
   expect: { timeout: 10_000 },
   use: {
-    baseURL: "http://127.0.0.1:4173",
+    baseURL: `http://127.0.0.1:${LIVE_SERVER_PORT}`,
     trace: "retain-on-failure",
   },
 });

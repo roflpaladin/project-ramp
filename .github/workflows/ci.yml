@@ -49,15 +49,14 @@ jobs:
       github.event_name == 'push' ||
       github.event.pull_request.head.repo.full_name == github.repository
 
-    # The suite talks to a real Supabase project: the fixture writes and deletes
-    # rows under a shared sentinel tenant, and from Ticket 26 the security tests
-    # additionally add and drop a column. Two overlapping runs would delete each
-    # other's rows mid-assertion. Serialized repo-wide, and NOT cancelled in
-    # progress — a run killed between its DDL and its cleanup leaves the database
-    # dirty for the next one.
-    concurrency:
-      group: security-suite
-      cancel-in-progress: false
+    # The suite talks to a real Supabase project. Every fixture id and email
+    # carries a per-run token (tests/fixtures/run-id.ts), so overlapping runs —
+    # CI or a local session — do not touch each other's rows, and the one DDL
+    # step (the security tests add a column, never drop it) is idempotent.
+    # So Tests jobs on different branches run side by side, with no repo-wide
+    # queue: a shared group keeps only ONE pending job, and every extra push
+    # cancelled someone else's. A run killed mid-way leaves fixture rows that
+    # the next run's stale-fixture sweep (tests/fixtures/global-setup.ts) clears.
 
     steps:
       - name: Checkout
@@ -84,7 +83,7 @@ jobs:
           APP_ENCRYPTION_KEY: ${{ secrets.APP_ENCRYPTION_KEY }}
         run: |
           missing=""
-          for name in NEXT_PUBLIC_SUPABASE_URL NEXT_PUBLIC_SUPABASE_ANON_KEY SUPABASE_SERVICE_ROLE_KEY PORTAL_SESSION_SECRET; do
+          for name in NEXT_PUBLIC_SUPABASE_URL NEXT_PUBLIC_SUPABASE_ANON_KEY SUPABASE_SERVICE_ROLE_KEY PORTAL_SESSION_SECRET APP_ENCRYPTION_KEY; do
             if [ -z "${!name}" ]; then
               missing="$missing $name"
             fi
@@ -93,7 +92,7 @@ jobs:
             echo "::error::Missing repository secret(s):$missing — add them under Settings > Secrets and variables > Actions. Failing rather than skipping: a security suite that does not run must not report success."
             exit 1
           fi
-          echo "All three test credentials are present."
+          echo "All test credentials are present."
 
       - name: Run tests
         env:

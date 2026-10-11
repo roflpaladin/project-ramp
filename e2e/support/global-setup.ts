@@ -8,6 +8,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { createWriteStream, mkdirSync } from "node:fs";
 import path from "node:path";
+import { sweepStaleFixturesFromEnv } from "../../tests/fixtures/sweep-stale-fixtures";
 
 const REPO_ROOT = path.join(__dirname, "..", "..");
 // T44: the live server's output is also teed to disk so a failed run leaves
@@ -30,6 +31,10 @@ function killProcessGroup(child: ChildProcess, signal: NodeJS.Signals): void {
 }
 
 export default async function globalSetup(): Promise<() => Promise<void>> {
+  // Sprint 12, B6: clear fixture rows crashed runs left behind (see
+  // tests/fixtures/sweep-stale-fixtures.ts). Never throws.
+  await sweepStaleFixturesFromEnv();
+
   const child = spawn("npx", ["tsx", "e2e/support/live-server-process.ts"], {
     cwd: REPO_ROOT,
     env: process.env,

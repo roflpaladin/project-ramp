@@ -16,7 +16,25 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
-const PORT = 4173;
+const DEFAULT_PORT = 4173;
+const MIN_PORT = 1024;
+const MAX_PORT = 65535;
+
+// Two local sessions on one machine would both bind 4173. LIVE_SERVER_PORT lets
+// the second one pick another (playwright.config.ts reads the same variable).
+// Validated rather than trusted: a typo should fail here, by name, not as a
+// confusing "port in use" or a request to the wrong server.
+function resolvePort(): number {
+  const raw = process.env.LIVE_SERVER_PORT;
+  if (raw === undefined || raw === "") return DEFAULT_PORT;
+  const port = Number(raw);
+  if (!Number.isInteger(port) || port < MIN_PORT || port > MAX_PORT) {
+    throw new Error(`LIVE_SERVER_PORT must be an integer ${MIN_PORT}-${MAX_PORT}, got "${raw}"`);
+  }
+  return port;
+}
+
+const PORT = resolvePort();
 const BASE_URL = `http://127.0.0.1:${PORT}`;
 const READY_TIMEOUT_MS = 30_000;
 const READY_POLL_INTERVAL_MS = 250;
@@ -195,7 +213,7 @@ export async function startLiveServer(): Promise<LiveServer> {
         // leader: npx does not reliably forward SIGTERM to the real `next
         // start` process it launches, and `next start` forks its own worker
         // on top of that. A leader-only kill() reliably leaves the actual
-        // server holding port 4173 after this promise resolves, which is
+        // server holding its port after this promise resolves, which is
         // exactly what caused the next suite's somethingIsListening()
         // preflight to (correctly) refuse to run. Do not "simplify" this
         // back to child.kill().
