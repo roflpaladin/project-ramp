@@ -40,25 +40,24 @@ Do not "fix" one to match the other without re-registering the OAuth callbacks.
 ## Shared dev DB and CI
 
 CI's `Tests` job, your local runs and the other Claude session all use the
-**same single dev Supabase project**. The suite writes and deletes rows under
-shared sentinel ids and some specs add and drop a column, so two overlapping
-runs break each other mid-assertion.
+**same single dev Supabase project**. Since PR #73 (merged 2026-10-11) every
+fixture id and email carries a per-run token (`tests/fixtures/run-id.ts`), and
+the one DDL step (the security tests add a column, never drop it) is
+idempotent, so overlapping runs no longer touch each other's rows (see
+"Running tests while another run is going" below).
 
-- **CI concurrency.** The `test` job in `.github/workflows/ci.yml` sits in the
-  concurrency group `security-suite` with `cancel-in-progress: false`. GitHub
-  keeps one running job and **one pending** job per group: a newer pending job
-  cancels the older pending one (a running job is never cancelled). So open or
-  push PRs **one at a time**, and wait for the check to start before pushing
-  the next, or a PR's tests can be silently cancelled. (The separate `verify`
-  job, for lint/typecheck/build, uses per-ref groups and does not touch the DB.)
-- **The dev-DB slot.** Before running DB-backed tests locally, the session asks
-  the other one ("slot?") and waits for "free"; when finished it says "slot
-  released". Only one session holds the slot at a time. This is a human
-  convention, nothing enforces it.
-- **Fix landed.** Run-scoped fixture ids (PR #73, merged 2026-10-11) give each
-  run its own rows so runs stop colliding (see "Running tests while another run
-  is going" below). The concurrency group is being removed in a follow-up PR;
-  until that merges, keep opening PRs one at a time.
+- **CI concurrency.** Since PR #74 (merged 2026-10-11) there is no repo-wide
+  Tests queue: Tests jobs on different branches run side by side, so several
+  PRs can be opened or pushed at once. The workflow-level group
+  `ci-${{ github.ref }}` still cancels a superseded run of the **same** branch.
+  Before #74 the `security-suite` group kept only one pending job, and every
+  extra push silently cancelled another branch's queued run.
+- **Interrupted runs.** A run killed mid-way leaves fixture rows behind; the
+  next run's stale-fixture sweep (`tests/fixtures/global-setup.ts`) clears them.
+- **The dev-DB slot.** Before #73 a session asked the other one ("slot?"), waited
+  for "free" and said "slot released" when done. Overlap is now safe, so the
+  slot is only a courtesy for full-suite runs (for example T64's automated pass).
+  It is a human convention; nothing enforces it.
 
 ## Running tests
 
@@ -66,7 +65,7 @@ runs break each other mid-assertion.
 write the **shared dev DB** (see above). `.env.local` must point at **DEV**, never prod.
 
 - **Locally, prefer spec files by path:** `npx vitest run tests/billing/paddle-signature.spec.ts`
-  (or a folder). Run the full suite only when you hold the dev-DB slot.
+  (or a folder). Overlapping runs are safe, but say "slot?" before a full-suite run as a courtesy.
 - **Where specs live:**
   - `tests/components` (DOM specs, `*.dom.spec.tsx`, happy-dom)
   - `tests/security` (buyer boundary, RLS; live DB and a real server)
