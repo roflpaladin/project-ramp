@@ -47,6 +47,8 @@ export interface CloseDealControlsProps {
    * <body>.
    */
   readonly onClosed?: () => void;
+  /** Optional id for the focusable <summary>, so a same-page link can jump to (and focus) it. */
+  readonly summaryId?: string;
 }
 
 interface OutcomeCopy {
@@ -77,7 +79,7 @@ const OUTCOMES: readonly ClosedPlanStatus[] = ["won", "lost"];
 /** No PlanErrorCode describes a dropped connection, so this one sentence isn't describePlanError's. */
 const TRANSPORT_ERROR_MESSAGE = "Something went wrong. Please try again.";
 
-export function CloseDealControls({ workspaceId, planId, planStatus, onClosed }: CloseDealControlsProps) {
+export function CloseDealControls({ workspaceId, planId, planStatus, onClosed, summaryId }: CloseDealControlsProps) {
   const [outcome, setOutcome] = useState<ClosedPlanStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -122,7 +124,7 @@ export function CloseDealControls({ workspaceId, planId, planStatus, onClosed }:
 
   return (
     <details className="cdc-disclosure" data-surface="close-deal" data-testid="close-deal-controls">
-      <summary className="cdc-summary">Close this deal</summary>
+      <summary id={summaryId} className="cdc-summary">Close this deal</summary>
 
       <div className="cdc-body">
         {outcome === null ? (

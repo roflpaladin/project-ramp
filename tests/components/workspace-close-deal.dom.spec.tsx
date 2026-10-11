@@ -4,6 +4,8 @@
 // (workspace-close-deal.tsx) the way page.tsx does. "components" project,
 // DB-free: plan-actions.ts is mocked wholesale.
 
+import { readFileSync } from "node:fs";
+import { fileURLToPath, URL as NodeURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
@@ -17,9 +19,9 @@ vi.mock("@/app/admin/workspaces/[id]/plan/plan-actions", () => ({
   closePlanAction: mockClosePlanAction,
 }));
 
-const { WorkspaceCloseDeal, CLOSE_DEAL_ANCHOR_ID, WORKSPACE_TITLE_ID } = await import(
-  "@/app/admin/workspaces/[id]/workspace-close-deal"
-);
+import { CLOSE_DEAL_ANCHOR_ID, WORKSPACE_TITLE_ID } from "@/app/admin/workspaces/[id]/workspace-close-deal-ids";
+
+const { WorkspaceCloseDeal } = await import("@/app/admin/workspaces/[id]/workspace-close-deal");
 
 beforeEach(() => {
   mockClosePlanAction.mockResolvedValue({ ok: true, data: { id: "plan-1", status: "won" } });
@@ -71,9 +73,10 @@ describe("WorkspaceCloseDeal", () => {
     expect(container.querySelector("[data-signal]")).toBeNull();
   });
 
-  it("exposes the anchor the stall alert's pointer links to", () => {
+  it("puts the anchor id on the focusable summary the stall alert's pointer links to", () => {
     const { container } = renderIt({ id: "plan-1", status: "active" });
-    expect(container.querySelector(`#${CLOSE_DEAL_ANCHOR_ID}`)).toBeTruthy();
+    const anchor = container.querySelector(`#${CLOSE_DEAL_ANCHOR_ID}`);
+    expect(anchor?.tagName).toBe("SUMMARY");
   });
 
   it("moves focus to the page title after a successful close", async () => {
@@ -97,9 +100,38 @@ describe("WorkspaceCloseDeal", () => {
 });
 
 describe("quiet-deal pointer copy", () => {
-  it("no longer claims the plan page is where Close deal lives", () => {
-    const source = Object.values(engagementCopy).filter((value) => typeof value === "string");
-    expect(source.join(" ")).not.toMatch(/plan page/i);
+  it("describeQuietDeal no longer claims the plan page is where Close deal lives", () => {
+    const text = engagementCopy.describeQuietDeal({
+      state: "waiting",
+      lastActivityAt: null,
+      daysSinceLastActivity: 21,
+      openBuyerStepCount: 0,
+    });
+    expect(text).toBe(
+      "Your buyer hasn't opened this in 21 days. If the deal is finished, close it to free a slot.",
+    );
+    expect(text).not.toMatch(/plan page/i);
     expect(QUIET_DEAL_LINK_LABEL).toBe("Close this deal");
+  });
+});
+
+describe("page.tsx wiring", () => {
+  // Rendering the async Server Component needs five Supabase reads, so this
+  // asserts the source instead: shared ids come from the non-client module,
+  // and the ids module itself is not a client module.
+  const read = (path: string) => readFileSync(fileURLToPath(new NodeURL(path, import.meta.url)), "utf8");
+  const dir = "../../app/admin/workspaces/[id]/";
+
+  it("page.tsx imports both ids from the shared non-client module and uses them", () => {
+    const page = read(`${dir}page.tsx`);
+    expect(page).toMatch(/import \{[^}]*\} from "\.\/workspace-close-deal-ids"/);
+    expect(page).not.toMatch(/import \{[^}]*(WORKSPACE_TITLE_ID|CLOSE_DEAL_ANCHOR_ID)[^}]*\} from "\.\/workspace-close-deal"/);
+    expect(page).toContain("id={WORKSPACE_TITLE_ID}");
+    expect(page).toContain("closeDealHref={`#${CLOSE_DEAL_ANCHOR_ID}`}");
+  });
+
+  it("the ids module is not a client module, and the wrapper imports from it", () => {
+    expect(read(`${dir}workspace-close-deal-ids.ts`)).not.toMatch(/^\s*"use client"/m);
+    expect(read(`${dir}workspace-close-deal.tsx`)).toContain('from "./workspace-close-deal-ids"');
   });
 });

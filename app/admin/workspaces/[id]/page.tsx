@@ -25,7 +25,8 @@ import { ChatUrlForm } from "./chat-url-form";
 import { StallAlert } from "./stall-alert";
 import { InvitePanel } from "./invite-panel";
 import { ActivationChecklist } from "./activation-checklist";
-import { WorkspaceCloseDeal, WORKSPACE_TITLE_ID, CLOSE_DEAL_ANCHOR_ID } from "./workspace-close-deal";
+import { WorkspaceCloseDeal } from "./workspace-close-deal";
+import { CLOSE_DEAL_ANCHOR_ID, WORKSPACE_TITLE_ID } from "./workspace-close-deal-ids";
 import "./workspace-links.css";
 
 /** Flattens the plan tree's stages into a single ordered step list — the
@@ -252,6 +253,7 @@ export default async function WorkspaceDetailPage({
         signal={engagementSignal}
         planHref={`/admin/workspaces/${id}/plan`}
         closeDealHref={`#${CLOSE_DEAL_ANCHOR_ID}`}
+        isCloseDealAvailable={plan !== null && closedPlanStatus === null}
         isSignalSuppressed={signalOwners.isStallSignalSuppressed}
       />
 

@@ -19,10 +19,7 @@ import type { PlanStatus } from "@/lib/plans/types";
 import { isClosedPlanStatus } from "@/lib/plans/closed-plans";
 import { CloseDealControls } from "./plan/close-deal-controls";
 
-/** The page title heading's id (page.tsx sets it, with tabIndex -1). */
-export const WORKSPACE_TITLE_ID = "workspace-title";
-/** Anchor the stall alert's "Close this deal" pointer links to. */
-export const CLOSE_DEAL_ANCHOR_ID = "close-deal";
+import { CLOSE_DEAL_ANCHOR_ID, WORKSPACE_TITLE_ID } from "./workspace-close-deal-ids";
 
 export interface WorkspaceCloseDealProps {
   readonly workspaceId: string;
@@ -36,11 +33,12 @@ export function WorkspaceCloseDeal({ workspaceId, plan }: WorkspaceCloseDealProp
   // re-renders as closed, so focus goes to the title, which renders in
   // every state.
   return (
-    <div id={CLOSE_DEAL_ANCHOR_ID} className="wsl-close-deal">
+    <div className="wsl-close-deal">
       <CloseDealControls
         workspaceId={workspaceId}
         planId={plan.id}
         planStatus={plan.status}
+        summaryId={CLOSE_DEAL_ANCHOR_ID}
         onClosed={() => document.getElementById(WORKSPACE_TITLE_ID)?.focus()}
       />
     </div>
