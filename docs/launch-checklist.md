@@ -18,13 +18,14 @@ manual plan override).
 
 ## 1. Before feature freeze (done by end of Sun Oct 18)
 
+- [x] **Launch checklist PR merged** (`sprint-12-ticket-64-checklist`, PR #72, merged Oct 11).
 - [x] **Register `?next=` PR merged** (`sprint-12-ticket-67-register-next`, PR #68, merged Oct 11). WHO: Founder merges. WHEN: Oct 16. VERIFY: GitHub shows the PR as Merged and CI green.
-- [ ] **Footer links + About + /security PR merged** (`sprint-12-ticket-67-public-site`). WHO: Session A builds, Founder approves the words and merges. WHEN: Oct 16. VERIFY: open https://www.getbrava.tech/security and the footer links on the home page; /security claims nothing untrue (no SSO, SLA or SOC 2).
-- [ ] **"Close deal" at the top of the deal page** (`sprint-12-close-deal-top`). WHO: Session A, Founder merges. WHEN: Oct 17. VERIFY: open any deal at /admin/workspaces/<id>, the button is at the top, looks right in light and dark.
-- [ ] **Geist font** (`sprint-12-geist-font`). WHO: Session A, Founder merges. WHEN: Oct 17. VERIFY: the home page text looks like Geist in both themes; numbers use the mono look.
-- [ ] **CI fixture ids** (`sprint-12-ci-fixture-ids`). WHO: Session B, Founder merges. WHEN: Oct 16, before Oct 19. VERIFY: GitHub, CI tab, the check passes while the other session also pushes.
+- [x] **Footer links + About + /security PR merged** (`sprint-12-ticket-67-public-site`, PR #69, merged Oct 11). WHO: Session A builds, Founder approves the words and merges. WHEN: Oct 16. VERIFY: open https://www.getbrava.tech/security and the footer links on the home page; /security claims nothing untrue (no SSO, SLA or SOC 2).
+- [x] **"Close deal" at the top of the deal page** (`sprint-12-close-deal-top`, PR #70, merged Oct 11). WHO: Session A, Founder merges. WHEN: Oct 17. VERIFY: open any deal at /admin/workspaces/<id>, the button is at the top, looks right in light and dark.
+- [x] **Geist font** (`sprint-12-geist-font`, PR #71, merged Oct 11, with Brava page titles). WHO: Session A, Founder merges. WHEN: Oct 17. VERIFY: the home page text looks like Geist in both themes; numbers use the mono look.
+- [ ] **CI fixture ids** (`sprint-12-ci-fixture-ids`, PR #73, in review, **pending**). WHO: Session B, Founder merges. WHEN: Oct 16, before Oct 19. VERIFY: GitHub, CI tab, the check passes while the other session also pushes.
 - [x] **Backup PR merged** (T63, PR #67, merged Oct 11; first run green). WHO: Founder merges. WHEN: Oct 16. VERIFY: GitHub, Actions, "Prod backup" has a green run (see section 4c).
-- [ ] **T66 Google/Microsoft sign-in: decide.** WHO: Founder decides, Session B builds only if both consoles were ready by Fri Oct 16. VERIFY: if yes, sign-in with each works on a Preview link. If no, write "T66 cut: after launch" in Notion and skip it. Nothing else waits on T66.
+- [x] **T66 Google/Microsoft sign-in: CUT by founder 2026-10-11, moved to the first post-launch sprint.** Nothing else waits on T66.
 - [ ] **Feature freeze confirmed.** WHO: Session A + Session B. WHEN: Sun Oct 18. VERIFY: both sessions say "freeze" in the hand-off; no open feature branches.
 
 ## 2. QA week (Mon Oct 19 to Sat Oct 24)
@@ -74,7 +75,7 @@ Use a throwaway seller (an email you can discard, e.g. a plus-address). Do each 
 - **If NOT approved by Fri Oct 30:** launch anyway on Nov 1 with free signup. Paid plans are set by hand for design partners using the SQL in [environments.md, "Granting a manual entitlement by hand"](./environments.md#granting-a-manual-entitlement-by-hand-invoice-customers). WHO: Session A prepares, Founder pastes. VERIFY: the customer's /settings/billing shows the plan; the SQL's step 3 check returns the right company name. Revoke by setting the entitlement back to null, never delete the row. Check what /pricing shows without live Paddle and hide buy buttons if needed **(verify)**.
 
 ### 4c. Monitoring and backups
-- [ ] **UptimeRobot monitor on `/api/health`** (live since Oct 11). WHO: Founder. VERIFY: UptimeRobot shows https://www.getbrava.tech/api/health as Up; opening it shows `{"ok":true}`. If it shows `{"ok":false}`, search Vercel Logs for `[health]`.
+- [x] **UptimeRobot monitor on `/api/health`** (live since 2026-10-11, checks every 5 minutes). WHO: Founder. VERIFY: UptimeRobot shows https://www.getbrava.tech/api/health as Up; opening it shows `{"ok":true}`. If it shows `{"ok":false}`, search Vercel Logs for `[health]`.
 - [ ] **Weekly backup is green** (first run Oct 11; runs Sundays 02:17 UTC). WHO: Session B checks, Founder glances. WHEN: Sun Oct 25 run, and run it by hand once more on Oct 30 (GitHub, Actions, "Prod backup", Run workflow). VERIFY: latest run is green and has an artifact named `prod-backup-<date>-run<id>`.
 - [ ] **You can find `BACKUP_PASSPHRASE`** in your password manager. VERIFY: you can open the entry now, not during an emergency.
 
@@ -116,4 +117,4 @@ planned for launch week.
 - [ ] **OTPLESS and Proximus:** when they sign up, give them their plan by hand with the manual entitlement SQL (environments.md, link in 4b). WHO: Founder pastes, Session A prepares. VERIFY: their /settings/billing shows the plan and no limit wall. Neither has signed up yet.
 - [ ] **Sentry error tracking:** post-launch backlog, not a launch blocker.
 - [ ] **Revisit Supabase Pro** (daily backups) at the first paying customers; today's recovery point is up to 7 days.
-- [ ] **Google/Microsoft sign-in (T66)** if it was cut.
+- [ ] **Google/Microsoft sign-in (T66):** cut from launch; first post-launch sprint.
