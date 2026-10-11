@@ -150,7 +150,7 @@ describe("OnboardingFlow — choose step", () => {
 
   it("orients with one sentence naming what this step does", () => {
     render(<OnboardingFlow />);
-    expect(screen.getByText(/Bring in your own deal, or explore Ramp with a ready-made sample/)).toBeInTheDocument();
+    expect(screen.getByText(/Bring in your own deal, or explore Brava with a ready-made sample/)).toBeInTheDocument();
   });
 
   it("renders no status/alert before any submission", () => {

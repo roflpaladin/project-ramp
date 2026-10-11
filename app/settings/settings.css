@@ -18,7 +18,7 @@
   padding: 16px 24px;
   border-bottom: 1px solid var(--line);
   background: var(--paper);
-  font-family: "Geist", "Inter", system-ui, -apple-system, sans-serif;
+  font-family: var(--font-sans);
 }
 [data-surface="settings"] .st-nav a {
   font-size: 14px;

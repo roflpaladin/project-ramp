@@ -18,7 +18,7 @@
   min-height: 100dvh;
   background: var(--paper);
   color: var(--ink);
-  font-family: "Geist", "Inter", system-ui, -apple-system, sans-serif;
+  font-family: var(--font-sans);
   font-size: 16px;
   line-height: 24px;
   max-width: 960px;
@@ -34,7 +34,7 @@
 }
 
 [data-surface="buyer-workspace"] .bw-mono {
-  font-family: "Geist Mono", "SFMono-Regular", ui-monospace, monospace;
+  font-family: var(--font-mono);
 }
 
 /* ---- identity header ----------------------------------------------------

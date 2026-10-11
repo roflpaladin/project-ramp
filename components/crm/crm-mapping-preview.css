@@ -27,7 +27,7 @@
 }
 
 [data-surface="crm-mapping-preview"] .cmp-mono {
-  font-family: "Geist Mono", "SFMono-Regular", ui-monospace, monospace;
+  font-family: var(--font-mono);
 }
 
 /* Wide content scrolls in its own container, never the page. */

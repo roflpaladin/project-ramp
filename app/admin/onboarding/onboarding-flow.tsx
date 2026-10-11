@@ -171,7 +171,7 @@ function ChooseStep({ onManual }: { onManual: () => void }) {
       <header className="ob-header">
         <h1 className="ob-title">Set up your first deal</h1>
         <p className="ob-intro">
-          Bring in your own deal, or explore Ramp with a ready-made sample — you can always add more later.
+          Bring in your own deal, or explore Brava with a ready-made sample — you can always add more later.
         </p>
       </header>
 

@@ -7,6 +7,11 @@
 :root {
   color-scheme: light dark;
 
+  /* Type families — the --font-geist-* variables come from next/font in
+     app/layout.tsx (Geist for text, Geist Mono for data and numbers). */
+  --font-sans: var(--font-geist-sans), system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: var(--font-geist-mono), "SFMono-Regular", ui-monospace, monospace;
+
   --paper: #fcfbf8;
   --mist: #f1f0eb;
   --line: #e2e1db;
@@ -65,7 +70,7 @@
 
 body {
   margin: 0;
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-family: var(--font-sans);
   line-height: 1.5;
 }
 
