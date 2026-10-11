@@ -80,10 +80,18 @@ test("keyboard-only reorder: tabbing to a step's move-down button and activating
     true,
   );
 
+  // The optimistic update paints before the server action returns, so wait
+  // for the action's own response: reloading earlier aborts the request and
+  // the "survives a reload" check then fails on a save that never landed.
+  const reorderSaved = page.waitForResponse(
+    (response) => response.request().method() === "POST" && response.url().endsWith("/plan"),
+  );
+
   // No mouse from here on — keyboard activation only.
   await page.keyboard.press("Enter");
 
   await expect(stageTwo.locator(".plan-step-title")).toHaveText([STEP_B_LABEL, STEP_A_LABEL, STEP_C_LABEL]);
+  expect((await reorderSaved).ok()).toBe(true);
 
   // The authoritative order (not just client state) must have actually
   // changed server-side: reloading re-fetches the Server Component.

@@ -20,8 +20,9 @@
 // createAdminClient() body verbatim (same two env vars, same
 // persistSession:false) without importing the guarded module, and this file
 // seeds its OWN dedicated tenant/workspace/plan under a "7e58…" sentinel
-// prefix (run-scoped ids and owner email — see tests/fixtures/run-id.ts) (deliberately distinct from seed-leaky-workspace.ts's "7e57…" and
-// lib/demo.ts's "de30…") so it can never collide with, or be torn down by,
+// prefix (deliberately distinct from seed-leaky-workspace.ts's "7e57…" and
+// lib/demo.ts's "de30…"), with run-scoped ids and owner email
+// (tests/fixtures/run-id.ts), so it can never collide with, or be torn down by,
 // the vitest security suite's shared fixture. The seller SIGN-IN mechanism
 // itself is NOT reinvented — e2e/support/browser-auth.ts reuses
 // tests/security/support/seller-http-session.ts's buildSellerCookieHeader
