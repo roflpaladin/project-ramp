@@ -28,7 +28,7 @@
 }
 
 [data-surface="crm-deal-picker"] .cdp-mono {
-  font-family: "Geist Mono", "SFMono-Regular", ui-monospace, monospace;
+  font-family: var(--font-mono);
 }
 
 /* ---- status: dot + text, wash background by tone, never colour-only ---- */

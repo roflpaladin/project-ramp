@@ -14,7 +14,7 @@
   color: var(--ink);
   /* T60 MUST fix: the admin/plan surfaces never declared Geist — see
      app/globals.css's system-ui body default. */
-  font-family: "Geist", "Inter", system-ui, -apple-system, sans-serif;
+  font-family: var(--font-sans);
 }
 
 /* Quality floor: prefers-reduced-motion respected. Nothing on this surface
@@ -156,7 +156,7 @@
 
 [data-surface="plan-builder"] .plan-step-meta {
   margin: 0;
-  font-family: "Geist Mono", "SFMono-Regular", ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   color: var(--slate);
   display: flex;

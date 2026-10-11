@@ -44,7 +44,7 @@
    raw-value treatment (invite-panel.css's ip-status-email,
    crm-forecast-strip.css's numeric/date fields). */
 [data-surface="csv-import-panel"] .cip-mono {
-  font-family: "Geist Mono", "SFMono-Regular", ui-monospace, monospace;
+  font-family: var(--font-mono);
 }
 
 [data-surface="csv-import-panel"] .cip-form {

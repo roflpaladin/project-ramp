@@ -251,7 +251,7 @@
    raw-value treatment (workspace-links.css's resource-type headings,
    crm-forecast-strip.css's numeric/date fields, its internal-chat link). */
 [data-surface="invite-panel"] .ip-status-email {
-  font-family: "Geist Mono", "SFMono-Regular", ui-monospace, monospace;
+  font-family: var(--font-mono);
 }
 
 [data-surface="invite-panel"] .ip-flip-form {
