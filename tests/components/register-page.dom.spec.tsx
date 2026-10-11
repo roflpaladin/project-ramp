@@ -16,8 +16,8 @@ afterEach(() => {
   cleanup();
 });
 
-async function renderRegisterPage(error?: string) {
-  const ui = await RegisterPage({ searchParams: Promise.resolve({ error }) });
+async function renderRegisterPage(error?: string, next?: string) {
+  const ui = await RegisterPage({ searchParams: Promise.resolve({ error, next }) });
   return render(ui);
 }
 
@@ -99,4 +99,20 @@ describe("RegisterPage — error copy", () => {
 
     expect(screen.getByRole("alert")).toHaveTextContent("Something went wrong. Try again.");
   });
+});
+
+describe("RegisterPage — next", () => {
+  it("carries a valid next in a hidden input", async () => {
+    const { container } = await renderRegisterPage(undefined, "/pricing");
+    const hidden = container.querySelector('input[type="hidden"][name="next"]');
+    expect(hidden).toHaveValue("/pricing");
+  });
+
+  it.each([undefined, "//evil.com", "https://evil.com", "/evil"])(
+    "renders no hidden next input for %s",
+    async (next) => {
+      const { container } = await renderRegisterPage(undefined, next);
+      expect(container.querySelector('input[name="next"]')).toBeNull();
+    },
+  );
 });

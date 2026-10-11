@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import { parseSafeNext } from "@/lib/navigation/safe-next";
 import { registerSeller } from "./actions";
 
 // Sprint 8, Ticket 39 — seller self-serve registration. Kept as a bare
@@ -66,9 +67,10 @@ const helperStyle: CSSProperties = {
 export default async function RegisterPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; next?: string }>;
 }) {
-  const { error } = await searchParams;
+  const { error, next } = await searchParams;
+  const safeNext = parseSafeNext(next);
   const errorCopy = error ? (ERROR_COPY[error] ?? { message: DEFAULT_ERROR_MESSAGE }) : null;
 
   return (
@@ -76,6 +78,7 @@ export default async function RegisterPage({
       <h1>Create your Brava account</h1>
       <p style={helperStyle}>Set up your workspace and start your first success plan.</p>
       <form action={registerSeller}>
+        {safeNext ? <input type="hidden" name="next" value={safeNext} /> : null}
         <label style={fieldStyle}>
           Company name
           <input type="text" name="companyName" autoComplete="organization" required />
