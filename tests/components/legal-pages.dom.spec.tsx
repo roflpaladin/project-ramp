@@ -123,7 +123,7 @@ describe("Privacy page — providers table", () => {
     expect(screen.getByRole("columnheader", { name: "Provider" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "What they do for us" })).toBeInTheDocument();
 
-    for (const provider of ["Supabase", "Vercel", "Google Workspace", "Paddle"]) {
+    for (const provider of ["Supabase", "Vercel", "Resend", "Google Workspace", "Paddle"]) {
       expect(screen.getByRole("cell", { name: provider })).toBeInTheDocument();
     }
   });
@@ -160,5 +160,75 @@ describe("Legal pages — CSS carries no hardcoded colours", () => {
     const css = readFileSync(cssPath, "utf8");
 
     expect(css).not.toMatch(/#[0-9a-fA-F]{3,8}/);
+  });
+});
+
+// Paddle KYB website review (2026-10-11). Paddle's seller-policy checklist
+// (developer.paddle.com draft-seller-policies) rejects policies that
+// contradict a live pricing page, omit the merchant-of-record disclosure,
+// or carry a refund window under 14 days / "no refunds" qualifiers.
+describe("Legal pages — Paddle KYB requirements", () => {
+  const STALE_FREE_PERIOD_COPY = /early access|free of charge|when paid (plans|subscriptions) launch/i;
+
+  it.each(PAGES)("$name page no longer claims Brava is free or that paid plans are coming later", ({ Component }) => {
+    render(<Component />);
+    expect(screen.getByTestId("legal-page")).not.toHaveTextContent(STALE_FREE_PERIOD_COPY);
+  });
+
+  it("terms carry Paddle's recommended merchant-of-record wording", () => {
+    render(<TermsPage />);
+    const page = screen.getByTestId("legal-page");
+    expect(page).toHaveTextContent("Our order process is conducted by our online reseller Paddle.com.");
+    expect(page).toHaveTextContent("Paddle.com is the Merchant of Record for all our orders.");
+  });
+
+  it("terms link to the live pricing page", () => {
+    render(<TermsPage />);
+    expect(screen.getByRole("link", { name: "pricing page" })).toHaveAttribute("href", "/pricing");
+  });
+
+  it("terms state that the customer contracts with the named legal entity", () => {
+    render(<TermsPage />);
+    expect(screen.getByTestId("legal-page")).toHaveTextContent(
+      "you are entering into an agreement with PT Arasaka Global Consulting",
+    );
+  });
+
+  it("refunds cover any payment, renewals included, within 14 days", () => {
+    render(<RefundsPage />);
+    const page = screen.getByTestId("legal-page");
+    expect(page).toHaveTextContent(/within 14 days of any payment/i);
+    expect(page).toHaveTextContent(/renewals included/i);
+  });
+
+  it("refunds never use a 'no refunds' or 'all sales are final' qualifier", () => {
+    render(<RefundsPage />);
+    const page = screen.getByTestId("legal-page");
+    expect(page).not.toHaveTextContent(/all sales are final/i);
+    expect(page).not.toHaveTextContent(/no refunds/i);
+    expect(page).not.toHaveTextContent(/don.t generally refund/i);
+  });
+
+  it("refunds point buyers to paddle.net as a real external link", () => {
+    render(<RefundsPage />);
+    const link = screen.getByRole("link", { name: "paddle.net" });
+    expect(link).toHaveAttribute("href", "https://paddle.net");
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
+  });
+
+  it("privacy names the controller and its country of registration", () => {
+    render(<PrivacyPage />);
+    expect(screen.getByTestId("legal-page")).toHaveTextContent(
+      "PT Arasaka Global Consulting, a company registered in Indonesia, is the controller",
+    );
+  });
+
+  it("privacy covers legal basis, security, cookies, and the right to complain", () => {
+    render(<PrivacyPage />);
+    for (const heading of [/legal basis/i, /how we protect it/i, /cookies/i]) {
+      expect(screen.getByRole("heading", { level: 2, name: heading })).toBeInTheDocument();
+    }
+    expect(screen.getByTestId("legal-page")).toHaveTextContent(/complain to your local data protection authority/i);
   });
 });

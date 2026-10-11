@@ -5,18 +5,31 @@ export const metadata: Metadata = {
   title: "Privacy policy — Brava",
 };
 
+const PADDLE_PRIVACY_URL = "https://www.paddle.com/legal/privacy";
+
 /**
- * T47 (Sprint 9, Ticket 47). Founder-approved privacy policy — verbatim
- * from the approved draft (source: coordinator-supplied
- * brava-legal-pages-draft.md, "Page 2"). No paraphrasing; the providers
- * table is carried over 1:1 as a real <table> (.lg-table).
+ * T47 (Sprint 9, Ticket 47). Founder-approved privacy policy — originally
+ * verbatim from the approved draft (source: coordinator-supplied
+ * brava-legal-pages-draft.md, "Page 2"). The providers table is a real
+ * <table> (.lg-table).
+ *
+ * Revised 2026-10-11 for Paddle's KYB website review: paid plans are live,
+ * and Paddle's privacy-notice checklist adds controller status, legal basis,
+ * recipients beyond providers, retention, security, and a cookie notice.
+ * Founder ruling: entity shown with its country (Indonesia), no street
+ * address. Email moved from Google Workspace SMTP to Resend (lib/email).
  */
 export default function PrivacyPage() {
   return (
     <LegalPageLayout title="Privacy policy">
       <p className="lg-body">
-        Brava is operated by PT Arasaka Global Consulting. This page explains what we collect, why, and what your
-        rights are — in plain language, because that&apos;s how we build everything.
+        PT Arasaka Global Consulting, a company registered in Indonesia, is the controller of the personal data
+        described here and operates Brava (&quot;we&quot;, &quot;us&quot;). This page explains what we collect,
+        why, and what your rights are — in plain language, because that&apos;s how we build everything.
+      </p>
+      <p className="lg-body">
+        For the deal and plan content sellers put into Brava about their own customers, we process it on the
+        seller&apos;s behalf and only to provide the service to them.
       </p>
 
       <h2 className="lg-section-title">What we collect</h2>
@@ -36,27 +49,38 @@ export default function PrivacyPage() {
           invited.
         </li>
         <li>
+          <strong>Billing details</strong> — when you buy a plan, Paddle collects your payment details directly.
+          We receive your name, email, country, plan, and subscription status from Paddle. We never see or store
+          your full card number.
+        </li>
+        <li>
           <strong>Waitlist details</strong> — if you join our waitlist: your email and, optionally, your company
           name.
         </li>
         <li>
           <strong>Technical basics</strong> — logs and cookies needed to keep you signed in and keep the service
-          secure. We use session cookies for login; we don&apos;t run third-party advertising trackers.
+          secure (see &quot;Cookies&quot; below).
         </li>
       </ul>
 
-      <h2 className="lg-section-title">What we use it for</h2>
+      <h2 className="lg-section-title">What we use it for, and our legal basis</h2>
       <ul className="lg-list">
         <li>
-          To provide Brava: storing your plans, showing progress to both sides, sending invitation and login
-          emails.
+          <strong>Providing Brava</strong> — storing your plans, showing progress to both sides, sending
+          invitation and login emails. Basis: our contract with you.
         </li>
-        <li>To secure the service: rate limiting, abuse prevention, debugging.</li>
         <li>
-          To contact you about the product — service messages always; product news only where permitted, and you
-          can opt out.
+          <strong>Managing your subscription</strong> — plans, billing status, and invoices. Basis: our contract
+          with you, and our legal duty to keep tax and accounting records.
         </li>
-        <li>When paid plans launch: to manage your subscription (see &quot;Who else touches your data&quot;).</li>
+        <li>
+          <strong>Keeping the service secure</strong> — rate limiting, abuse prevention, debugging. Basis: our
+          legitimate interest in keeping Brava safe for everyone.
+        </li>
+        <li>
+          <strong>Contacting you</strong> — service messages always (basis: our contract); product news only
+          with your consent, and you can opt out at any time.
+        </li>
       </ul>
       <p className="lg-body">
         We don&apos;t sell your data. We don&apos;t use your workspace content to train AI models.
@@ -81,29 +105,71 @@ export default function PrivacyPage() {
             <td>Application hosting and content delivery</td>
           </tr>
           <tr>
+            <td>Resend</td>
+            <td>Sending transactional emails (invitations, login codes, password resets)</td>
+          </tr>
+          <tr>
             <td>Google Workspace</td>
-            <td>Sending transactional emails (invitations, login links)</td>
+            <td>Our business email, when you write to us</td>
           </tr>
           <tr>
             <td>Paddle</td>
-            <td>Payments and billing, as merchant of record (when paid plans launch)</td>
+            <td>Payments, billing, invoices, and sales tax, as our merchant of record</td>
           </tr>
         </tbody>
       </table>
       <p className="lg-body">
-        Each processes data only to provide their service to us. Your data may be stored or processed outside
-        your own country by these providers.
+        Each provider processes data only to provide their service to us. Paddle also acts as an independent
+        controller for the payment data it collects — see{" "}
+        <a href={PADDLE_PRIVACY_URL} target="_blank" rel="noopener noreferrer">
+          Paddle&apos;s privacy policy
+        </a>
+        . We may also share data with our professional advisers (such as lawyers and accountants) where needed,
+        and with authorities when the law requires it.
+      </p>
+      <p className="lg-body">
+        These providers may store or process data outside your own country, including in the United States and
+        the European Union. Where the law requires it, we rely on the safeguards they offer, such as standard
+        contractual clauses.
       </p>
 
       <h2 className="lg-section-title">How long we keep it</h2>
       <ul className="lg-list">
         <li>
-          Account and workspace data: for as long as your account is active, then deleted on request or within a
-          reasonable period after account closure.
+          Account and workspace data: for as long as your account is active, then deleted within 30 days of your
+          request or of account closure.
+        </li>
+        <li>
+          Billing records: for as long as tax and accounting law requires. Paddle keeps the payment records as
+          merchant of record.
         </li>
         <li>Waitlist data: until you sign up, ask to be removed, or the waitlist is retired.</li>
         <li>Logs: kept briefly for security and debugging, then rotated out.</li>
       </ul>
+
+      <h2 className="lg-section-title">How we protect it</h2>
+      <p className="lg-body">
+        All traffic to Brava is encrypted (HTTPS), and our hosting providers encrypt stored data. Each
+        customer&apos;s data is kept separate by access rules enforced in the database, passwords are stored only
+        in hashed form, and access to production systems is limited to the people who need it.
+      </p>
+
+      <h2 className="lg-section-title">Cookies</h2>
+      <ul className="lg-list">
+        <li>
+          <strong>Login cookies</strong> — keep you signed in. They&apos;re essential, so the service can&apos;t
+          work without them.
+        </li>
+        <li>
+          <strong>Homepage cookie</strong> — remembers which version of our homepage headline you saw, for up to
+          180 days. It holds no personal data.
+        </li>
+        <li>
+          <strong>Checkout cookies</strong> — when you open checkout, Paddle may set its own cookies, covered by
+          Paddle&apos;s privacy policy.
+        </li>
+      </ul>
+      <p className="lg-body">We don&apos;t use advertising or third-party tracking cookies.</p>
 
       <h2 className="lg-section-title">Your rights</h2>
       <p className="lg-body">Email dimas@getbrava.tech and we will, subject to applicable law:</p>
@@ -111,8 +177,13 @@ export default function PrivacyPage() {
         <li>show you the personal data we hold about you;</li>
         <li>correct it or delete it;</li>
         <li>export your workspace data in a usable format;</li>
+        <li>stop or limit how we use it, or withdraw a consent you gave;</li>
         <li>remove you from the waitlist or marketing emails.</li>
       </ul>
+      <p className="lg-body">
+        We&apos;ll respond within 30 days. If you&apos;re unhappy with how we handle your data, you can also
+        complain to your local data protection authority.
+      </p>
       <p className="lg-body">
         If you&apos;re an invited buyer and want your activity removed, you can contact us directly or ask the
         seller who invited you.
