@@ -20,7 +20,7 @@
 // createAdminClient() body verbatim (same two env vars, same
 // persistSession:false) without importing the guarded module, and this file
 // seeds its OWN dedicated tenant/workspace/plan under a "7e58…" sentinel
-// prefix (deliberately distinct from seed-leaky-workspace.ts's "7e57…" and
+// prefix (run-scoped ids and owner email — see tests/fixtures/run-id.ts) (deliberately distinct from seed-leaky-workspace.ts's "7e57…" and
 // lib/demo.ts's "de30…") so it can never collide with, or be torn down by,
 // the vitest security suite's shared fixture. The seller SIGN-IN mechanism
 // itself is NOT reinvented — e2e/support/browser-auth.ts reuses
@@ -29,23 +29,24 @@
 // safe to import here directly.
 
 import { createClient as createServiceClient } from "@supabase/supabase-js";
+import { runScopedEmail, runScopedId } from "../../tests/fixtures/run-id";
 
-export const TENANT_ID = "7e580000-0000-4000-8000-000000000001";
-export const WORKSPACE_ID = "7e580000-0000-4000-8000-000000000002";
-export const PLAN_ID = "7e580000-0000-4000-8000-000000000003";
+export const TENANT_ID = runScopedId("7e58", "000000000001");
+export const WORKSPACE_ID = runScopedId("7e58", "000000000002");
+export const PLAN_ID = runScopedId("7e58", "000000000003");
 
-export const STAGE_ONE_ID = "7e580000-0000-4000-8000-000000000010";
-export const STAGE_TWO_ID = "7e580000-0000-4000-8000-000000000011";
+export const STAGE_ONE_ID = runScopedId("7e58", "000000000010");
+export const STAGE_TWO_ID = runScopedId("7e58", "000000000011");
 
-export const STEP_A_ID = "7e580000-0000-4000-8000-000000000020"; // display_order 0, "Send proposal E2E"
-export const STEP_B_ID = "7e580000-0000-4000-8000-000000000021"; // display_order 1, "Schedule demo E2E"
-export const STEP_C_ID = "7e580000-0000-4000-8000-000000000022"; // display_order 2, "Confirm signature E2E"
+export const STEP_A_ID = runScopedId("7e58", "000000000020"); // display_order 0, "Send proposal E2E"
+export const STEP_B_ID = runScopedId("7e58", "000000000021"); // display_order 1, "Schedule demo E2E"
+export const STEP_C_ID = runScopedId("7e58", "000000000022"); // display_order 2, "Confirm signature E2E"
 
 export const STEP_A_LABEL = "Send proposal E2E";
 export const STEP_B_LABEL = "Schedule demo E2E";
 export const STEP_C_LABEL = "Confirm signature E2E";
 
-export const OWNER_EMAIL = "t29-plan-builder-e2e@projectramp.invalid";
+export const OWNER_EMAIL = runScopedEmail("t29-plan-builder-e2e", "projectramp.invalid");
 
 export interface SeededPlanBuilderWorkspace {
   readonly workspaceId: string;

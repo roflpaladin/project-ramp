@@ -23,6 +23,25 @@ project the tests read _and write_.** Keep `.env.local` on **dev** so a test run
 can never touch prod. No source file hardcodes a Supabase URL — everything flows
 through env, so repointing `.env.local` is the entire switch.
 
+## Running tests while another run is going
+
+Every test run mints one `TEST_RUN_ID` (in `vitest.config.ts` /
+`playwright.config.ts`) and every fixture id and email carries it
+(`tests/fixtures/run-id.ts`). CI, session A and session B can therefore run
+against the shared dev project at the same time without touching each other's
+rows. Two things to know:
+
+- Two local runs on one machine both want port 4173 for the live server. Give
+  the second one its own: `LIVE_SERVER_PORT=4174 npm run test` (Playwright reads
+  the same variable). It must be a whole number from 1024 to 65535.
+- A crashed run can leave rows behind. Each run starts by sweeping fixture rows
+  older than six hours (`tests/fixtures/sweep-stale-fixtures.ts`). To clean one
+  up sooner, re-run with the same id: `TEST_RUN_ID=<11 hex chars> npm run test`.
+
+The `crm_arr` column that `buyer-boundary.spec.ts` adds is no longer dropped
+after the run (a concurrent run's drop would break the other run mid-test).
+It stays on dev as an unused nullable column.
+
 ## Secrets: one value per environment
 
 `NEXT_PUBLIC_SUPABASE_*` and `SUPABASE_SERVICE_ROLE_KEY` come from each Supabase

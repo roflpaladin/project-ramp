@@ -15,50 +15,57 @@
 //      the point — a bare value like "salesforce" would false-pass the moment a
 //      shared link happened to mention Salesforce.
 //
-//   2. Everything is scoped to a dedicated sentinel tenant, so teardown can never
-//      reach real or demo data.
+//   2. Everything is scoped to a dedicated, run-scoped sentinel tenant, so teardown
+//      can never reach real or demo data, nor another run's rows.
 //
 // Numeric and date columns cannot carry a token, so their literals are exported
 // individually in FORBIDDEN_VALUES.
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireTestEnv } from "./env";
+import { runScopedEmail, runScopedId } from "./run-id";
 
 export const LEAK_TOKEN = "LEAKCANARY";
 export const VISIBLE_TOKEN = "VISIBLEOK";
 
-// Sentinel IDs, fixed so that every write is an idempotent upsert and teardown
-// matches only rows this fixture owns. "7e57" reads as "test", mirroring the
-// "de30"/demo convention already used by lib/demo.ts.
-export const TEST_TENANT_ID = "7e570000-0000-4000-8000-000000000001";
-export const TEST_WORKSPACE_ID = "7e570000-0000-4000-8000-000000000002";
-export const TEST_PLAN_ID = "7e570000-0000-4000-8000-000000000003";
-export const TEST_STAGE_ONE_ID = "7e570000-0000-4000-8000-000000000004";
-export const TEST_STAGE_TWO_ID = "7e570000-0000-4000-8000-000000000005";
-export const TEST_SELLER_STEP_ID = "7e570000-0000-4000-8000-000000000006";
-export const TEST_BUYER_STEP_ID = "7e570000-0000-4000-8000-000000000007";
-export const TEST_BLOCKED_STEP_ID = "7e570000-0000-4000-8000-000000000008";
-export const TEST_DONE_STEP_ID = "7e570000-0000-4000-8000-000000000009";
+// Sentinel IDs, stable WITHIN a run (every write is an idempotent upsert and
+// teardown matches only rows this fixture owns) but unique PER run: the run
+// token from run-id.ts sits in the middle groups, so a concurrent run (CI, or
+// the other local session) on the shared dev database seeds and tears down its
+// own rows, never these. "7e57" reads as "test", mirroring the "de30"/demo
+// convention already used by lib/demo.ts.
+export const TEST_TENANT_ID = runScopedId("7e57", "000000000001");
+export const TEST_WORKSPACE_ID = runScopedId("7e57", "000000000002");
+export const TEST_PLAN_ID = runScopedId("7e57", "000000000003");
+export const TEST_STAGE_ONE_ID = runScopedId("7e57", "000000000004");
+export const TEST_STAGE_TWO_ID = runScopedId("7e57", "000000000005");
+export const TEST_SELLER_STEP_ID = runScopedId("7e57", "000000000006");
+export const TEST_BUYER_STEP_ID = runScopedId("7e57", "000000000007");
+export const TEST_BLOCKED_STEP_ID = runScopedId("7e57", "000000000008");
+export const TEST_DONE_STEP_ID = runScopedId("7e57", "000000000009");
 
-export const TEST_TIED_STEP_ID = "7e570000-0000-4000-8000-00000000000a";
+export const TEST_TIED_STEP_ID = runScopedId("7e57", "00000000000a");
 
 // A workspace under the SAME tenant that deliberately has no plan at all, so the
 // "no plan returns null rather than throwing" path has something to read.
-export const EMPTY_WORKSPACE_ID = "7e570000-0000-4000-8000-0000000000e1";
+export const EMPTY_WORKSPACE_ID = runScopedId("7e57", "0000000000e1");
 
 // A second tenant. Proving RLS *holds* needs a workspace the seller genuinely
 // cannot reach — asserting against one they can see proves nothing. Its plan
 // carries one stage and ZERO steps, which doubles as the "stages but no steps
 // assembles without error" case.
-export const FOREIGN_TENANT_ID = "7e570000-0000-4000-8000-0000000000f1";
-export const FOREIGN_WORKSPACE_ID = "7e570000-0000-4000-8000-0000000000f2";
-export const FOREIGN_PLAN_ID = "7e570000-0000-4000-8000-0000000000f3";
-export const FOREIGN_STAGE_ID = "7e570000-0000-4000-8000-0000000000f4";
+export const FOREIGN_TENANT_ID = runScopedId("7e57", "0000000000f1");
+export const FOREIGN_WORKSPACE_ID = runScopedId("7e57", "0000000000f2");
+export const FOREIGN_PLAN_ID = runScopedId("7e57", "0000000000f3");
+export const FOREIGN_STAGE_ID = runScopedId("7e57", "0000000000f4");
 
 export const TEST_TENANT_LABEL = "TEST — buyer boundary";
 export const FOREIGN_TENANT_LABEL = "TEST — foreign tenant (RLS control)";
-export const TEST_OWNER_EMAIL = "t23-harness@projectramp.invalid";
-export const TEST_APPROVED_EMAIL = `buyer.${LEAK_TOKEN}@acme-test.invalid`;
+export const TEST_OWNER_EMAIL = runScopedEmail("t23-harness", "projectramp.invalid");
+// Keeps the literal LEAK_TOKEN: it is in FORBIDDEN_VALUES, and the specs assert on
+// this exported constant (never a hardcoded string), so the run id riding along
+// in the plus-tag changes nothing about what the leak grep matches.
+export const TEST_APPROVED_EMAIL = runScopedEmail(`buyer.${LEAK_TOKEN}`, "acme-test.invalid");
 
 // --- seller-private values (must never reach a buyer) ------------------------
 
@@ -74,14 +81,14 @@ export const PRIVATE_LINK_URLS = [
 // `7e570000-0000-4000-8000-00000000002${index}` convention by hand in a
 // second file.
 export const PRIVATE_LINK_IDS = [
-  "7e570000-0000-4000-8000-000000000020",
-  "7e570000-0000-4000-8000-000000000021",
+  runScopedId("7e57", "000000000020"),
+  runScopedId("7e57", "000000000021"),
 ] as const;
 
 export const SHARED_LINK_IDS = [
-  "7e570000-0000-4000-8000-000000000010",
-  "7e570000-0000-4000-8000-000000000011",
-  "7e570000-0000-4000-8000-000000000012",
+  runScopedId("7e57", "000000000010"),
+  runScopedId("7e57", "000000000011"),
+  runScopedId("7e57", "000000000012"),
 ] as const;
 
 // Ticket 30 (T30-7/T30-8). A dedicated link whose visibility the toggle
@@ -96,7 +103,7 @@ export const SHARED_LINK_IDS = [
 // same state a freshly created link defaults to (0005's column default,
 // mirrored explicitly by addLink per T30-3's comment) — so T30-7 has a real
 // shared->private transition to prove.
-export const TEST_TOGGLE_LINK_ID = "7e570000-0000-4000-8000-000000000023";
+export const TEST_TOGGLE_LINK_ID = runScopedId("7e57", "000000000023");
 export const TOGGLE_TOKEN = "TOGGLECHECK";
 export const TOGGLE_LINK_URL = `https://docs.example.com/toggle-target-${TOGGLE_TOKEN}`;
 export const TOGGLE_LINK_LABEL = `Toggle target ${TOGGLE_TOKEN}`;
@@ -108,7 +115,7 @@ export const TOGGLE_LINK_LABEL = `Toggle target ${TOGGLE_TOKEN}`;
 // an existing one, so a future edit to those two rows can't silently widen
 // or narrow what this specific assertion covers. NOT inserted by
 // seedLeakyWorkspace() — see TEST_TOGGLE_LINK_ID's comment above for why.
-export const TEST_PRIVATE_RESOURCE_TYPE_LINK_ID = "7e570000-0000-4000-8000-000000000024";
+export const TEST_PRIVATE_RESOURCE_TYPE_LINK_ID = runScopedId("7e57", "000000000024");
 export const PRIVATE_RESOURCE_TYPE_LINK_URL = `https://internal-only.example.com/deck-${LEAK_TOKEN}`;
 export const PRIVATE_RESOURCE_TYPE_LINK_LABEL = `Private deck ${LEAK_TOKEN}`;
 export const PRIVATE_RESOURCE_TYPE_VALUE = "deck";
